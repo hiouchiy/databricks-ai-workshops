@@ -15,10 +15,10 @@ env:
     valueFrom: experiment
   # TODO: Replace with your Lakebase instance name
   - name: LAKEBASE_INSTANCE_NAME
-    value: "<your-lakebase-instance-name>"
+    valueFrom: lakebase_memory # injects hostname → resolved by code
   # TODO: Replace with your Genie Space ID
   - name: GENIE_SPACE_ID
-    value: "<your-genie-space-id>"
+    valueFrom: retail_grocery_genie # injects space_id
   # TODO: Replace with your Vector Search index (catalog/schema/index-name)
   - name: VECTOR_SEARCH_INDEX
-    value: "<catalog>/<schema>/<vector-search-index>"
+    valueFrom: policy_docs_index # injects securable_full_name (dots) → converted by code

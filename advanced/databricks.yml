@@ -24,13 +24,13 @@ resources:
             value_from: "experiment"
           # TODO: Replace with your Lakebase instance name
           - name: LAKEBASE_INSTANCE_NAME
-            value: "<your-lakebase-instance-name>"
+            value_from: "lakebase_memory"
           # TODO: Replace with your Genie Space ID
           - name: GENIE_SPACE_ID
-            value: "<your-genie-space-id>"
+            value_from: "retail_grocery_genie"
           # TODO: Replace with your Vector Search index (catalog/schema/index-name)
           - name: VECTOR_SEARCH_INDEX
-            value: "<catalog>/<schema>/<vector-search-index>"
+            value_from: "policy_docs_index"
 
       # Resources which this app has access to
       resources:
