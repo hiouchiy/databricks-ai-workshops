@@ -120,7 +120,7 @@ databricks experiments create \
   --name "/Users/$DATABRICKS_USERNAME/retail-grocery-ltm-memory"
 ```
 
-Copy the returned `experiment_id` (a numeric string like `620026685155230`) and paste it into `databricks.yml` line 40:
+Copy the returned `experiment_id` (a numeric string like `620...`) and paste it into `databricks.yml` line 40:
 
 ```yaml
         - name: "experiment"
