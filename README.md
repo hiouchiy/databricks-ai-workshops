@@ -10,9 +10,9 @@ Three levels. One mission: **make you define smareter and practical AI agents ( 
 
 | Level | You'll Go From... | ...To |
 |-------|-------------------|-------|
-| **Simple** | "What's an agent?" | Deploying governed agents with Databricks managed services at enterprise scale |
-| **Medium** | "I've built a basic agent" | Architecting agentic systems that mix managed + custom components |
-| **[Advanced](./advanced/)** | "I want full control" | Production-grade AI with LangGraph, MCP tools, and persistent memory via Lakebase |
+| **Simple** | "How to build a bespoke agent for my business application.?" | Deploying governed agents with Databricks managed services at enterprise scale |
+| **Medium** | "I want to build a customised agent with memory ?" | Architecting agentic systems that mix managed + custom components |
+| **[Advanced](./advanced/)** | "I want full control and create an advanced agentic memory application." | Production-grade AI with LangGraph, MCP tools, and persistent memory via Lakebase |
 
 Pick the level that matches where you are. Each one is fully self-contained — just clone and go.
 
