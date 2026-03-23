@@ -56,8 +56,8 @@ Update these two constants at the top of **every** script:
 
 | Constant | Current Value | Update To |
 |----------|---------------|-----------|
-| `CATALOG` | `"ananyaroy"` | Your Unity Catalog name |
-| `SCHEMA` | `"retail_wiab"` | Your target schema name |
+| `CATALOG` | `"qsic_workshop_prep_catalog"` | Your Unity Catalog name |
+| `SCHEMA` | `"retail_agent"` | Your target schema name |
 
 Files to update:
 - [ ] `create_structured_data.py` — lines with `CATALOG` and `SCHEMA`
@@ -90,9 +90,48 @@ python run_sql_generation.py --profile <PROFILE> --warehouse-id <WAREHOUSE_ID>
 python execute_chunking.py --profile <PROFILE> --warehouse-id <WAREHOUSE_ID>
 ```
 
+### Post-Data-Generation: Genie Space Setup
+
+Once the structured retail tables are created, set up a Genie space so business users can query the data using natural language.
+
+- [ ] **Create a Genie space** via the REST API (`POST /api/2.0/genie/spaces`) or the Databricks UI
+  - Title: e.g. `"QSIC Retail Agent"`
+  - Description: describe the retail dataset for Genie's context
+  - Table identifiers: add all 6 structured tables (`customers`, `products`, `stores`, `transactions`, `transaction_items`, `payment_history`)
+  - Warehouse ID: a Pro or Serverless SQL warehouse
+- [ ] **Write a setup script** (`create_genie_space.py`) that automates the above via the REST API
+- [ ] Verify Genie can answer natural language queries against the retail tables
+
+### Post-Chunking: Vector Search Setup
+
+Once the `policy_docs_chunked` table is populated, create a Vector Search endpoint and index for semantic retrieval.
+
+- [ ] **Create a Vector Search endpoint** using the Python SDK:
+  ```python
+  from databricks.vector_search.client import VectorSearchClient
+  client = VectorSearchClient()
+  client.create_endpoint(name="<ENDPOINT_NAME>", endpoint_type="STANDARD")
+  ```
+- [ ] **Wait for the endpoint** to reach `READY` state (can take several minutes)
+- [ ] **Create a Delta Sync index** on the chunked policy table:
+  ```python
+  client.create_delta_sync_index(
+      endpoint_name="<ENDPOINT_NAME>",
+      source_table_name="<CATALOG>.<SCHEMA>.policy_docs_chunked",
+      index_name="<CATALOG>.<SCHEMA>.policy_docs_vs_index",
+      pipeline_type="TRIGGERED",
+      primary_key="chunk_id",
+      embedding_source_column="content",
+      embedding_model_endpoint_name="databricks-gte-large-en",
+  )
+  ```
+- [ ] **Write a setup script** (`create_vector_search.py`) that automates endpoint + index creation
+- [ ] **Sync the index** and verify similarity search returns relevant policy chunks
+
 ### Other Considerations
 
 - [ ] Verify the Databricks CLI profile points to the correct workspace host
 - [ ] Ensure the service principal or user has `CREATE TABLE` and `WRITE` permissions on the target schema
 - [ ] If changing the chunking parameters (size/overlap), update both `create_chunked_docs.py` and `execute_chunking.py` to keep them in sync
 - [ ] All scripts use `random.seed(42)` for reproducibility — data will be identical across runs
+- [ ] Ensure the workspace has a Foundation Model API endpoint (e.g. `databricks-gte-large-en`) available for embedding generation
