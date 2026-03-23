@@ -20,8 +20,8 @@ You should have these values ready:
 
 | Value | Example | Where to find it |
 |-------|---------|-------------------|
-| Genie Space ID | `01f126ad9a671dd795b77f2bbaaaaa06` | Genie UI > your space > URL contains the ID |
-| Lakebase instance name | `qsic-retail-grocery-database` | Catalog Explorer > Databases |
+| Genie Space ID | `01ef...abcd` | Genie UI > your space > URL contains the ID |
+| Lakebase instance name | `my-lakebase-instance` | Catalog Explorer > Databases |
 | Vector Search index path | `my_catalog.my_schema.policy_docs_index` | Catalog Explorer > your index |
 
 ---
@@ -192,7 +192,7 @@ uv run python scripts/grant_lakebase_permissions.py "$SP_CLIENT_ID" \
   --instance-name <YOUR-LAKEBASE-INSTANCE-NAME>
 ```
 
-> **Note:** Replace `<YOUR-LAKEBASE-INSTANCE-NAME>` with your actual instance name (e.g., `qsic-retail-grocery-database`).
+> **Note:** Replace `<YOUR-LAKEBASE-INSTANCE-NAME>` with your actual instance name (e.g., `my-lakebase-instance`).
 
 ---
 
