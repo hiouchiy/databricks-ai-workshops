@@ -37,24 +37,24 @@ resources:
         # TODO: Replace experiment_id with your MLflow experiment ID
         - name: "experiment"
           experiment:
-            experiment_id: "<your-experiment-id>"
+            experiment_id: "1159599289265540"
             permission: "CAN_MANAGE"
         # TODO: Replace space_id with your Genie Space ID
         - name: "retail_grocery_genie"
           genie_space:
             name: "Retail Grocery Data"
-            space_id: "<your-genie-space-id>"
+            space_id: "01f12729f67c1f6a9689f6c1fb33850e"
             permission: "CAN_RUN"
         # TODO: Replace instance_name with your Lakebase instance name
         - name: "lakebase_memory"
           database:
-            instance_name: "<your-lakebase-instance-name>"
+            instance_name: "fernandito-lakebase"
             database_name: "databricks_postgres"
             permission: "CAN_CONNECT_AND_CREATE"
         # TODO: Replace with your Vector Search index full name
         - name: "policy_docs_index"
           uc_securable:
-            securable_full_name: "<catalog>.<schema>.<vector-search-index>"
+            securable_full_name: "qsic_workshop_prep_catalog.retail_agent.policy_docs_index"
             securable_type: "TABLE"
             permission: "SELECT"
 
