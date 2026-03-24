@@ -1,6 +1,6 @@
-# Workshop: Deploying a Retail Grocery AI Agent as a Databricks App
+# Workshop: Building & Deploying a Retail Grocery AI Agent on Databricks
 
-This guide walks you through configuring and deploying the **Retail Grocery AI Agent** — a conversational agent with Genie (structured data), Vector Search (policy docs), and long-term memory (Lakebase) — as a Databricks App.
+This guide walks you through the **complete workshop** — from data generation to deploying the **Retail Grocery AI Agent** (a conversational agent with Genie, Vector Search, and long-term memory) both locally and as a Databricks App.
 
 ---
 
@@ -8,28 +8,290 @@ This guide walks you through configuring and deploying the **Retail Grocery AI A
 
 Before you begin, ensure you have:
 
-- [ ] **Databricks CLI** installed and authenticated (`databricks auth login`)
+- [ ] **Databricks CLI** installed and authenticated
+  ```bash
+  # Install (macOS)
+  brew tap databricks/tap && brew install databricks
+
+  # Authenticate
+  databricks auth login --host https://<your-workspace>.cloud.databricks.com --profile DEFAULT
+
+  # Verify
+  databricks current-user me
+  ```
 - [ ] **uv** (Python package manager) installed — [install guide](https://docs.astral.sh/uv/getting-started/installation/)
 - [ ] **Node.js 20+** installed (for the chat UI)
-- [ ] Access to a Databricks workspace with the following already provisioned:
-  - A **Genie Space** with your retail data tables
-  - A **Lakebase instance** (provisioned)
-  - A **Vector Search index** with chunked policy documents
-
-You should have these values ready:
-
-| Value | Example | Where to find it |
-|-------|---------|-------------------|
-| Genie Space ID | `01ef...abcd` | Genie UI > your space > URL contains the ID |
-| Lakebase instance name | `my-lakebase-instance` | Catalog Explorer > Databases |
-| Vector Search index path | `my_catalog.my_schema.policy_docs_index` | Catalog Explorer > your index |
-| Catalog and schema | `my_catalog.my_schema` | Unity Catalog > your catalog and schema |
+- [ ] **jq** installed (`brew install jq` on macOS)
+- [ ] Access to a Databricks workspace with:
+  - Serverless compute enabled
+  - Foundation Model API (Claude) enabled
+  - Unity Catalog enabled
+  - Vector Search available
+  - Lakebase available
 
 ---
 
-## Step 1: Update `app.yaml` — Environment Variable Injection
+## Phase 0: Clone the Repository
 
-Open `advanced/app.yaml`. The environment variables for Genie, Lakebase, and Vector Search use `valueFrom` to reference resources defined in `databricks.yml`. This means values are **injected automatically** by the Databricks Apps platform at runtime — you don't hardcode them here.
+```bash
+git clone https://github.com/AnanyaDBJ/databricks-ai-workshops.git
+cd databricks-ai-workshops
+```
+
+The repo has two main directories:
+- `data/` — Synthetic data generation scripts and policy documents
+- `advanced/` — The AI agent application
+
+---
+
+## Phase 1: Data Preparation
+
+This phase creates the structured datasets and policy document chunks that the agent queries.
+
+### 1a. Create a Unity Catalog Schema
+
+In your Databricks workspace (SQL Editor or notebook):
+
+```sql
+CREATE CATALOG IF NOT EXISTS <YOUR-CATALOG>;
+CREATE SCHEMA IF NOT EXISTS <YOUR-CATALOG>.<YOUR-SCHEMA>;
+```
+
+### 1b. Find Your SQL Warehouse ID
+
+```bash
+databricks warehouses list
+```
+
+Note the `id` of an active SQL warehouse.
+
+### 1c. Generate Structured Data (6 tables)
+
+First, update the catalog and schema in the script:
+
+```bash
+cd data
+```
+
+Edit `execute_sql.py` — update lines 19-20:
+```python
+CATALOG = "<YOUR-CATALOG>"
+SCHEMA = "<YOUR-SCHEMA>"
+```
+
+Then run:
+```bash
+python execute_sql.py --profile DEFAULT --warehouse-id <YOUR-WAREHOUSE-ID>
+```
+
+This creates 6 tables: `customers` (200 rows), `products` (500), `stores` (10), `transactions` (2000), `transaction_items` (8000+), `payment_history` (400).
+
+### 1d. Generate Chunked Policy Documents
+
+Edit `execute_chunking.py` — update lines 18-19:
+```python
+CATALOG = "<YOUR-CATALOG>"
+SCHEMA = "<YOUR-SCHEMA>"
+```
+
+Then run:
+```bash
+python execute_chunking.py --profile DEFAULT --warehouse-id <YOUR-WAREHOUSE-ID>
+```
+
+This reads 7 policy markdown files from `policy_docs/`, chunks them (1000 chars, 200 overlap), and writes to `policy_docs_chunked` table.
+
+### 1e. Create a Vector Search Endpoint
+
+In the Databricks UI: **Compute** > **Vector Search** > **Create Endpoint**
+
+- Name: `freshmart-policies` (or your preferred name)
+- Wait for status: **READY** (5-10 minutes)
+
+### 1f. Create a Vector Search Index
+
+In Catalog Explorer, navigate to `<YOUR-CATALOG>.<YOUR-SCHEMA>.policy_docs_chunked`, then:
+
+1. Click **Create** > **Vector Search Index**
+2. Configure:
+   - Index name: `policy_docs_index`
+   - Primary key: `chunk_id`
+   - Endpoint: select the endpoint from Step 1e
+   - Embedding source column: `content`
+   - Embedding model: `databricks-gte-large-en`
+   - Sync mode: Triggered
+3. Click **Create**
+
+Note the full index path: `<YOUR-CATALOG>.<YOUR-SCHEMA>.policy_docs_index`
+
+### 1g. Create a Genie Space
+
+In the Databricks UI: **Genie** > **New Genie Space**
+
+1. Name: `Retail Grocery Data`
+2. Add all 6 structured tables from your schema
+3. Select a SQL warehouse
+4. Click **Create**
+5. Copy the **Space ID** from the URL (e.g., `01ef...abcd`)
+
+### 1h. Create a Lakebase Instance
+
+```bash
+databricks database create-database-instance <YOUR-INSTANCE-NAME> \
+  --capacity=CU_1 \
+  --enable-pg-native-login \
+  --no-wait
+```
+
+Wait for it to be available:
+```bash
+databricks database get-database-instance <YOUR-INSTANCE-NAME> | jq '.state'
+# Wait until "AVAILABLE"
+```
+
+### 1i. Create an MLflow Experiment
+
+```bash
+cd ../advanced
+
+DATABRICKS_USERNAME=$(databricks current-user me | jq -r .userName)
+
+databricks experiments create \
+  --name "/Users/$DATABRICKS_USERNAME/retail-grocery-ltm-memory"
+```
+
+Copy the returned `experiment_id` (a numeric string like `1159599...`).
+
+### 1j. Register the System Prompt
+
+```bash
+cd ../advanced
+uv run register-prompt --name <YOUR-CATALOG>.<YOUR-SCHEMA>.freshmart_system_prompt
+```
+
+This registers the FreshMart system prompt in Unity Catalog and sets a `@production` alias.
+
+---
+
+## Phase 2: Grant Individual User Permissions
+
+Before local testing, your Databricks user needs permissions to access all resources.
+
+### 2a. Lakebase — Create Your User Role
+
+Connect to your Lakebase instance and create a role for your user:
+
+```bash
+databricks psql <YOUR-INSTANCE-NAME> -- -c "
+CREATE ROLE \"your.email@company.com\" WITH LOGIN;
+GRANT ALL ON DATABASE databricks_postgres TO \"your.email@company.com\";
+"
+```
+
+Then grant schema and table permissions:
+
+```bash
+databricks psql <YOUR-INSTANCE-NAME> -- -d databricks_postgres -c "
+GRANT ALL ON SCHEMA public TO \"your.email@company.com\";
+GRANT ALL ON ALL TABLES IN SCHEMA public TO \"your.email@company.com\";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO \"your.email@company.com\";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO \"your.email@company.com\";
+"
+```
+
+### 2b. Genie Space — Grant Access
+
+In the Databricks UI: **Genie** > your space > **Share** > Add your user with **Can Run** permission.
+
+### 2c. Vector Search — Grant Access
+
+In Catalog Explorer: navigate to the index > **Permissions** > Add your user with **SELECT** permission.
+
+### 2d. MLflow Experiment — Grant Access
+
+In the Databricks UI: **Experiments** > your experiment > **Permissions** > Add your user with **Can Manage**.
+
+### 2e. Unity Catalog — Grant Access
+
+```sql
+GRANT USE CATALOG ON CATALOG <YOUR-CATALOG> TO `your.email@company.com`;
+GRANT USE SCHEMA ON SCHEMA <YOUR-CATALOG>.<YOUR-SCHEMA> TO `your.email@company.com`;
+GRANT SELECT ON SCHEMA <YOUR-CATALOG>.<YOUR-SCHEMA> TO `your.email@company.com`;
+```
+
+---
+
+## Phase 3: Local Development & Testing
+
+### 3a. Set Up Environment Variables
+
+```bash
+cd advanced
+cp .env.example .env
+```
+
+Edit `.env` and fill in your values:
+
+```bash
+DATABRICKS_CONFIG_PROFILE=DEFAULT
+MLFLOW_EXPERIMENT_ID=<YOUR-EXPERIMENT-ID>
+LAKEBASE_INSTANCE_NAME=<YOUR-INSTANCE-NAME>
+GENIE_SPACE_ID=<YOUR-GENIE-SPACE-ID>
+VECTOR_SEARCH_INDEX=<YOUR-CATALOG>.<YOUR-SCHEMA>.policy_docs_index
+PROMPT_REGISTRY_NAME=<YOUR-CATALOG>.<YOUR-SCHEMA>.freshmart_system_prompt
+```
+
+For the Lakebase connection (needed by the chat UI):
+```bash
+PGHOST=<your-lakebase-hostname>
+PGUSER=<your.email@company.com>
+PGDATABASE=databricks_postgres
+```
+
+To find your Lakebase hostname:
+```bash
+databricks database get-database-instance <YOUR-INSTANCE-NAME> | jq -r '.read_write_dns'
+```
+
+### 3b. Start the App Locally
+
+```bash
+cd advanced
+uv run start-app
+```
+
+This starts:
+- **Backend** (FastAPI + MLflow AgentServer) on `http://localhost:8000`
+- **Frontend** (React chat UI) on `http://localhost:3000`
+
+### 3c. Test the Agent
+
+Open `http://localhost:3000` in your browser and try:
+
+- **Genie (structured data):** "What are the top 5 products by revenue?"
+- **Vector Search (policy docs):** "What is the return policy for perishable items?"
+- **Memory:** "Remember that I prefer organic products" → then in a new session: "What are my preferences?"
+
+### 3d. Verify MLflow Traces
+
+In the Databricks UI: **Experiments** > your experiment
+
+- Verify traces are being logged for each request
+- Check that traces follow OTEL format and show tool calls (Genie, Vector Search, memory)
+
+### 3e. Test Conversation Memory
+
+1. Create multiple chat sessions (use the "New Chat" button)
+2. Verify conversation history is stored per-session
+3. Check that long-term memory persists across sessions
+
+---
+
+## Phase 4: Configure for Databricks Apps Deployment
+
+### 4a. Update `app.yaml` — Environment Variable Injection
+
+Open `advanced/app.yaml`. The environment variables for Genie, Lakebase, and Vector Search use `valueFrom` to reference resources defined in `databricks.yml`. This means values are **injected automatically** at runtime.
 
 Verify your `app.yaml` looks like this (no changes needed if it already does):
 
@@ -42,21 +304,19 @@ Verify your `app.yaml` looks like this (no changes needed if it already does):
     valueFrom: retail_grocery_genie
   - name: VECTOR_SEARCH_INDEX
     valueFrom: policy_docs_index
-  - name: PROMPT_REGISTRY_NAME
-    valueFrom: system_prompt
 ```
 
-> **How `valueFrom` works:** Each name (e.g., `lakebase_memory`) references a resource defined in `databricks.yml`. At deploy time, the platform resolves the resource and injects the appropriate value (hostname, space ID, etc.) into the environment variable.
+> **How `valueFrom` works:** Each name (e.g., `lakebase_memory`) references a resource defined in `databricks.yml`. At deploy time, the platform resolves the resource and injects the appropriate value.
 
----
+> **Note on Prompt Registry:** `PROMPT_REGISTRY_NAME` uses a static `value` in `databricks.yml` (not `value_from`) because MLflow Prompt Registry prompts are accessed via the MLflow API, not as UC securables.
 
-## Step 2: Update `databricks.yml` — Resource Definitions
+### 4b. Update `databricks.yml` — Resource Definitions
 
 Open `advanced/databricks.yml`. This file defines the Databricks Asset Bundle — the app, its environment, and the resources it needs.
 
-### 2a. Update the env section to use `value_from`
+#### Environment variables section
 
-In the `config.env` section (around lines 23-33), ensure the three resource-backed variables use `value_from` (not hardcoded `value`):
+In the `config.env` section, verify the resource-backed variables use `value_from`, and the prompt registry uses a static `value`:
 
 ```yaml
         env:
@@ -69,17 +329,26 @@ In the `config.env` section (around lines 23-33), ensure the three resource-back
             value_from: "retail_grocery_genie"
           - name: VECTOR_SEARCH_INDEX
             value_from: "policy_docs_index"
+          # Prompt Registry uses static value (not a UC securable resource)
           - name: PROMPT_REGISTRY_NAME
-            value_from: "system_prompt"
+            value: "<YOUR-CATALOG>.<YOUR-SCHEMA>.freshmart_system_prompt"
 ```
 
 > **Note:** `databricks.yml` uses `value_from` (underscore). `app.yaml` uses `valueFrom` (camelCase). Both are correct — they're different file formats.
 
-### 2b. Fill in your resource values
+#### Resource definitions
 
-In the `resources` section (around lines 36-59), replace the placeholder values with your actual resource IDs:
+Replace the placeholder values with your actual resource IDs:
 
-**Genie Space** (line 46):
+**MLflow Experiment:**
+```yaml
+        - name: "experiment"
+          experiment:
+            experiment_id: "<YOUR-EXPERIMENT-ID>"
+            permission: "CAN_MANAGE"
+```
+
+**Genie Space:**
 ```yaml
         - name: "retail_grocery_genie"
           genie_space:
@@ -88,7 +357,7 @@ In the `resources` section (around lines 36-59), replace the placeholder values 
             permission: "CAN_RUN"
 ```
 
-**Lakebase** (line 51):
+**Lakebase:**
 ```yaml
         - name: "lakebase_memory"
           database:
@@ -97,72 +366,22 @@ In the `resources` section (around lines 36-59), replace the placeholder values 
             permission: "CAN_CONNECT_AND_CREATE"
 ```
 
-**Vector Search Index** (line 57):
+**Vector Search Index:**
 ```yaml
         - name: "policy_docs_index"
           uc_securable:
-            securable_full_name: "<YOUR-CATALOG>.<YOUR-SCHEMA>.<YOUR-INDEX-NAME>"
+            securable_full_name: "<YOUR-CATALOG>.<YOUR-SCHEMA>.policy_docs_index"
             securable_type: "TABLE"
             permission: "SELECT"
-```
-
-**Prompt Registry** (system prompt in Unity Catalog):
-```yaml
-        - name: "system_prompt"
-          uc_securable:
-            securable_full_name: "<YOUR-CATALOG>.<YOUR-SCHEMA>.freshmart_system_prompt"
-            securable_type: "FUNCTION"
-            permission: "EXECUTE"
 ```
 
 > **Important:** The `securable_full_name` uses **dots** (e.g., `my_catalog.my_schema.policy_docs_index`), not slashes.
 
 ---
 
-## Step 3: Register the System Prompt
+## Phase 5: Deploy to Databricks Apps
 
-The agent loads its system prompt from the Databricks Prompt Registry (Unity Catalog). Register it by running:
-
-```bash
-cd advanced
-uv run register-prompt --name <YOUR-CATALOG>.<YOUR-SCHEMA>.freshmart_system_prompt
-```
-
-This registers the FreshMart system prompt in Unity Catalog and sets a `@production` alias. The agent loads the prompt at startup via the `PROMPT_REGISTRY_NAME` environment variable.
-
-> **Tip:** To update the prompt later, create a new version in the Catalog Explorer UI and move the `@production` alias — no code changes needed.
-
----
-
-## Step 4: Create an MLflow Experiment
-
-The app uses MLflow for tracing and evaluation. Create an experiment in your workspace:
-
-```bash
-cd advanced
-
-# Get your Databricks username
-DATABRICKS_USERNAME=$(databricks current-user me | jq -r .userName)
-
-# Create the experiment
-databricks experiments create \
-  --name "/Users/$DATABRICKS_USERNAME/retail-grocery-ltm-memory"
-```
-
-Copy the returned `experiment_id` (a numeric string like `620...`) and paste it into `databricks.yml` line 40:
-
-```yaml
-        - name: "experiment"
-          experiment:
-            experiment_id: "<PASTE-YOUR-EXPERIMENT-ID>"
-            permission: "CAN_MANAGE"
-```
-
----
-
-## Step 5: Validate the Bundle
-
-Before deploying, validate that your configuration is correct:
+### 5a. Validate the Bundle
 
 ```bash
 cd advanced
@@ -174,11 +393,7 @@ If you see errors, fix them before proceeding. Common issues:
 - Invalid experiment ID format
 - Missing Databricks CLI authentication
 
----
-
-## Step 6: Deploy the App
-
-Deploy using Databricks Asset Bundles:
+### 5b. Deploy the Bundle
 
 ```bash
 databricks bundle deploy -t dev
@@ -190,7 +405,7 @@ This command will:
 3. Bind the resources (experiment, Genie space, Lakebase, Vector Search index)
 4. Configure the environment variables via `valueFrom`
 
-After the bundle deploys, you need to deploy the source code to the app:
+### 5c. Deploy Source Code to the App
 
 ```bash
 DATABRICKS_USERNAME=$(databricks current-user me | jq -r .userName)
@@ -198,16 +413,13 @@ databricks apps deploy retail-grocery-ltm-memory \
   --source-code-path /Workspace/Users/$DATABRICKS_USERNAME/.bundle/retail_grocery_ltm_memory/dev/files
 ```
 
----
-
-## Step 7: Grant Lakebase Permissions
+### 5d. Grant Lakebase Permissions to the App Service Principal
 
 After deployment, the app gets assigned a **service principal**. This SP needs database permissions to create the memory tables.
 
 ```bash
 # Get the app's service principal client ID
 SP_CLIENT_ID=$(databricks apps get retail-grocery-ltm-memory --output json | jq -r '.service_principal_client_id')
-
 echo "Service Principal Client ID: $SP_CLIENT_ID"
 
 # Grant permissions for short-term memory (conversation state)
@@ -221,19 +433,27 @@ uv run python scripts/grant_lakebase_permissions.py "$SP_CLIENT_ID" \
   --instance-name <YOUR-LAKEBASE-INSTANCE-NAME>
 ```
 
-> **Note:** Replace `<YOUR-LAKEBASE-INSTANCE-NAME>` with your actual instance name (e.g., `my-lakebase-instance`).
+Also grant the SP access to the Genie Space:
 
----
+In the Databricks UI: **Genie** > your space > **Share** > Add the app's service principal with **Can Run** permission.
 
-## Step 8: Start the App
+### 5e. Verify App Resources in the UI
 
-After deployment, the app may be in a stopped state. Start it:
+In the Databricks UI: **Apps** > **retail-grocery-ltm-memory** > **Resources**
+
+Verify all resources are bound:
+- Experiment (CAN_MANAGE)
+- Genie Space (CAN_RUN)
+- Lakebase database (CAN_CONNECT_AND_CREATE)
+- Vector Search index (SELECT)
+
+### 5f. Start the App
 
 ```bash
 databricks apps start retail-grocery-ltm-memory
 ```
 
-Wait for the app to reach `RUNNING` state. You can check status with:
+Wait for the app to reach `RUNNING` state:
 
 ```bash
 databricks apps get retail-grocery-ltm-memory
@@ -241,7 +461,7 @@ databricks apps get retail-grocery-ltm-memory
 
 ---
 
-## Step 9: Verify the Deployment
+## Phase 6: Verify the Deployment
 
 ### Get the app URL
 
@@ -267,10 +487,12 @@ curl -X POST "${APP_URL}/invocations" \
 
 Navigate to the app URL in your browser. You should see the chat interface.
 
-Try these test prompts:
+Try the same test prompts as local testing:
 - **Genie (structured data):** "What are the top 5 products by revenue?"
 - **Vector Search (policy docs):** "What is the return policy for perishable items?"
 - **Memory:** "Remember that I prefer organic products" → then in a new conversation: "What are my preferences?"
+
+Verify MLflow traces are logged in the experiment UI, same as during local testing.
 
 ---
 
@@ -280,11 +502,13 @@ Try these test prompts:
 |-------|----------|
 | App stuck in `STOPPED` state | Run `databricks apps start retail-grocery-ltm-memory` |
 | `302` error when calling the API | Use an OAuth token (`databricks auth token`), not a PAT |
-| Permission denied on Lakebase | Re-run Step 7 (Grant Lakebase Permissions) with the correct SP client ID |
+| Permission denied on Lakebase | Re-run Phase 5d with the correct SP client ID. For local: re-run Phase 2a |
 | `bundle validate` fails | Check that all `value_from` names match the resource `name` fields exactly |
 | Vector Search returns empty results | Verify the index exists and has data in Catalog Explorer |
 | App logs show missing env vars | Check `app.yaml` `valueFrom` names match `databricks.yml` resource names |
-| App won't start after bundle deploy | Run the `databricks apps deploy` command from Step 6 to deploy source code |
+| App won't start after bundle deploy | Run the `databricks apps deploy` command from Phase 5c to deploy source code |
+| Local app fails with Lakebase error | Check PGHOST, PGUSER in `.env` and verify your user role exists (Phase 2a) |
+| Genie returns permission error | Grant access to your user (Phase 2b) or SP (Phase 5d) |
 
 ### Viewing App Logs
 
@@ -307,5 +531,6 @@ experiment              ───►   experiment                     ───�
 lakebase_memory         ───►   lakebase_memory (database)     ───► Lakebase hostname
 retail_grocery_genie    ───►   retail_grocery_genie           ───► Genie space ID
 policy_docs_index       ───►   policy_docs_index              ───► securable_full_name (dot format)
-system_prompt           ───►   system_prompt (uc_securable)   ───► securable_full_name (prompt name)
 ```
+
+> **Note:** `PROMPT_REGISTRY_NAME` is a static `value` in `databricks.yml`, not a `value_from` resource. MLflow Prompt Registry prompts are loaded via the MLflow API at runtime, not through UC securable resource binding.

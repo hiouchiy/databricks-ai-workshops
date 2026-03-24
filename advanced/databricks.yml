@@ -32,8 +32,9 @@ resources:
           - name: VECTOR_SEARCH_INDEX
             value_from: "policy_docs_index"
           # Prompt Registry: system prompt loaded from Unity Catalog
+          # NOTE: Uses static value (not value_from) — MLflow prompts are not UC securables
           - name: PROMPT_REGISTRY_NAME
-            value_from: "system_prompt"
+            value: "<catalog>.<schema>.freshmart_system_prompt"
       # Resources which this app has access to
       resources:
         # TODO: Replace experiment_id with your MLflow experiment ID
@@ -59,12 +60,6 @@ resources:
             securable_full_name: "<catalog>.<schema>.policy_docs_index"
             securable_type: "TABLE"
             permission: "SELECT"
-        # Prompt Registry: system prompt in Unity Catalog
-        - name: "system_prompt"
-          uc_securable:
-            securable_full_name: "<catalog>.<schema>.freshmart_system_prompt"
-            securable_type: "FUNCTION"
-            permission: "EXECUTE"
 
 targets:
   dev:
