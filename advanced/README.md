@@ -127,17 +127,73 @@ The chat UI will be available at **http://localhost:3000** and the API at **http
 
 ### Option 2: Using Claude Code
 
-If you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed, the repository includes built-in skills in `.claude/skills/` for AI-assisted development:
+If you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed, the repository includes built-in skills in `.claude/skills/` for AI-assisted development.
+
+#### Prerequisites
+
+Before using Claude Code, create the following resources manually in your Databricks workspace:
+
+1. **Databricks CLI profile** — Run `databricks auth login` to configure
+2. **MLflow Experiment** — Create via UI or CLI
+3. **Genie Space** — Create and note the Space ID
+4. **Vector Search Index** — Create and note the full name (`catalog.schema.index_name`)
+5. **Prompt Registry** — Register your system prompt (`catalog.schema.prompt_name`)
+6. **Lakebase Autoscaling Instance** — Create a project and branch
+
+#### Local Development
 
 ```bash
 # Start Claude Code in the project directory
+cd databricks-ai-workshops/advanced
 claude
+```
 
-# Then ask:
-# "Run quickstart to configure authentication"
-# "Add a Genie space tool to my agent"
-# "Set up Lakebase for user memories"
-# "Deploy my agent to Databricks Apps"
+Then use this prompt (replace placeholders with your actual values):
+
+```
+Set up and run the agent app locally. I have already created the following
+resources manually:
+
+- Databricks CLI profile: <PROFILE_NAME>
+- MLflow Experiment ID: <EXPERIMENT_ID>
+- Genie Space ID: <GENIE_SPACE_ID>
+- Vector Search Index: <CATALOG>.<SCHEMA>.<INDEX_NAME>
+- Prompt Registry: <CATALOG>.<SCHEMA>.<PROMPT_NAME>
+- Lakebase Autoscaling Project: <PROJECT_NAME>
+- Lakebase Autoscaling Branch: <BRANCH_NAME>
+
+Steps:
+1. Update .env with all the above values (resolve PGHOST from the autoscaling
+   branch endpoint)
+2. Run `uv run start-app` and verify both frontend (port 3000) and backend
+   (port 8000) are healthy
+3. Smoke test the agent with a curl POST to /invocations
+```
+
+The chat UI will be available at **http://localhost:3000** and the API at **http://localhost:8000**.
+
+#### Deploy to Databricks Apps
+
+Once you've verified the app works locally, use this prompt to deploy:
+
+```
+Deploy the agent app to Databricks Apps. I have the following resources:
+
+- Databricks CLI profile: <PROFILE_NAME>
+- MLflow Experiment ID: <EXPERIMENT_ID>
+- Genie Space ID: <GENIE_SPACE_ID>
+- Vector Search Index: <CATALOG>.<SCHEMA>.<INDEX_NAME>
+- Prompt Registry: <CATALOG>.<SCHEMA>.<PROMPT_NAME>
+- Lakebase Autoscaling Project: <PROJECT_NAME>
+- Lakebase Autoscaling Branch: <BRANCH_NAME>
+
+Steps:
+1. Update databricks.yml with all the above resource IDs (replace all
+   <placeholder> values)
+2. Run `databricks bundle deploy -p <PROFILE_NAME>` to deploy the bundle
+3. Run `databricks apps start retail-grocery-ltm-memory -p <PROFILE_NAME>`
+   to start the app
+4. Verify the app is running and share the app URL
 ```
 
 ### Option 3: Manual Setup
@@ -356,7 +412,7 @@ uv add <package_name>
 
 | Issue | Solution |
 |---|---|
-| `Lakebase configuration is required` | Set `LAKEBASE_INSTANCE_NAME` in `.env` or run `uv run quickstart` |
+| `Lakebase configuration is required` | Set `LAKEBASE_AUTOSCALING_PROJECT` + `LAKEBASE_AUTOSCALING_BRANCH` (or `LAKEBASE_INSTANCE_NAME` for provisioned) in `.env` |
 | `302 redirect when querying deployed agent` | Use OAuth token, not PAT. Run `databricks auth token` |
 | `Permission denied on Lakebase` | Run `uv run python scripts/grant_lakebase_permissions.py` |
 | `Streaming 200 OK but error in stream` | Expected — 200 confirms stream setup; check the error content |
