@@ -106,7 +106,7 @@ workshop-qsic/
 
 ```bash
 # リポジトリをクローン
-git clone https://github.com/AnanyaDBJ/databricks-ai-workshops.git
+git clone https://github.com/hiouchiy/databricks-ai-workshops.git
 cd databricks-ai-workshops
 
 # 対話式セットアップウィザードを実行
@@ -560,7 +560,7 @@ workshop-qsic/
 
 ```bash
 # Clone the repository
-git clone https://github.com/AnanyaDBJ/databricks-ai-workshops.git
+git clone https://github.com/hiouchiy/databricks-ai-workshops.git
 cd databricks-ai-workshops
 
 # Run the interactive setup wizard

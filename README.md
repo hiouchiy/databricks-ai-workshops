@@ -41,7 +41,7 @@
 ## クイックスタート
 
 ```bash
-git clone https://github.com/AnanyaDBJ/databricks-ai-workshops.git
+git clone https://github.com/hiouchiy/databricks-ai-workshops.git
 cd databricks-ai-workshops
 ```
 
@@ -106,7 +106,7 @@ This isn't just "call an API and hope for the best." You'll learn to build agent
 ## Quick Start
 
 ```bash
-git clone https://github.com/AnanyaDBJ/databricks-ai-workshops.git
+git clone https://github.com/hiouchiy/databricks-ai-workshops.git
 cd databricks-ai-workshops
 ```
 

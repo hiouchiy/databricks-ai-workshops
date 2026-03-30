@@ -42,7 +42,7 @@ databricks current-user me  # 動作確認
 ## ステップ 1：リポジトリのクローン
 
 ```bash
-git clone https://github.com/AnanyaDBJ/databricks-ai-workshops.git
+git clone https://github.com/hiouchiy/databricks-ai-workshops.git
 cd databricks-ai-workshops
 ```
 
@@ -394,7 +394,7 @@ Replace these throughout the workshop:
 ## Step 1: Clone the Repo
 
 ```bash
-git clone https://github.com/AnanyaDBJ/databricks-ai-workshops.git
+git clone https://github.com/hiouchiy/databricks-ai-workshops.git
 cd databricks-ai-workshops
 ```
 
