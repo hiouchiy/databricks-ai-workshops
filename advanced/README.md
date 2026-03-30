@@ -1,3 +1,461 @@
+**[日本語](#databricks-ai-エージェントワークショップ長期記憶を持つ食品スーパーアシスタント)** | **[English](#databricks-ai-agent-workshop-retail-grocery-assistant-with-long-term-memory)**
+
+---
+
+# Databricks AI エージェントワークショップ：長期記憶を持つ食品スーパーアシスタント
+
+Databricks 上で、リアルタイムデータクエリ・ドキュメント検索・永続的なユーザーメモリを組み合わせた AI 会話エージェントを構築し、フルスタック Databricks App としてデプロイします。
+
+---
+
+## アーキテクチャ概要
+
+![Databricks Advanced Workshop Architecture](docs/architecture.png)
+
+ワークショップは2日間で構成されています：
+
+- **Day 1 — エージェント構築**：MCP ツール（Genie、Vector Search、UC Functions）・Lakebase メモリ・MLflow 実験トラッキングを備えた LangGraph エージェントを、Databricks Apps Compute 上で構築・テストします。
+- **Day 2 — ガバナンスと評価**：MLflow Traces・LLM Judge・カスタム Judge・Review App を使ったヒューマンインザループのフィードバックでエージェントを評価します。
+
+---
+
+## 構築するもの
+
+以下の機能を備えた **FreshMart 食品スーパーショッピングアシスタント** を構築します：
+
+| 機能 | 利用技術 | 説明 |
+|------|----------|------|
+| **構造化データクエリ** | Genie Space（MCP） | 顧客アカウント・商品・取引・店舗を自然言語から SQL で検索 |
+| **ポリシー文書検索** | Vector Search（MCP） | 返品・会員制度・配送・リコール・プライバシーなどの店舗ポリシーに対する RAG |
+| **長期ユーザーメモリ** | Lakebase + Embeddings | ユーザーの好み・食事制限・過去のやり取りをセッションをまたいで記憶 |
+| **タスク・会話履歴** | Lakebase + Embeddings | エージェントが対応したタスクを追跡し、過去の会話を要約 |
+| **コード実行** | system.ai Code Interpreter | Python による計算・データ分析・グラフ生成 |
+| **ストリーミングチャット UI** | React + Vercel AI SDK | Databricks OAuth 認証付きのリアルタイムストリーミングレスポンス |
+
+---
+
+## プロジェクト構成
+
+```
+workshop-qsic/
+├── agent_server/                    # Python エージェントバックエンド
+│   ├── agent.py                     # コアエージェントロジック（LangGraph + MCP ツール）
+│   ├── utils_memory.py              # 7つのメモリツール（取得/保存/削除 + タスク/会話）
+│   ├── utils.py                     # 認証・スレッド管理・ストリーミングヘルパー
+│   ├── start_server.py              # MLflow AgentServer 起動
+│   └── evaluate_agent.py            # 9つの MLflow スコアラーによるエージェント評価
+│
+├── e2e-chatbot-app-next/            # フルスタックチャット UI
+│   ├── client/                      # React + Vite フロントエンド
+│   ├── server/                      # Express.js バックエンド
+│   ├── packages/                    # 共有ライブラリ（auth, db, core, ai-sdk）
+│   └── scripts/                     # DB マイグレーションスクリプト
+│
+├── scripts/                         # セットアップ・ユーティリティスクリプト
+│   ├── quickstart.py                # 対話式セットアップウィザード
+│   ├── start_app.py                 # フロントエンド + バックエンドを同時起動
+│   ├── discover_tools.py            # 利用可能な Databricks ツールの検出
+│   └── grant_lakebase_permissions.py
+│
+├── .claude/skills/                  # Claude Code 用 AI 開発支援スキル
+├── databricks.yml                   # Databricks Asset Bundle 設定
+├── app.yaml                         # Databricks App マニフェスト
+├── pyproject.toml                   # Python 依存関係（uv）
+├── .env.example                     # 環境変数テンプレート
+└── requirements.txt                 # uv による依存関係管理への参照
+```
+
+---
+
+## 技術スタック
+
+| レイヤー | 技術 |
+|----------|------|
+| **LLM** | Claude Sonnet 4.5（Databricks Foundation Model API 経由） |
+| **エージェントフレームワーク** | LangGraph（ステートフルなマルチツールオーケストレーション） |
+| **ツールプロトコル** | MCP（Model Context Protocol）— Genie、Vector Search、Code Interpreter |
+| **メモリストア** | Lakebase（マネージド PostgreSQL）+ セマンティック Embeddings |
+| **トレーシング・評価** | MLflow 3（自動ログ、9 種のスコアラー、会話シミュレーター） |
+| **フロントエンド** | React + TypeScript + Vite + Vercel AI SDK |
+| **バックエンド API** | FastAPI（MLflow AgentServer 経由、OpenAI Responses API 互換） |
+| **認証** | Databricks OAuth（U2M）+ On-Behalf-Of（OBO）ユーザーパススルー |
+| **デプロイ** | Databricks Apps（Asset Bundles 経由） |
+| **パッケージマネージャー** | uv（Python）、npm workspaces（Node.js） |
+
+---
+
+## 前提条件
+
+- 以下にアクセスできる **Databricks ワークスペース**：
+  - Foundation Model API エンドポイント
+  - Genie Spaces
+  - Vector Search
+  - Lakebase
+  - Databricks Apps
+- **ローカルツール**：
+  - [uv](https://docs.astral.sh/uv/getting-started/installation/)（Python パッケージマネージャー）
+  - [nvm](https://github.com/nvm-sh/nvm) + Node.js 20 LTS
+  - [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/install)
+- **任意**：[Claude Code](https://docs.anthropic.com/en/docs/claude-code)（AI 支援開発用）
+
+---
+
+## はじめ方
+
+### 方法 1：クイックスタート（推奨）
+
+```bash
+# リポジトリをクローン
+git clone https://github.com/AnanyaDBJ/databricks-ai-workshops.git
+cd databricks-ai-workshops
+
+# 対話式セットアップウィザードを実行
+uv run quickstart
+```
+
+クイックスタートスクリプトが以下を実行します：
+1. `uv`、`nvm`、Databricks CLI のインストールを確認
+2. Databricks OAuth 認証を設定
+3. MLflow 実験を作成・リンク
+4. メモリストレージ用に Lakebase を設定
+5. `.env` ファイルを生成
+6. エージェントサーバーとチャットアプリを起動
+
+セットアップ完了後は、いつでも以下で起動できます：
+
+```bash
+uv run start-app
+```
+
+チャット UI は **http://localhost:3000**、API は **http://localhost:8000** でアクセスできます。
+
+### 方法 2：Claude Code を使う
+
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code) がインストール済みであれば、`.claude/skills/` に AI 支援開発用のスキルが同梱されています。
+
+#### 前提条件
+
+Claude Code を使う前に、Databricks ワークスペースで以下のリソースを手動で作成してください：
+
+1. **Databricks CLI プロファイル** — `databricks auth login` で設定
+2. **MLflow 実験** — UI または CLI で作成
+3. **Genie Space** — 作成してスペース ID を控える
+4. **Vector Search インデックス** — 作成してフルネームを控える（`catalog.schema.index_name`）
+5. **Prompt Registry** — システムプロンプトを登録（`catalog.schema.prompt_name`）
+6. **Lakebase オートスケーリングインスタンス** — プロジェクトとブランチを作成
+
+#### ローカル開発
+
+```bash
+# プロジェクトディレクトリで Claude Code を起動
+cd databricks-ai-workshops/advanced
+claude
+```
+
+以下のプロンプトを使用します（プレースホルダーを実際の値に置き換えてください）：
+
+```
+Set up and run the agent app locally. I have already created the following
+resources manually:
+
+- Databricks CLI profile: <PROFILE_NAME>
+- MLflow Experiment ID: <EXPERIMENT_ID>
+- Genie Space ID: <GENIE_SPACE_ID>
+- Vector Search Index: <CATALOG>.<SCHEMA>.<INDEX_NAME>
+- Prompt Registry: <CATALOG>.<SCHEMA>.<PROMPT_NAME>
+- Lakebase Autoscaling Project: <PROJECT_NAME>
+- Lakebase Autoscaling Branch: <BRANCH_NAME>
+
+Steps:
+1. Update .env with all the above values (resolve PGHOST from the autoscaling
+   branch endpoint)
+2. Run `uv run start-app` and verify both frontend (port 3000) and backend
+   (port 8000) are healthy
+3. Smoke test the agent with a curl POST to /invocations
+```
+
+チャット UI は **http://localhost:3000**、API は **http://localhost:8000** でアクセスできます。
+
+#### Databricks Apps へのデプロイ
+
+ローカルでアプリの動作を確認したら、以下のプロンプトでデプロイします：
+
+```
+Deploy the agent app to Databricks Apps. I have the following resources:
+
+- Databricks CLI profile: <PROFILE_NAME>
+- MLflow Experiment ID: <EXPERIMENT_ID>
+- Genie Space ID: <GENIE_SPACE_ID>
+- Vector Search Index: <CATALOG>.<SCHEMA>.<INDEX_NAME>
+- Prompt Registry: <CATALOG>.<SCHEMA>.<PROMPT_NAME>
+- Lakebase Autoscaling Project: <PROJECT_NAME>
+- Lakebase Autoscaling Branch: <BRANCH_NAME>
+
+Steps:
+1. Update databricks.yml with all the above resource IDs (replace all
+   <placeholder> values)
+2. Run `databricks bundle deploy -p <PROFILE_NAME>` to deploy the bundle
+3. Run `databricks apps start retail-grocery-ltm-memory -p <PROFILE_NAME>`
+   to start the app
+4. Verify the app is running and share the app URL
+```
+
+### 方法 3：手動セットアップ
+
+1. **依存関係のインストール**
+
+   ```bash
+   # Python
+   uv sync
+
+   # Node.js（チャット UI 用）
+   nvm use 20
+   cd e2e-chatbot-app-next && npm install && cd ..
+   ```
+
+2. **Databricks への認証**
+
+   ```bash
+   databricks auth login
+   ```
+
+   `.env` にプロファイルを設定：
+   ```
+   DATABRICKS_CONFIG_PROFILE=DEFAULT
+   ```
+
+3. **MLflow 実験の作成**
+
+   ```bash
+   DATABRICKS_USERNAME=$(databricks current-user me | jq -r .userName)
+   databricks experiments create-experiment /Users/$DATABRICKS_USERNAME/agents-on-apps
+   ```
+
+4. **環境変数の設定**
+
+   ```bash
+   cp .env.example .env
+   # .env を編集し、実験 ID・Lakebase インスタンス・Genie スペース ID・Vector Search インデックスを設定
+   ```
+
+5. **アプリケーションの起動**
+
+   ```bash
+   uv run start-app
+   ```
+
+---
+
+## ワークショップモジュール
+
+### モジュール 1：エージェントアーキテクチャの理解
+
+エージェントの構成を把握します：
+- **`agent_server/agent.py`** — システムプロンプト・MCP ツール初期化・LangGraph オーケストレーションを含むコアエージェント
+- **`agent_server/utils_memory.py`** — ユーザーの好みや会話履歴を永続化する 7 つのメモリツール
+- **`agent_server/utils.py`** — 認証ヘルパー・スレッド管理・ストリーミングユーティリティ
+
+### モジュール 2：MCP ツールの活用
+
+エージェントは 3 つの MCP（Model Context Protocol）サーバーに接続します：
+
+| MCP サーバー | 用途 | エンドポイント |
+|---|---|---|
+| `system-ai` | Code Interpreter（Python 実行） | `/api/2.0/mcp/functions/system/ai` |
+| `retail-grocery-genie` | 自然言語から SQL へのクエリ | `/api/2.0/mcp/genie/{GENIE_SPACE_ID}` |
+| `retail-policy-docs` | ポリシー文書に対する RAG | `/api/2.0/mcp/vector-search/{INDEX}` |
+
+### モジュール 3：Lakebase による長期メモリ
+
+メモリシステムはセマンティック Embeddings を備えた Lakebase（PostgreSQL）を使用します：
+
+| ツール | 機能 | ユースケース |
+|--------|------|-------------|
+| `get_user_memory` | ユーザーメモリのセマンティック検索 | 「私の食事の好みは？」 |
+| `save_user_memory` | ユーザー情報の永続化 | ユーザーが「私はベジタリアンです」と発言 |
+| `delete_user_memory` | 特定のメモリを削除 | 「住所の情報を忘れて」 |
+| `save_task_summary` | 完了タスクの記録（サイレント） | 商品に関する質問に回答した後 |
+| `search_task_history` | 過去のタスクを検索 | 「前回何を手伝ってくれた？」 |
+| `save_conversation_summary` | 会話終了時の状態を記録（サイレント） | ユーザーが「さようなら」と発言 |
+| `search_past_conversations` | 過去のやり取りを検索 | 「これまで何を話した？」 |
+
+### モジュール 4：エージェントの評価
+
+9 つの MLflow スコアラーを使った評価スイートを実行します：
+
+```bash
+uv run agent-evaluate
+```
+
+**スコアラー**：Completeness、ConversationalSafety、ConversationCompleteness、Fluency、KnowledgeRetention、RelevanceToQuery、Safety、ToolCallCorrectness、UserFrustration
+
+### モジュール 5：Databricks Apps へのデプロイ
+
+```bash
+# アプリの作成
+databricks apps create retail-grocery-ltm-memory
+
+# ワークスペースにコードを同期
+DATABRICKS_USERNAME=$(databricks current-user me | jq -r .userName)
+databricks sync . "/Users/$DATABRICKS_USERNAME/retail-grocery-ltm-memory"
+
+# デプロイ
+databricks apps deploy retail-grocery-ltm-memory \
+  --source-code-path /Workspace/Users/$DATABRICKS_USERNAME/retail-grocery-ltm-memory
+```
+
+Lakebase のパーミッション設定を含む詳細は[Databricks Apps へのデプロイ](#databricks-apps-へのデプロイ)を参照してください。
+
+---
+
+## API リファレンス
+
+エージェントは MLflow の ResponsesAgent を通じて [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses) インターフェースを実装しています。
+
+### ストリーミングリクエスト
+
+```bash
+curl -X POST http://localhost:8000/invocations \
+  -H "Content-Type: application/json" \
+  -d '{"input": [{"role": "user", "content": "オーガニック野菜はありますか？"}], "stream": true}'
+```
+
+### 非ストリーミングリクエスト
+
+```bash
+curl -X POST http://localhost:8000/invocations \
+  -H "Content-Type: application/json" \
+  -d '{"input": [{"role": "user", "content": "返品ポリシーを教えてください"}]}'
+```
+
+### ユーザーコンテキスト付きリクエスト（メモリ有効化）
+
+```bash
+curl -X POST http://localhost:8000/invocations \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": [{"role": "user", "content": "オーガニック野菜が好きだと覚えておいて"}],
+    "context": {"user_id": "workshop-user@example.com"}
+  }'
+```
+
+---
+
+## エージェントのカスタマイズ
+
+### LLM の変更
+
+`agent_server/agent.py` の `LLM_ENDPOINT_NAME` を編集します：
+
+```python
+LLM_ENDPOINT_NAME = "databricks-claude-sonnet-4-5"  # Foundation Model API の任意のエンドポイント
+```
+
+### 新しい MCP ツールの追加
+
+`agent_server/agent.py` の `init_mcp_client()` 関数にエントリを追加します：
+
+```python
+DatabricksMCPServer(
+    name="my-new-tool",
+    url=f"{host_name}/api/2.0/mcp/...",
+    workspace_client=workspace_client,
+)
+```
+
+### システムプロンプトのカスタマイズ
+
+`agent_server/agent.py` の `SYSTEM_PROMPT` 変数を編集し、エージェントの性格・機能・ガイドラインを変更します。
+
+### Python 依存関係の追加
+
+```bash
+uv add <パッケージ名>
+```
+
+---
+
+## Databricks Apps へのデプロイ
+
+1. **アプリの作成**：
+   ```bash
+   databricks apps create retail-grocery-ltm-memory
+   ```
+
+2. **リソースの追加**（Databricks UI > App > Edit > App Resources）：
+   - MLflow Experiment（CAN_MANAGE）
+   - Genie Space（CAN_RUN）
+   - Lakebase Instance（CAN_CONNECT_AND_CREATE）
+   - Vector Search Index（SELECT）
+
+3. **Lakebase パーミッションの付与**（アプリのサービスプリンシパルに対して）：
+   ```bash
+   uv run python scripts/grant_lakebase_permissions.py
+   ```
+
+4. **同期とデプロイ**：
+   ```bash
+   DATABRICKS_USERNAME=$(databricks current-user me | jq -r .userName)
+   databricks sync . "/Users/$DATABRICKS_USERNAME/retail-grocery-ltm-memory"
+   databricks apps deploy retail-grocery-ltm-memory \
+     --source-code-path /Workspace/Users/$DATABRICKS_USERNAME/retail-grocery-ltm-memory
+   ```
+
+5. **デプロイ済みエージェントへのクエリ**（OAuth トークンが必要）：
+   ```bash
+   databricks auth token  # トークンをコピー
+   curl -X POST <app-url>.databricksapps.com/invocations \
+     -H "Authorization: Bearer <oauth-token>" \
+     -H "Content-Type: application/json" \
+     -d '{"input": [{"role": "user", "content": "こんにちは"}], "stream": true}'
+   ```
+
+---
+
+## トラブルシューティング
+
+| 問題 | 解決策 |
+|------|--------|
+| `Lakebase configuration is required` | `.env` に `LAKEBASE_AUTOSCALING_PROJECT` と `LAKEBASE_AUTOSCALING_BRANCH`（またはプロビジョニング済みの場合は `LAKEBASE_INSTANCE_NAME`）を設定 |
+| `302 redirect when querying deployed agent` | PAT ではなく OAuth トークンを使用。`databricks auth token` を実行 |
+| `Permission denied on Lakebase` | `uv run python scripts/grant_lakebase_permissions.py` を実行 |
+| `Streaming 200 OK but error in stream` | 想定どおり — 200 はストリーム確立を示す。エラー内容を確認 |
+| `GENIE_SPACE_ID not set` | `.env` に設定するか `uv run quickstart` で指定 |
+| `nvm: command not found` | nvm をインストール：`curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh \| bash` |
+
+---
+
+## よくある質問
+
+**Q：別の LLM を使えますか？**
+はい。`agent_server/agent.py` の `LLM_ENDPOINT_NAME` を Foundation Model API の任意のエンドポイント（例：`databricks-meta-llama-3-3-70b-instruct`）に変更してください。
+
+**Q：独自のツールを追加できますか？**
+はい。UC Functions、Genie Spaces、Vector Search Indexes、カスタム MCP サーバーを追加できます。詳しくは [Agent Framework Tools のドキュメント](https://docs.databricks.com/aws/en/generative-ai/agent-framework/agent-tool)を参照してください。
+
+**Q：On-Behalf-Of（OBO）認証はどう動きますか？**
+`agent_server.utils` の `get_user_workspace_client()` を使うと、アプリのサービスプリンシパルではなくリクエスト元ユーザーとして認証できます。詳しくは [OBO のドキュメント](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/auth)を参照してください。
+
+**Q：カスタムトレーシングを追加するには？**
+MLflow の自動ログが LLM 呼び出しを自動キャプチャします。カスタムスパンは `@mlflow.trace` または MLflow トレーシング API で追加できます。詳しくは [MLflow トレーシングのドキュメント](https://docs.databricks.com/aws/en/mlflow3/genai/tracing/app-instrumentation/)を参照してください。
+
+---
+
+## 参考リソース
+
+- [Databricks Agent Framework](https://docs.databricks.com/aws/en/generative-ai/agent-framework/)
+- [MLflow ResponsesAgent](https://mlflow.org/docs/latest/genai/flavors/responses-agent-intro/)
+- [Databricks Apps](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/)
+- [Lakebase ドキュメント](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/lakebase)
+- [Databricks 上の MCP](https://docs.databricks.com/aws/en/generative-ai/agent-framework/agent-tool)
+- [LangGraph ドキュメント](https://docs.langchain.com/oss/python/langgraph/quickstart)
+
+---
+
+**[日本語](#databricks-ai-エージェントワークショップ長期記憶を持つ食品スーパーアシスタント)** | **[English](#databricks-ai-agent-workshop-retail-grocery-assistant-with-long-term-memory)**
+
+---
+
 # Databricks AI Agent Workshop: Retail Grocery Assistant with Long-Term Memory
 
 Build an AI-powered conversational agent on Databricks that combines real-time data querying, document retrieval, and persistent user memory — deployed as a full-stack Databricks App.
