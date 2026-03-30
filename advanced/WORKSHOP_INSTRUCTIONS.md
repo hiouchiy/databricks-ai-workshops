@@ -65,10 +65,10 @@ CREATE SCHEMA IF NOT EXISTS <CATALOG>.<SCHEMA>;
 cd data
 ```
 
-`execute_sql.py` の 19-20 行目で `CATALOG` と `SCHEMA` を設定し、実行：
+`ja_execute_sql.py` の 19-20 行目で `CATALOG` と `SCHEMA` を設定し、実行：
 
 ```bash
-python execute_sql.py --profile DEFAULT --warehouse-id <WAREHOUSE-ID>
+python ja_execute_sql.py --profile DEFAULT --warehouse-id <WAREHOUSE-ID>
 ```
 
 6 つのテーブルが作成されます：customers、products、stores、transactions、transaction_items、payment_history。
@@ -77,10 +77,10 @@ python execute_sql.py --profile DEFAULT --warehouse-id <WAREHOUSE-ID>
 
 ## ステップ 4：ポリシー文書チャンクの生成
 
-`execute_chunking.py` の 18-19 行目で `CATALOG` と `SCHEMA` を設定し、実行：
+`ja_execute_chunking.py` の 18-19 行目で `CATALOG` と `SCHEMA` を設定し、実行：
 
 ```bash
-python execute_chunking.py --profile DEFAULT --warehouse-id <WAREHOUSE-ID>
+python ja_execute_chunking.py --profile DEFAULT --warehouse-id <WAREHOUSE-ID>
 ```
 
 7 つのポリシー文書をチャンクに分割し、`policy_docs_chunked` テーブルに書き込みます。
