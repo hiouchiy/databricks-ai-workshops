@@ -271,11 +271,25 @@ Databricks UI の **Experiments > retail-grocery-ltm-memory** でエージェン
 
 ## ステップ 10（オプション）：エージェントの評価
 
+### 基本評価（9つの定義済みスコアラー）
+
 ```bash
-uv run agent-evaluate
+uv run ja-agent-evaluate
 ```
 
-9 つの MLflow スコアラーで自動評価を実行します：Completeness、ConversationalSafety、Fluency、KnowledgeRetention、RelevanceToQuery、Safety、ToolCallCorrectness、UserFrustration 等。
+日本語のテストケース3件を使い、模擬ユーザー（LLM）がエージェントとマルチターンの会話を自動実行します。9 つの MLflow スコアラー（Completeness、ConversationalSafety、Fluency、KnowledgeRetention、RelevanceToQuery、Safety、ToolCallCorrectness、UserFrustration 等）で自動採点されます。
+
+### 高度な評価（20テストケース + カスタムスコアラー）
+
+```bash
+uv run ja-agent-evaluate-advanced
+```
+
+20件の日本語テストケース（構造化データ、ポリシー検索、複合質問、メモリ）に加え、3つのカスタムスコアラーで評価します：
+
+- **tool_routing_accuracy** — 質問の種類に応じて正しいツール（Genie/Vector Search/Memory）が選ばれているか
+- **policy_specificity** — ポリシー回答に具体的な数字（「48時間」「¥3,000」等）が含まれているか
+- **retail_tone_appropriateness** — 接客トーンが適切か（共感・アクション提示・温かみ）
 
 結果は MLflow Experiments UI で確認できます。
 

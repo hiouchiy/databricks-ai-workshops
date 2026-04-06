@@ -21,8 +21,8 @@ from datetime import datetime, timedelta
 
 random.seed(42)
 
-CATALOG = "ananyaroy"
-SCHEMA = "retail_wiab"
+CATALOG = "<CATALOG>"
+SCHEMA = "<SCHEMA>"
 FULL_SCHEMA = f"{CATALOG}.{SCHEMA}"
 
 

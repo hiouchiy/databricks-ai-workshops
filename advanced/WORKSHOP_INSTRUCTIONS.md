@@ -158,10 +158,13 @@ databricks experiments create --name "/Users/$DATABRICKS_USERNAME/retail-grocery
 
 ---
 
-## ステップ 10：システムプロンプトの登録
+## ステップ 10：システムプロンプトの登録（オプション）
+
+> **注意：** 日本語のシステムプロンプトは `agent.py` にハードコード済みのため、このステップはスキップ可能です。
+> Prompt Registry を使いたい場合のみ実行してください。
 
 ```bash
-uv run register-prompt --name <CATALOG>.<SCHEMA>.freshmart_system_prompt
+uv run ja-register-prompt --name <CATALOG>.<SCHEMA>.freshmart_system_prompt
 ```
 
 ---

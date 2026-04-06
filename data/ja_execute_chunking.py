@@ -17,8 +17,8 @@ import time
 import urllib.request
 import urllib.error
 
-CATALOG = "ananyaroy"
-SCHEMA = "retail_wiab"
+CATALOG = "<CATALOG>"
+SCHEMA = "<SCHEMA>"
 FULL_SCHEMA = f"{CATALOG}.{SCHEMA}"
 TARGET_TABLE = f"{FULL_SCHEMA}.policy_docs_chunked"
 DOCS_DIR = os.path.join(os.path.dirname(__file__), "policy_docs")

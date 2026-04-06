@@ -43,7 +43,9 @@ workshop-qsic/
 │   ├── utils_memory.py              # 7つのメモリツール（取得/保存/削除 + タスク/会話）
 │   ├── utils.py                     # 認証・スレッド管理・ストリーミングヘルパー
 │   ├── start_server.py              # MLflow AgentServer 起動
-│   └── evaluate_agent.py            # 9つの MLflow スコアラーによるエージェント評価
+│   ├── evaluate_agent.py            # 9つの MLflow スコアラーによるエージェント評価（英語版）
+│   ├── ja_evaluate_agent.py         # 日本語版エージェント評価（3テストケース）
+│   └── ja_evaluate_agent_advanced.py # 日本語版高度な評価（20テストケース + カスタムスコアラー）
 │
 ├── e2e-chatbot-app-next/            # フルスタックチャット UI
 │   ├── client/                      # React + Vite フロントエンド
@@ -55,7 +57,8 @@ workshop-qsic/
 │   ├── quickstart.py                # 対話式セットアップウィザード
 │   ├── start_app.py                 # フロントエンド + バックエンドを同時起動
 │   ├── discover_tools.py            # 利用可能な Databricks ツールの検出
-│   └── grant_lakebase_permissions.py
+│   ├── grant_lakebase_permissions.py
+│   └── ja_register_prompt.py        # 日本語システムプロンプトを Prompt Registry に登録
 │
 ├── .claude/skills/                  # Claude Code 用 AI 開発支援スキル
 ├── databricks.yml                   # Databricks Asset Bundle 設定
@@ -281,13 +284,19 @@ Steps:
 
 ### モジュール 4：エージェントの評価
 
-9 つの MLflow スコアラーを使った評価スイートを実行します：
+日本語のテストケースを使った評価スイートを実行します：
 
 ```bash
-uv run agent-evaluate
+# 基本評価（3テストケース、9つの定義済みスコアラー）
+uv run ja-agent-evaluate
+
+# 高度な評価（20テストケース、定義済み + カスタムスコアラー）
+uv run ja-agent-evaluate-advanced
 ```
 
-**スコアラー**：Completeness、ConversationalSafety、ConversationCompleteness、Fluency、KnowledgeRetention、RelevanceToQuery、Safety、ToolCallCorrectness、UserFrustration
+**定義済みスコアラー**：Completeness、ConversationalSafety、ConversationCompleteness、Fluency、KnowledgeRetention、RelevanceToQuery、Safety、ToolCallCorrectness、UserFrustration
+
+**カスタムスコアラー**（高度な評価のみ）：tool_routing_accuracy（ツール選択の正確性）、policy_specificity（ポリシー回答の具体性）、retail_tone_appropriateness（接客トーンの適切さ）
 
 ### モジュール 5：Databricks Apps へのデプロイ
 

@@ -21,12 +21,11 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [dependency-groups]
 dev = [
-    "hatchling>=1.28.0",
     "pytest>=9.0.2",
 ]
 
@@ -36,5 +35,8 @@ quickstart = "scripts.quickstart:main"
 start-app = "scripts.start_app:main"
 start-server = "agent_server.start_server:main"
 agent-evaluate = "agent_server.evaluate_agent:evaluate"
+ja-agent-evaluate = "agent_server.ja_evaluate_agent:evaluate"
+ja-agent-evaluate-advanced = "agent_server.ja_evaluate_agent_advanced:evaluate"
 discover-tools = "scripts.discover_tools:main"
 register-prompt = "scripts.register_prompt:main"
+ja-register-prompt = "scripts.ja_register_prompt:main"
