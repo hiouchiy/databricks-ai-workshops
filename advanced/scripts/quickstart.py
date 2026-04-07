@@ -1262,6 +1262,10 @@ def run_sql_statement(statement: str, token: str, host: str, warehouse_id: str) 
             err = data.get("status", {}).get("error", {}).get("message", "Unknown error")
             print_error(f"SQL failed: {err}")
         return data
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8")
+        print_error(f"SQL execution error: HTTP {e.code}: {body[:300]}")
+        return {"status": {"state": "FAILED"}}
     except Exception as e:
         print_error(f"SQL execution error: {e}")
         return {"status": {"state": "FAILED"}}
@@ -1343,19 +1347,30 @@ def create_catalog_schema(token: str, host: str, warehouse_id: str, catalog: str
     """Create catalog and schema via SQL API."""
     print_step("カタログ・スキーマの作成...")
 
-    data = run_sql_statement(f"CREATE CATALOG IF NOT EXISTS {catalog}", token, host, warehouse_id)
+    # バッククォートで囲むことで特殊文字を含むカタログ名にも対応
+    data = run_sql_statement(f"CREATE CATALOG IF NOT EXISTS `{catalog}`", token, host, warehouse_id)
     state = data.get("status", {}).get("state", "FAILED")
     if state in ("SUCCEEDED", "CLOSED"):
         print_success(f"カタログ: {catalog}")
     else:
-        print(f"  カタログ作成: {state} (既に存在する場合はOK)")
+        # 権限不足の場合は既存カタログを使うので警告のみ
+        print(f"  カタログ作成: {state}（既に存在するか、権限がない場合はそのまま続行します）")
 
-    data = run_sql_statement(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema}", token, host, warehouse_id)
+    data = run_sql_statement(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.`{schema}`", token, host, warehouse_id)
     state = data.get("status", {}).get("state", "FAILED")
     if state in ("SUCCEEDED", "CLOSED"):
         print_success(f"スキーマ: {catalog}.{schema}")
     else:
-        print(f"  スキーマ作成: {state} (既に存在する場合はOK)")
+        print(f"  スキーマ作成: {state}（既に存在するか、権限がない場合はそのまま続行します）")
+
+    # スキーマの存在を確認
+    verify = run_sql_statement(f"DESCRIBE SCHEMA `{catalog}`.`{schema}`", token, host, warehouse_id)
+    verify_state = verify.get("status", {}).get("state", "FAILED")
+    if verify_state in ("SUCCEEDED", "CLOSED"):
+        print_success(f"スキーマ確認OK: {catalog}.{schema}")
+    else:
+        print_error(f"スキーマ {catalog}.{schema} にアクセスできません。カタログ/スキーマが存在し、権限があることを確認してください。")
+        sys.exit(1)
 
 
 def generate_data(profile_name: str, warehouse_id: str, catalog: str, schema: str):
@@ -1396,7 +1411,7 @@ def generate_data(profile_name: str, warehouse_id: str, catalog: str, schema: st
 def enable_cdf(token: str, host: str, warehouse_id: str, catalog: str, schema: str):
     """Enable Change Data Feed on policy_docs_chunked table."""
     print_step("Change Data Feed の有効化...")
-    stmt = f"ALTER TABLE {catalog}.{schema}.policy_docs_chunked SET TBLPROPERTIES (delta.enableChangeDataFeed = true)"
+    stmt = f"ALTER TABLE `{catalog}`.`{schema}`.policy_docs_chunked SET TBLPROPERTIES (delta.enableChangeDataFeed = true)"
     data = run_sql_statement(stmt, token, host, warehouse_id)
     state = data.get("status", {}).get("state", "FAILED")
     if state in ("SUCCEEDED", "CLOSED"):
@@ -1483,11 +1498,13 @@ def create_genie_space(token: str, host: str, warehouse_id: str, catalog: str, s
     if "error" in result:
         print_error(f"Genie Space の自動作成に失敗: {result['error'][:200]}")
         print("  Databricks UI から手動で作成してください:")
-        print(f"  1. Genie > New Genie Space")
-        print(f"  2. 名前: フレッシュマート 小売データ")
-        print(f"  3. テーブル: {', '.join(tables)}")
-        print(f"  4. ウェアハウスを選択して Create")
-        space_id = input("\n  作成した Genie Space ID を入力してください: ").strip()
+        print(f"  1. {host} を開く")
+        print(f"  2. 左メニュー Genie > New Genie Space")
+        print(f"  3. 名前: フレッシュマート 小売データ")
+        print(f"  4. スキーマ {catalog}.{schema} のテーブルを全て追加")
+        print(f"  5. SQL ウェアハウスを選択して Create")
+        print(f"  6. URL から Space ID をコピー（URL の最後の部分）")
+        space_id = input("\n  Genie Space ID を入力してください: ").strip()
         return space_id
 
     return space_id
