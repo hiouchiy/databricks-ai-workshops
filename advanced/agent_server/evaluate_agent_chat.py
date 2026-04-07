@@ -62,6 +62,7 @@ if _eval_exp_id:
 
 # 評価時は Delta Table への送信を無効化（テーブルが存在しない場合のエラー回避）
 os.environ.pop("MLFLOW_TRACING_DESTINATION", None)
+mlflow.tracing.reset()
 
 logging.getLogger("mlflow.utils.autologging_utils").setLevel(logging.ERROR)
 

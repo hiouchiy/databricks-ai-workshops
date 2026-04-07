@@ -40,6 +40,9 @@ logging.getLogger("mlflow.utils.autologging_utils").setLevel(logging.ERROR)
 # @invoke登録された関数を見つけるためにagentをインポートする必要がある
 from agent_server import agent  # noqa: F401
 
+# agent.py のインポートで set_destination が呼ばれた場合にリセット
+mlflow.tracing.reset()
+
 # ---------------------------------------------------------------------------
 # フレッシュマート向け20件のテストケース
 # 対象: 構造化データ（Genie）、非構造化データ（Vector Search）、
