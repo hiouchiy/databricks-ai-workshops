@@ -13,6 +13,7 @@ Usage:
 import argparse
 import hashlib
 import json
+import os
 import random
 import subprocess
 import sys
@@ -21,8 +22,9 @@ from datetime import datetime, timedelta
 
 random.seed(42)
 
-CATALOG = "<CATALOG>"
-SCHEMA = "<SCHEMA>"
+# 環境変数から取得可能（quickstart から動的に設定される）
+CATALOG = os.getenv("CATALOG", "<CATALOG>")
+SCHEMA = os.getenv("SCHEMA", "<SCHEMA>")
 FULL_SCHEMA = f"{CATALOG}.{SCHEMA}"
 
 

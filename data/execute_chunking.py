@@ -17,8 +17,9 @@ import time
 import urllib.request
 import urllib.error
 
-CATALOG = "<CATALOG>"
-SCHEMA = "<SCHEMA>"
+# 環境変数から取得可能（quickstart から動的に設定される）
+CATALOG = os.getenv("CATALOG", "<CATALOG>")
+SCHEMA = os.getenv("SCHEMA", "<SCHEMA>")
 FULL_SCHEMA = f"{CATALOG}.{SCHEMA}"
 TARGET_TABLE = f"{FULL_SCHEMA}.policy_docs_chunked"
 DOCS_DIR = os.path.join(os.path.dirname(__file__), "policy_docs")

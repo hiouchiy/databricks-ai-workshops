@@ -30,6 +30,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
@@ -1227,118 +1228,407 @@ def update_databricks_yml_experiment(experiment_id: str) -> None:
     print_success("Updated databricks.yml with experiment ID")
 
 
+# ── New helper functions ──
+
+
+def get_auth_token(profile_name: str) -> str:
+    """Get bearer token from Databricks CLI."""
+    result = run_command(
+        ["databricks", "auth", "token", "-p", profile_name, "-o", "json"],
+        check=True,
+    )
+    return json.loads(result.stdout)["access_token"]
+
+
+def run_sql_statement(statement: str, token: str, host: str, warehouse_id: str) -> dict:
+    """Execute SQL via REST API."""
+    import urllib.request
+    import urllib.error
+    payload = json.dumps({
+        "warehouse_id": warehouse_id,
+        "statement": statement,
+        "wait_timeout": "60s",
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        f"{host}/api/2.0/sql/statements",
+        data=payload,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        state = data.get("status", {}).get("state", "UNKNOWN")
+        if state == "FAILED":
+            err = data.get("status", {}).get("error", {}).get("message", "Unknown error")
+            print_error(f"SQL failed: {err}")
+        return data
+    except Exception as e:
+        print_error(f"SQL execution error: {e}")
+        return {"status": {"state": "FAILED"}}
+
+
+def api_get(path: str, token: str, host: str) -> dict:
+    """GET request to Databricks REST API."""
+    import urllib.request
+    req = urllib.request.Request(
+        f"{host}{path}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def api_post(path: str, token: str, host: str, body: dict) -> dict:
+    """POST request to Databricks REST API."""
+    import urllib.request
+    import urllib.error
+    payload = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        f"{host}{path}",
+        data=payload,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        body_text = e.read().decode("utf-8")
+        return {"error": f"HTTP {e.code}: {body_text[:500]}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def select_warehouse_interactive(profile_name: str) -> tuple[str, str]:
+    """List warehouses and let user select one. Returns (warehouse_id, warehouse_name)."""
+    print_step("SQL ウェアハウスの選択...")
+    result = run_command(
+        ["databricks", "warehouses", "list", "-p", profile_name, "-o", "json"],
+        check=True,
+    )
+    warehouses = json.loads(result.stdout)
+    if not warehouses:
+        print_error("利用可能な SQL ウェアハウスがありません。")
+        sys.exit(1)
+
+    # Sort: RUNNING first
+    warehouses.sort(key=lambda w: (0 if w.get("state") == "RUNNING" else 1, w.get("name", "")))
+
+    print("  利用可能なウェアハウス:")
+    for i, w in enumerate(warehouses, 1):
+        state = w.get("state", "UNKNOWN")
+        name = w.get("name", "?")
+        wid = w.get("id", "?")
+        marker = " [RUNNING]" if state == "RUNNING" else f" [{state}]"
+        print(f"    {i}. {name} ({wid}){marker}")
+
+    while True:
+        choice = input(f"\n  番号で選択 [1]: ").strip() or "1"
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(warehouses):
+                selected = warehouses[idx]
+                wid = selected["id"]
+                wname = selected["name"]
+                print_success(f"Warehouse: {wname} ({wid})")
+                return wid, wname
+        except ValueError:
+            pass
+        print("  無効な選択です。もう一度入力してください。")
+
+
+def create_catalog_schema(token: str, host: str, warehouse_id: str, catalog: str, schema: str):
+    """Create catalog and schema via SQL API."""
+    print_step("カタログ・スキーマの作成...")
+
+    data = run_sql_statement(f"CREATE CATALOG IF NOT EXISTS {catalog}", token, host, warehouse_id)
+    state = data.get("status", {}).get("state", "FAILED")
+    if state in ("SUCCEEDED", "CLOSED"):
+        print_success(f"カタログ: {catalog}")
+    else:
+        print(f"  カタログ作成: {state} (既に存在する場合はOK)")
+
+    data = run_sql_statement(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema}", token, host, warehouse_id)
+    state = data.get("status", {}).get("state", "FAILED")
+    if state in ("SUCCEEDED", "CLOSED"):
+        print_success(f"スキーマ: {catalog}.{schema}")
+    else:
+        print(f"  スキーマ作成: {state} (既に存在する場合はOK)")
+
+
+def generate_data(profile_name: str, warehouse_id: str, catalog: str, schema: str):
+    """Generate structured data and chunked policy docs."""
+    data_dir = Path(__file__).parent.parent.parent / "data"
+    env = os.environ.copy()
+    env["CATALOG"] = catalog
+    env["SCHEMA"] = schema
+
+    # Structured data
+    print_step("構造化データの生成（6テーブル）...")
+    print("  所要時間: 約5〜10分")
+    result = subprocess.run(
+        [sys.executable, str(data_dir / "execute_sql.py"),
+         "--profile", profile_name, "--warehouse-id", warehouse_id],
+        capture_output=True, text=True, env=env,
+    )
+    if result.returncode == 0:
+        print_success("構造化データ生成完了")
+    else:
+        print_error(f"構造化データ生成に失敗: {result.stderr[-300:]}")
+        sys.exit(1)
+
+    # Chunked policy docs
+    print_step("ポリシー文書のチャンク生成...")
+    result = subprocess.run(
+        [sys.executable, str(data_dir / "execute_chunking.py"),
+         "--profile", profile_name, "--warehouse-id", warehouse_id],
+        capture_output=True, text=True, env=env,
+    )
+    if result.returncode == 0:
+        print_success("ポリシー文書チャンク生成完了")
+    else:
+        print_error(f"ポリシー文書チャンク生成に失敗: {result.stderr[-300:]}")
+        sys.exit(1)
+
+
+def enable_cdf(token: str, host: str, warehouse_id: str, catalog: str, schema: str):
+    """Enable Change Data Feed on policy_docs_chunked table."""
+    print_step("Change Data Feed の有効化...")
+    stmt = f"ALTER TABLE {catalog}.{schema}.policy_docs_chunked SET TBLPROPERTIES (delta.enableChangeDataFeed = true)"
+    data = run_sql_statement(stmt, token, host, warehouse_id)
+    state = data.get("status", {}).get("state", "FAILED")
+    if state in ("SUCCEEDED", "CLOSED"):
+        print_success("CDF 有効化完了")
+    else:
+        print(f"  CDF: {state} (既に有効な場合はOK)")
+
+
+def create_vector_search_index(token: str, host: str, catalog: str, schema: str, vs_endpoint: str) -> str:
+    """Create Vector Search index and wait for READY."""
+    index_name = f"{catalog}.{schema}.policy_docs_index"
+    print_step(f"Vector Search インデックスの作成 ({index_name})...")
+
+    # Check if already exists
+    existing = api_get(f"/api/2.0/vector-search/indexes/{index_name}", token, host)
+    if "error" not in existing and existing.get("status", {}).get("ready") == True:
+        print_success(f"インデックス {index_name} は既に READY です（スキップ）")
+        return index_name
+
+    # Create
+    body = {
+        "name": index_name,
+        "endpoint_name": vs_endpoint,
+        "primary_key": "chunk_id",
+        "delta_sync_index_spec": {
+            "source_table": f"{catalog}.{schema}.policy_docs_chunked",
+            "pipeline_type": "TRIGGERED",
+            "embedding_source_columns": [
+                {
+                    "name": "content",
+                    "embedding_model_endpoint_name": "databricks-qwen3-embedding-0-6b",
+                }
+            ],
+        },
+    }
+    result = api_post("/api/2.0/vector-search/indexes", token, host, body)
+    if "error" in result:
+        # May already exist
+        if "ALREADY_EXISTS" in str(result.get("error", "")):
+            print("  インデックスは既に存在します。ステータス確認中...")
+        else:
+            print_error(f"インデックス作成失敗: {result['error']}")
+            print("  手動で Databricks UI から作成してください。")
+            return index_name
+    else:
+        print_success("インデックス作成開始")
+
+    # Poll for READY
+    print("  READY 待ち（最大10分）...", end="", flush=True)
+    for i in range(40):  # 40 * 15s = 10 min
+        time.sleep(15)
+        print(".", end="", flush=True)
+        status = api_get(f"/api/2.0/vector-search/indexes/{index_name}", token, host)
+        if status.get("status", {}).get("ready") == True:
+            print()
+            print_success(f"インデックス READY: {index_name}")
+            return index_name
+
+    print()
+    print("  ⚠ タイムアウト。Databricks UI でステータスを確認してください。")
+    return index_name
+
+
+def create_genie_space(token: str, host: str, warehouse_id: str, catalog: str, schema: str) -> str:
+    """Create Genie Space with all retail tables."""
+    print_step("Genie Space の作成...")
+    tables = ["customers", "products", "stores", "transactions", "transaction_items", "payment_history"]
+    table_ids = [f"{catalog}.{schema}.{t}" for t in tables]
+
+    body = {
+        "title": "フレッシュマート 小売データ",
+        "description": "フレッシュマートの小売データに対する自然言語クエリ。顧客、商品、店舗、取引、支払い履歴を検索できます。",
+        "warehouse_id": warehouse_id,
+        "table_identifiers": table_ids,
+    }
+    result = api_post("/api/2.0/genie/spaces", token, host, body)
+
+    space_id = result.get("space_id", "")
+    if space_id:
+        print_success(f"Genie Space 作成完了 (ID: {space_id})")
+        return space_id
+
+    # API may return error - Genie Space creation can be complex
+    if "error" in result:
+        print_error(f"Genie Space の自動作成に失敗: {result['error'][:200]}")
+        print("  Databricks UI から手動で作成してください:")
+        print(f"  1. Genie > New Genie Space")
+        print(f"  2. 名前: フレッシュマート 小売データ")
+        print(f"  3. テーブル: {', '.join(tables)}")
+        print(f"  4. ウェアハウスを選択して Create")
+        space_id = input("\n  作成した Genie Space ID を入力してください: ").strip()
+        return space_id
+
+    return space_id
+
+
+def install_dependencies():
+    """Install Python and Node.js dependencies."""
+    print_step("依存関係のインストール...")
+
+    # Python
+    result = subprocess.run(
+        ["uv", "sync"], capture_output=True, text=True,
+    )
+    if result.returncode == 0:
+        print_success("Python 依存関係 (uv sync)")
+    else:
+        print_error(f"uv sync 失敗: {result.stderr[-200:]}")
+
+    # Node.js
+    frontend_dir = Path("e2e-chatbot-app-next")
+    if frontend_dir.exists():
+        result = subprocess.run(
+            ["npm", "install"], capture_output=True, text=True, cwd=frontend_dir,
+        )
+        if result.returncode == 0:
+            print_success("Node.js 依存関係 (npm install)")
+        else:
+            print("  ⚠ npm install に失敗。手動で実行してください: cd e2e-chatbot-app-next && npm install")
+    else:
+        print("  ⚠ e2e-chatbot-app-next/ が見つかりません（フロントエンドなし）")
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Quickstart setup for Databricks agent development",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-    uv run quickstart                    # Interactive setup
-    uv run quickstart --profile DEFAULT  # Use existing profile (non-interactive)
-    uv run quickstart --host https://...  # Set up new profile with host
-    uv run quickstart --lakebase-provisioned-name my-db   # Provisioned Lakebase
-    uv run quickstart --lakebase-autoscaling-project proj --lakebase-autoscaling-branch br  # Autoscaling
-        """,
+        description="フレッシュマート AI エージェント - クイックスタートセットアップ",
     )
-    parser.add_argument(
-        "--profile",
-        help="Use specified Databricks profile (non-interactive)",
-        metavar="NAME",
-    )
-    parser.add_argument(
-        "--host",
-        help="Databricks workspace URL (for initial setup)",
-        metavar="URL",
-    )
+    parser.add_argument("--profile", default=None, help="Databricks CLI プロファイル名")
+    parser.add_argument("--host", default=None, help="Databricks ワークスペース URL")
+    parser.add_argument("--catalog", default=None, help="Unity Catalog 名")
+    parser.add_argument("--schema", default=None, help="スキーマ名")
+    parser.add_argument("--warehouse-id", default=None, help="SQL Warehouse ID")
+    parser.add_argument("--vs-endpoint", default=None, help="Vector Search エンドポイント名")
     parser.add_argument(
         "--lakebase-provisioned-name",
-        help="Provisioned Lakebase instance name (non-interactive)",
-        metavar="NAME",
+        help="プロビジョニング済み Lakebase インスタンス名",
     )
     parser.add_argument(
         "--lakebase-autoscaling-project",
-        help="Autoscaling Lakebase project name (use with --lakebase-autoscaling-branch)",
-        metavar="NAME",
+        help="Lakebase オートスケーリングプロジェクト名",
     )
     parser.add_argument(
         "--lakebase-autoscaling-branch",
-        help="Autoscaling Lakebase branch name (use with --lakebase-autoscaling-project)",
-        metavar="NAME",
+        help="Lakebase オートスケーリングブランチ名",
     )
-
     args = parser.parse_args()
 
     try:
-        print_header("Agent on Apps - Quickstart Setup")
+        print_header("フレッシュマート AI エージェント - クイックスタートセットアップ")
 
-        # Step 1: Check prerequisites
+        # ── Phase 1: 前提条件チェック ──
+        print_step("[1/7] 前提条件チェック")
         prereqs = check_prerequisites()
         missing = check_missing_prerequisites(prereqs)
-
         if missing:
-            print_step("Missing prerequisites:")
+            print_error("不足している前提条件:")
             for item in missing:
                 print(f"  • {item}")
-            print("\nPlease install the missing prerequisites and run this script again.")
+            print("\nインストール後に再実行してください。")
             sys.exit(1)
-
-        # Check Node.js version meets Vite requirements
         node_error = check_node_version()
         if node_error:
-            print_error(f"Node.js version check failed:\n  {node_error}")
+            print_error(f"Node.js バージョンエラー: {node_error}")
             sys.exit(1)
-
-        # Step 2: Set up .env
+        print_success("前提条件OK")
         setup_env_file()
 
-        # Step 3: Databricks authentication
+        # ── Phase 2: 認証 ──
+        print_step("[2/7] Databricks 認証")
         profile_name = setup_databricks_auth(args.profile, args.host)
-
-        # Step 4: Get username and create MLflow experiment
-        print_step("Getting Databricks username...")
         username = get_databricks_username(profile_name)
-        print(f"Username: {username}")
+        host = get_databricks_host(profile_name)
+        token = get_auth_token(profile_name)
+        print_success(f"認証OK: {username}")
+        print(f"  ワークスペース: {host}")
 
-        monitoring_name, monitoring_id, eval_name, eval_id = create_mlflow_experiment(
-            profile_name, username
-        )
+        # ── Phase 3: ユーザー入力 ──
+        print_step("[3/7] ワークスペース設定")
 
-        # Step 5: Update .env with experiment IDs
-        update_env_file("MLFLOW_EXPERIMENT_ID", monitoring_id)
-        update_env_file("MLFLOW_EVAL_EXPERIMENT_ID", eval_id)
-        print_success("Updated .env with monitoring and evaluation experiment IDs")
+        # Catalog
+        default_catalog = args.catalog or username.split("@")[0].replace(".", "_")
+        catalog = input(f"  カタログ名 [{default_catalog}]: ").strip() or default_catalog
 
-        # Step 5b: Update databricks.yml to use literal experiment ID (monitoring)
-        update_databricks_yml_experiment(monitoring_id)
+        # Schema
+        default_schema = args.schema or "retail_agent"
+        schema = input(f"  スキーマ名 [{default_schema}]: ").strip() or default_schema
 
-        # Step 5c: Tracing destination (optional: Unity Catalog Delta Table)
-        print_step("Tracing destination configuration")
-        print("  Default: MLflow Experiment (recommended for getting started)")
-        print("  Optional: Unity Catalog Delta Table (SQL queryable, long-term retention)")
-        use_delta = input("\n  Send traces to Unity Catalog Delta Table? (y/N): ").strip().lower()
-        if use_delta == "y":
-            default_schema = f"{args.catalog}.{args.schema}" if hasattr(args, "catalog") and hasattr(args, "schema") and args.catalog and args.schema else ""
-            tracing_dest = input(f"  Unity Catalog schema (catalog.schema) [{default_schema}]: ").strip() or default_schema
-            if tracing_dest:
-                update_env_file("MLFLOW_TRACING_DESTINATION", tracing_dest)
-                # Link experiment to UC schema
-                try:
-                    run_command(
-                        ["python", "-c",
-                         f"import mlflow; mlflow.set_experiment_trace_location("
-                         f"experiment_id='{monitoring_id}', uc_schema='{tracing_dest}')"],
-                        check=False,
-                    )
-                    print_success(f"Tracing destination set to Unity Catalog: {tracing_dest}")
-                except Exception:
-                    print_success(f"MLFLOW_TRACING_DESTINATION set to {tracing_dest}")
-                    print("  Note: Run mlflow.set_experiment_trace_location() manually if needed")
-            else:
-                print("  Skipped — using MLflow Experiment (default)")
+        # Warehouse
+        if args.warehouse_id:
+            warehouse_id = args.warehouse_id
+            print_success(f"Warehouse ID: {warehouse_id}")
         else:
-            print("  Using MLflow Experiment (default)")
+            warehouse_id, _ = select_warehouse_interactive(profile_name)
 
-        # Step 6: Lakebase setup (if needed for memory features)
+        # VS Endpoint
+        if args.vs_endpoint:
+            vs_endpoint = args.vs_endpoint
+        else:
+            vs_endpoint = input("  Vector Search エンドポイント名（既存）: ").strip()
+        if vs_endpoint:
+            # Verify endpoint exists
+            ep_status = api_get(f"/api/2.0/vector-search/endpoints/{vs_endpoint}", token, host)
+            if "error" not in ep_status:
+                ep_state = ep_status.get("endpoint_status", {}).get("state", "UNKNOWN")
+                print_success(f"VS エンドポイント: {vs_endpoint} ({ep_state})")
+            else:
+                print(f"  ⚠ エンドポイント {vs_endpoint} が見つかりません。手動で作成してください。")
+
+        # ── Phase 4: リソース作成 ──
+        print_step("[4/7] リソース作成")
+
+        # 4-1: Catalog & Schema
+        create_catalog_schema(token, host, warehouse_id, catalog, schema)
+
+        # 4-2 & 4-3: Data generation
+        generate_data(profile_name, warehouse_id, catalog, schema)
+
+        # 4-4: CDF
+        enable_cdf(token, host, warehouse_id, catalog, schema)
+
+        # 4-5: Vector Search Index
+        vs_index = ""
+        if vs_endpoint:
+            vs_index = create_vector_search_index(token, host, catalog, schema, vs_endpoint)
+        else:
+            vs_index = f"{catalog}.{schema}.policy_docs_index"
+            print("  ⚠ VS エンドポイント未指定。インデックスは手動で作成してください。")
+
+        # 4-6: Genie Space
+        genie_space_id = create_genie_space(token, host, warehouse_id, catalog, schema)
+
+        # 4-7: Lakebase
         lakebase_config = None
         lakebase_required = (
             args.lakebase_provisioned_name
@@ -1347,57 +1637,81 @@ Examples:
         )
         if lakebase_required:
             lakebase_config = setup_lakebase(
-                profile_name,
-                username,
+                profile_name, username,
                 provisioned_name=args.lakebase_provisioned_name,
                 autoscaling_project=args.lakebase_autoscaling_project,
                 autoscaling_branch=args.lakebase_autoscaling_branch,
             )
-            # Step 6b: Update databricks.yml and app.yaml with Lakebase config
             update_databricks_yml_lakebase(lakebase_config)
             update_app_yaml_lakebase(lakebase_config)
 
-        # Final summary
-        host = get_databricks_host(profile_name)
+        # 4-8: MLflow Experiments
+        monitoring_name, monitoring_id, eval_name, eval_id = create_mlflow_experiment(
+            profile_name, username
+        )
 
-        print_header("Setup Complete!")
+        # ── Phase 5: .env 更新 ──
+        print_step("[5/7] 環境設定 (.env)")
+        update_env_file("DATABRICKS_HOST", host)
+        update_env_file("MLFLOW_EXPERIMENT_ID", monitoring_id)
+        update_env_file("MLFLOW_EVAL_EXPERIMENT_ID", eval_id)
+        update_env_file("GENIE_SPACE_ID", genie_space_id)
+        update_env_file("VECTOR_SEARCH_INDEX", vs_index)
+        update_databricks_yml_experiment(monitoring_id)
+        print_success(".env 更新完了")
+
+        # Delta Table tracing
+        print()
+        print("  トレース送信先の選択:")
+        print("    デフォルト: MLflow Experiment（すぐに使える）")
+        print("    オプション: Unity Catalog Delta Table（SQL クエリ可能、長期保持）")
+        use_delta = input("\n  Unity Catalog Delta Table に送信しますか？ (y/N): ").strip().lower()
+        if use_delta == "y":
+            tracing_dest = f"{catalog}.{schema}"
+            update_env_file("MLFLOW_TRACING_DESTINATION", tracing_dest)
+            print_success(f"トレース送信先: Unity Catalog ({tracing_dest})")
+        else:
+            print_success("トレース送信先: MLflow Experiment（デフォルト）")
+
+        # ── Phase 6: 依存関係 ──
+        print_step("[6/7] 依存関係のインストール")
+        install_dependencies()
+
+        # ── Phase 7: サマリー ──
+        print_header("セットアップ完了！")
         summary = f"""
-✓ Prerequisites verified (uv, Node.js, Databricks CLI)
-✓ Databricks authenticated with profile: {profile_name}
-✓ Configuration files created (.env)
+✓ カタログ: {catalog}
+✓ スキーマ: {catalog}.{schema}
+✓ 構造化データ: 6テーブル生成済み
+✓ ポリシー文書: チャンク分割済み
+✓ Vector Search: {vs_index}
+✓ Genie Space ID: {genie_space_id}
 
-✓ MLflow monitoring experiment: {monitoring_name}
-  Experiment ID: {monitoring_id}
-✓ MLflow evaluation experiment: {eval_name}
-  Experiment ID: {eval_id}"""
+✓ MLflow モニタリング実験: {monitoring_name}
+  ID: {monitoring_id}
+✓ MLflow 評価実験: {eval_name}
+  ID: {eval_id}"""
 
-        if host and monitoring_id:
+        if host:
             summary += f"\n  {host}/ml/experiments/{monitoring_id}"
-        if host and eval_id:
-            summary += f"\n  {host}/ml/experiments/{eval_id}"
 
         _tracing_dest = os.environ.get("MLFLOW_TRACING_DESTINATION", "")
         if _tracing_dest:
-            summary += f"\n\n✓ Tracing destination: Unity Catalog ({_tracing_dest})"
+            summary += f"\n\n✓ トレース送信先: Unity Catalog ({_tracing_dest})"
             summary += "\n  ⚠ トレーステーブルの初期作成が必要です（下記参照）"
         else:
-            summary += "\n\n✓ Tracing destination: MLflow Experiment (default)"
+            summary += "\n\n✓ トレース送信先: MLflow Experiment（デフォルト）"
 
         if lakebase_config:
             if lakebase_config["type"] == "provisioned":
-                lakebase_name = lakebase_config["instance_name"]
-                summary += f"\n\n✓ Lakebase provisioned instance: {lakebase_name}"
-                if host:
-                    summary += f"\n  {host}/lakebase/provisioned/{lakebase_name}"
+                summary += f"\n\n✓ Lakebase: {lakebase_config['instance_name']}"
             else:
-                project = lakebase_config["project"]
-                branch = lakebase_config["branch"]
-                summary += f"\n\n✓ Lakebase autoscaling instance: {project} (branch: {branch})"
+                summary += f"\n\n✓ Lakebase: {lakebase_config['project']} (branch: {lakebase_config['branch']})"
 
-        summary += "\nNext step: Run 'uv run start-app' to start the agent locally\n"
+        summary += "\n\n次のステップ: uv run start-app\n"
         print(summary)
 
-        # Delta Table 送信を選択した場合、ノートブックで実行すべき手順を表示
+        # Delta Table の手順表示（選択した場合のみ）
         if _tracing_dest and "." in _tracing_dest:
             _cat, _sch = _tracing_dest.split(".", 1)
             print("=" * 60)
@@ -1410,13 +1724,12 @@ Examples:
             print("【手順】")
             print("1. Databricks ワークスペースでノートブックを開く")
             print("2. SQL Warehouse ID を確認する：")
-            print("   Databricks UI > SQL Warehouses > 対象のウェアハウス > 概要タブの ID")
-            print("   または CLI: databricks warehouses list -o json | jq '.[].id'")
+            print(f"   既に選択済み: {warehouse_id}")
             print("3. 以下のコードをノートブックで実行する：")
             print()
             print("```python")
             print("import os")
-            print(f'os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "<WAREHOUSE-ID>"  # 上で確認した ID に置き換え')
+            print(f'os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "{warehouse_id}"')
             print()
             print("import mlflow")
             print("from mlflow.entities import UCSchemaLocation")
@@ -1436,7 +1749,12 @@ Examples:
             print("=" * 60)
 
     except KeyboardInterrupt:
-        print("\n\nSetup cancelled.")
+        print("\n\nセットアップが中断されました。")
+        sys.exit(1)
+    except Exception as e:
+        print_error(f"セットアップ中にエラーが発生しました: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 
