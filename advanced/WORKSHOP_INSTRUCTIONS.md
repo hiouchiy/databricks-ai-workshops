@@ -179,18 +179,21 @@ Databricks UI：**Genie > New Genie Space**
 ```bash
 # プロジェクトの作成
 databricks api post "/api/2.0/postgres/projects?project_id=<PROJECT-NAME>" --json '{}'
-
-# ブランチは自動作成されます（デフォルトブランチ名: production）
-# ブランチが作成されたか確認：
-databricks api get /api/2.0/postgres/projects/<PROJECT-NAME>/branches \
-  | jq '.branches[0].status.current_state'
-# "READY" と表示されればOK
 ```
 
-後で使う PGHOST を取得：
+ブランチは自動作成されます。ブランチ名を確認します：
 
 ```bash
-databricks api get /api/2.0/postgres/projects/<PROJECT-NAME>/branches/production/endpoints \
+databricks api get /api/2.0/postgres/projects/<PROJECT-NAME>/branches \
+  | jq '.branches[].name'
+```
+
+> **注意：** ブランチ名はプロジェクト名に応じて自動生成されます（例: `<PROJECT-NAME>-branch`）。後で `.env` に設定するので控えておいてください。
+
+PGHOST を取得（`<BRANCH-NAME>` は上で確認した名前に置き換え）：
+
+```bash
+databricks api get /api/2.0/postgres/projects/<PROJECT-NAME>/branches/<BRANCH-NAME>/endpoints \
   | jq -r '.endpoints[0].status.hosts.host'
 ```
 
@@ -226,10 +229,11 @@ cp .env.example .env
 
 ```bash
 DATABRICKS_CONFIG_PROFILE=DEFAULT
+DATABRICKS_HOST=https://<your-workspace>.cloud.databricks.com
 MLFLOW_EXPERIMENT_ID=<MONITORING-EXPERIMENT-ID>
 MLFLOW_EVAL_EXPERIMENT_ID=<EVALUATION-EXPERIMENT-ID>
 LAKEBASE_AUTOSCALING_PROJECT=<PROJECT-NAME>
-LAKEBASE_AUTOSCALING_BRANCH=production
+LAKEBASE_AUTOSCALING_BRANCH=<BRANCH-NAME>
 GENIE_SPACE_ID=<GENIE-SPACE-ID>
 VECTOR_SEARCH_INDEX=<CATALOG>.<SCHEMA>.policy_docs_index
 PGHOST=<Lakebase のホスト名（ステップ 6 で取得）>
