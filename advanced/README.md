@@ -12,10 +12,10 @@ Databricks 上で、リアルタイムデータクエリ・ドキュメント検
 
 ![Databricks Advanced Workshop Architecture](docs/architecture.png)
 
-ワークショップは2日間で構成されています：
+ワークショップは以下の2パートで構成されています（半日で完了可能）：
 
-- **Day 1 — エージェント構築**：MCP ツール（Genie、Vector Search、UC Functions）・Lakebase メモリ・MLflow 実験トラッキングを備えた LangGraph エージェントを、Databricks Apps Compute 上で構築・テストします。
-- **Day 2 — ガバナンスと評価**：MLflow Traces・LLM Judge・カスタム Judge・Review App を使ったヒューマンインザループのフィードバックでエージェントを評価します。
+- **Part 1 — エージェント構築**：MCP ツール（Genie、Code Interpreter）・ネイティブ Vector Search・Lakebase メモリを備えた LangGraph エージェントを構築し、ローカルで動作確認します。
+- **Part 2 — 評価とモニタリング**：MLflow Traces・定義済み/カスタムスコアラー・ConversationSimulator を使ってエージェントを評価します。トレースは MLflow Experiment または Unity Catalog Delta Table に記録できます。
 
 ---
 
@@ -527,10 +527,10 @@ Build an AI-powered conversational agent on Databricks that combines real-time d
 
 ![Databricks Advanced Workshop Architecture](docs/architecture.png)
 
-The workshop is split into two days:
+The workshop consists of two parts (completable in half a day):
 
-- **Day 1 — Agent Building**: Build and test the LangGraph agent with MCP tools (Genie, Vector Search, UC Functions), Lakebase memory, and MLflow experiment tracking, all running on Databricks Apps Compute.
-- **Day 2 — Governance & Evaluation**: Evaluate the agent using MLflow Traces, LLM Judges, Custom Judges, and Human-in-the-loop feedback via the Review App.
+- **Part 1 — Agent Building**: Build a LangGraph agent with MCP tools (Genie, Code Interpreter), native Vector Search, and Lakebase memory. Test locally.
+- **Part 2 — Evaluation & Monitoring**: Evaluate the agent using MLflow Traces, predefined/custom scorers, and ConversationSimulator. Traces can be recorded to MLflow Experiment or Unity Catalog Delta Tables.
 
 ---
 
