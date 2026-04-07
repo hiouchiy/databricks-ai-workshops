@@ -1,55 +1,79 @@
-**[日本語](#ワークショップdatabricks-で食品スーパー向け-ai-エージェントを構築する)** | **[English](#workshop-build-a-retail-grocery-ai-agent-on-databricks)**
-
----
-
 # ワークショップ：Databricks で食品スーパー向け AI エージェントを構築する
 
 Genie・Vector Search・長期メモリを組み合わせた会話型 AI エージェントを構築・デプロイします。
 
-## 前提条件
+---
 
-| ツール | インストール方法 |
-|--------|-----------------|
-| Databricks CLI | `brew tap databricks/tap && brew install databricks` |
-| uv | [インストールガイド](https://docs.astral.sh/uv/getting-started/installation/) |
-| Node.js 20+ | [nodejs.org](https://nodejs.org) |
-| jq | `brew install jq` |
+## 事前準備（ワークショップ開始前に完了してください）
 
-ワークスペースに必要な機能：サーバーレスコンピュート、Foundation Model API（Claude）、Unity Catalog、Vector Search、Lakebase。
+### ワークスペース管理者（Admin）の事前準備
 
-**開始前に CLI の認証を済ませてください：**
+チームで **1名** が以下を実施すれば、全参加者が共有して利用できます。
+
+| # | 作業 | 理由 |
+|---|------|------|
+| 1 | 参加者用カタログの作成・権限付与 | 参加者にカタログ作成権限がない場合がある。参加者全員に `USE CATALOG` / `CREATE SCHEMA` を付与 |
+| 2 | SQL ウェアハウスの確認 | 共有ウェアハウスが RUNNING であることを確認し、Warehouse ID を参加者に共有 |
+| 3 | Vector Search エンドポイントの事前作成 | 新規作成に数分かかるため、共有エンドポイントを1つ用意し、エンドポイント名を参加者に共有 |
+| 4 | Foundation Model API の確認 | `databricks-claude-sonnet-4-5` エンドポイントが利用可能であることを確認 |
+| 5 | Lakebase 機能の有効化確認 | ワークスペースで Lakebase が有効であることを確認 |
+| 6 | Databricks Apps の空きスロット確認 | 上限に近い場合、不要なアプリを事前に削除（Apps デプロイを行う場合のみ） |
+| 7 | PyPI / npm アクセスの確認 | ローカル環境からパッケージインストールが可能であることを確認 |
+
+### 参加者の事前準備
+
+以下のツールをインストールし、動作確認を済ませてください。
+
+| ツール | インストール方法 | 確認コマンド |
+|--------|-----------------|-------------|
+| Databricks CLI | `brew tap databricks/tap && brew install databricks` | `databricks --version`（v0.250 以上） |
+| uv | [インストールガイド](https://docs.astral.sh/uv/getting-started/installation/) | `uv --version` |
+| Node.js 20+ | [nodejs.org](https://nodejs.org) または `nvm install 20` | `node --version` |
+| jq | `brew install jq` | `jq --version` |
+
+**Databricks CLI の認証設定：**
 ```bash
 databricks auth login --host https://<your-workspace>.cloud.databricks.com --profile DEFAULT
-databricks current-user me  # 動作確認
+databricks current-user me  # ユーザー名が表示されればOK
 ```
+
+**リポジトリのクローンと依存関係のインストール：**
+```bash
+git clone https://github.com/hiouchiy/databricks-ai-workshops.git
+cd databricks-ai-workshops/advanced
+
+# Python 依存関係のインストール
+uv venv .venv
+uv sync
+
+# Node.js 依存関係のインストール
+cd e2e-chatbot-app-next && npm install && cd ..
+```
+
+
+---
 
 ## プレースホルダー
 
-ワークショップ全体で以下を置き換えてください：
+以下の値をワークショップ全体で使います。講師から指定された値、またはご自身で作成した値に置き換えてください。
 
-| プレースホルダー | 例 |
-|-----------------|-----|
-| `<CATALOG>` | `my_catalog` |
-| `<SCHEMA>` | `retail_agent` |
-| `<WAREHOUSE-ID>` | `databricks warehouses list` で取得 |
-| `<PROJECT-NAME>` | `retail-grocery-agent`（Lakebase オートスケーリングプロジェクト） |
-| `<BRANCH-NAME>` | `production`（Lakebase オートスケーリングブランチ） |
-| `<GENIE-SPACE-ID>` | `01ef...abcd`（Genie の URL から取得） |
-| `<MONITORING-EXPERIMENT-ID>` | `1159599289265540`（モニタリング用） |
-| `<EVALUATION-EXPERIMENT-ID>` | `1159599289265541`（評価用） |
-
----
-
-## ステップ 1：リポジトリのクローン
-
-```bash
-git clone https://github.com/hiouchiy/databricks-ai-workshops.git
-cd databricks-ai-workshops
-```
+| プレースホルダー | 説明 | 例 |
+|-----------------|------|-----|
+| `<CATALOG>` | Unity Catalog のカタログ名 | `my_catalog` |
+| `<SCHEMA>` | スキーマ名 | `retail_agent` |
+| `<WAREHOUSE-ID>` | SQL ウェアハウスの ID | `databricks warehouses list` で取得 |
+| `<VS-ENDPOINT>` | Vector Search エンドポイント名 | `dbdemos_vs_endpoint`（既存を使う場合） |
+| `<PROJECT-NAME>` | Lakebase プロジェクト名 | `freshmart-agent-yourname` |
+| `<BRANCH-NAME>` | Lakebase ブランチ名 | `production` |
+| `<GENIE-SPACE-ID>` | Genie Space の ID | `01ef...abcd`（URL から取得） |
+| `<MONITORING-EXPERIMENT-ID>` | MLflow モニタリング実験の ID | `1159599289265540` |
+| `<EVALUATION-EXPERIMENT-ID>` | MLflow 評価実験の ID | `1159599289265541` |
 
 ---
 
-## ステップ 2：カタログとスキーマの作成
+## ステップ 1：カタログとスキーマの作成
+
+> 講師が事前に作成済みの場合はスキップしてください。
 
 Databricks SQL エディタで実行：
 
@@ -60,100 +84,124 @@ CREATE SCHEMA IF NOT EXISTS <CATALOG>.<SCHEMA>;
 
 ---
 
-## ステップ 3：構造化データの生成
+## ステップ 2：構造化データの生成
 
 ```bash
 cd data
 ```
 
-`execute_sql.py` の 19-20 行目で `CATALOG` と `SCHEMA` を設定し、実行：
+`execute_sql.py` を開き、先頭付近の `CATALOG` と `SCHEMA` を自分の値に書き換えます：
 
-```bash
-python execute_sql.py --profile DEFAULT --warehouse-id <WAREHOUSE-ID>
+```python
+CATALOG = "<CATALOG>"
+SCHEMA = "<SCHEMA>"
 ```
 
-6 つのテーブルが作成されます：customers、products、stores、transactions、transaction_items、payment_history。
-
----
-
-## ステップ 4：ポリシー文書チャンクの生成
-
-`execute_chunking.py` の 18-19 行目で `CATALOG` と `SCHEMA` を設定し、実行：
+実行：
 
 ```bash
-python execute_chunking.py --profile DEFAULT --warehouse-id <WAREHOUSE-ID>
+python3 execute_sql.py --profile DEFAULT --warehouse-id <WAREHOUSE-ID>
 ```
 
-7 つのポリシー文書をチャンクに分割し、`policy_docs_chunked` テーブルに書き込みます。
+6 つのテーブルが作成されます：customers（200件）、products（約500件）、stores（10件）、transactions（2,000件）、transaction_items（約10,000件）、payment_history（400件）。
+
+すべて日本語のデータ（日本人の名前、日本の住所、日本のスーパーの商品）が生成されます。
+
+> **所要時間：** 約 5〜10 分
 
 ---
 
-## ステップ 5：Vector Search エンドポイントの作成
+## ステップ 3：ポリシー文書チャンクの生成
 
-Databricks UI：**Compute > Vector Search > Create Endpoint**
+`execute_chunking.py` も同様に `CATALOG` と `SCHEMA` を書き換えて実行：
 
-- 名前：`freshmart-policies`
-- ステータスが **READY** になるまで待機（約 5〜10 分）
+```bash
+python3 execute_chunking.py --profile DEFAULT --warehouse-id <WAREHOUSE-ID>
+```
+
+7 つの日本語ポリシー文書（返品・配送・会員プログラム等）がチャンク分割され、`policy_docs_chunked` テーブルに書き込まれます。
+
+> **重要：** 次のステップで Vector Search インデックスを作成するため、テーブルに Change Data Feed を有効化します：
+>
+> SQL エディタで実行：
+> ```sql
+> ALTER TABLE <CATALOG>.<SCHEMA>.policy_docs_chunked
+>   SET TBLPROPERTIES (delta.enableChangeDataFeed = true);
+> ```
+
+```bash
+cd ../advanced
+```
 
 ---
 
-## ステップ 6：Vector Search インデックスの作成
+## ステップ 4：Vector Search インデックスの作成
+
+> **前提：** Vector Search エンドポイントは講師が事前に作成済みのものを使います。
+> エンドポイント名: `<VS-ENDPOINT>`（講師から指定された名前を使用）
+>
+> 自分で作成する場合は Databricks UI の **Compute > Vector Search > Create Endpoint** から作成し、READY になるまで待機してください。
 
 **Catalog Explorer** で `<CATALOG>.<SCHEMA>.policy_docs_chunked` に移動：
 
 1. **Create > Vector Search Index** をクリック
-2. 設定：name=`policy_docs_index`、primary key=`chunk_id`、endpoint=ステップ 5 で作成したもの、source column=`content`、model=`databricks-qwen3-embedding-0-6b`、sync=Triggered
+2. 以下を設定：
+   - Name: `policy_docs_index`
+   - Primary key: `chunk_id`
+   - Endpoint: `<VS-ENDPOINT>`
+   - Source column: `content`
+   - Embedding model: `databricks-qwen3-embedding-0-6b`
+   - Sync mode: Triggered
 3. **Create** をクリック
 
 フルパスを控えておく：`<CATALOG>.<SCHEMA>.policy_docs_index`
 
+> **所要時間：** インデックスの初期同期に 1〜5 分かかります。ステータスが READY になるまで待機してください。
+> 次のステップに進みながら待つことができます。
+
 ---
 
-## ステップ 7：Genie Space の作成
+## ステップ 5：Genie Space の作成
 
 Databricks UI：**Genie > New Genie Space**
 
-1. 名前：`Retail Grocery Data`
-2. スキーマ内の 6 テーブルをすべて追加
+1. 名前：`フレッシュマート 小売データ`
+2. ステップ 1 で作成したスキーマ内の 6 テーブルをすべて追加：
+   - `customers`, `products`, `stores`, `transactions`, `transaction_items`, `payment_history`
 3. SQL ウェアハウスを選択し、**Create** をクリック
-4. URL から **スペース ID** をコピー
+4. URL から **スペース ID** をコピー（URL の最後の部分）
 
 ---
 
-## ステップ 8：Lakebase オートスケーリングインスタンスの作成
+## ステップ 6：Lakebase オートスケーリングインスタンスの作成
 
 ```bash
 # プロジェクトの作成
-databricks api post /api/2.0/postgres/projects --json '{
-  "name": "<PROJECT-NAME>"
-}'
+databricks api post "/api/2.0/postgres/projects?project_id=<PROJECT-NAME>" --json '{}'
 
-# ブランチの作成
-databricks api post /api/2.0/postgres/projects/<PROJECT-NAME>/branches --json '{
-  "name": "<BRANCH-NAME>"
-}'
-
-# エンドポイントが ACTIVE であることを確認
-databricks api get /api/2.0/postgres/projects/<PROJECT-NAME>/branches/<BRANCH-NAME>/endpoints \
-  | jq '.endpoints[0].status.current_state'
-# "ACTIVE" になるまで待機
+# ブランチは自動作成されます（デフォルトブランチ名: production）
+# ブランチが作成されたか確認：
+databricks api get /api/2.0/postgres/projects/<PROJECT-NAME>/branches \
+  | jq '.branches[0].status.current_state'
+# "READY" と表示されればOK
 ```
 
 後で使う PGHOST を取得：
 ```bash
-databricks api get /api/2.0/postgres/projects/<PROJECT-NAME>/branches/<BRANCH-NAME>/endpoints \
+databricks api get /api/2.0/postgres/projects/<PROJECT-NAME>/branches/production/endpoints \
   | jq -r '.endpoints[0].status.hosts.host'
 ```
 
+> **注意：** エンドポイントが ACTIVE になるまで 1〜2 分かかる場合があります。
+
 ---
 
-## ステップ 9：MLflow 実験の作成
+## ステップ 7：MLflow 実験の作成
 
 モニタリング用（アプリ実行時のトレース記録）と評価用（評価スクリプト実行時）の **2つの実験** を作成します。
 
 ```bash
-cd ../advanced
-DATABRICKS_USERNAME=$(databricks current-user me | jq -r .userName)
+DATABRICKS_USERNAME=$(databricks current-user me -o json | jq -r .userName)
 
 # モニタリング用（アプリ実行時のトレース記録）
 databricks experiments create-experiment "/Users/$DATABRICKS_USERNAME/freshmart-agent-monitoring"
@@ -166,79 +214,99 @@ databricks experiments create-experiment "/Users/$DATABRICKS_USERNAME/freshmart-
 
 ---
 
-## ステップ 10：システムプロンプトの登録（オプション）
-
-> **注意：** 日本語のシステムプロンプトは `agent.py` にハードコード済みのため、このステップはスキップ可能です。
-> Prompt Registry を使いたい場合のみ実行してください。
+## ステップ 8：環境変数の設定
 
 ```bash
-uv run ja-register-prompt --name <CATALOG>.<SCHEMA>.freshmart_system_prompt
-```
-
----
-
-## ステップ 11：パーミッションの付与
-
-### Lakebase
-
-オートスケーリング Lakebase の場合、パーミッションは Databricks ID で管理されます。手動での `psql` ロール作成は不要です。接続時に Databricks ユーザーが OAuth で自動認証されます。
-
-### Genie Space
-
-**Genie > 対象のスペース > Share** > 自分のユーザーを **Can Run** で追加。
-
-### Vector Search Index
-
-**Catalog Explorer > 対象のインデックス > Permissions** > 自分のユーザーを **SELECT** で追加。
-
-### MLflow Experiment
-
-**Experiments > 対象の実験 > Permissions** > 自分のユーザーを **Can Manage** で追加。
-
-### Unity Catalog
-
-```sql
-GRANT USE CATALOG ON CATALOG <CATALOG> TO `your.email@company.com`;
-GRANT USE SCHEMA ON SCHEMA <CATALOG>.<SCHEMA> TO `your.email@company.com`;
-GRANT SELECT ON SCHEMA <CATALOG>.<SCHEMA> TO `your.email@company.com`;
-```
-
----
-
-## ステップ 12：環境変数の設定
-
-```bash
-cd advanced
 cp .env.example .env
 ```
 
-`.env` を編集：
+`.env` を以下のように編集します。ここまでのステップで控えた値を入力してください：
 
 ```bash
 DATABRICKS_CONFIG_PROFILE=DEFAULT
 MLFLOW_EXPERIMENT_ID=<MONITORING-EXPERIMENT-ID>
 MLFLOW_EVAL_EXPERIMENT_ID=<EVALUATION-EXPERIMENT-ID>
 LAKEBASE_AUTOSCALING_PROJECT=<PROJECT-NAME>
-LAKEBASE_AUTOSCALING_BRANCH=<BRANCH-NAME>
+LAKEBASE_AUTOSCALING_BRANCH=production
 GENIE_SPACE_ID=<GENIE-SPACE-ID>
 VECTOR_SEARCH_INDEX=<CATALOG>.<SCHEMA>.policy_docs_index
-PROMPT_REGISTRY_NAME=<CATALOG>.<SCHEMA>.freshmart_system_prompt
-PGHOST=<your-lakebase-hostname>
-PGUSER=your.email@company.com
+PGHOST=<Lakebase のホスト名（ステップ 6 で取得）>
+PGUSER=<あなたの Databricks メールアドレス>
 PGDATABASE=databricks_postgres
 ```
 
 > **注意：** `MLFLOW_EXPERIMENT_ID` はアプリ実行時のトレース記録（モニタリング）に、`MLFLOW_EVAL_EXPERIMENT_ID` は評価スクリプト実行時に使われます。
 
-Lakebase のホスト名を確認するには（ステップ 8 参照）：
+> **注意：** `PROMPT_REGISTRY_NAME` は設定不要です。日本語のシステムプロンプトは `agent.py` にハードコードされています。
+
+### トレース送信先の選択（オプション）
+
+デフォルトではトレースは MLflow Experiment に記録されます。Unity Catalog の Delta Table に送信したい場合は、`.env` に以下を追加してください：
+
 ```bash
-databricks api get /api/2.0/postgres/projects/<PROJECT-NAME>/branches/<BRANCH-NAME>/endpoints \
-  | jq -r '.endpoints[0].status.hosts.host'
+# Unity Catalog Delta Table にトレースを送信する場合のみ設定
+MLFLOW_TRACING_DESTINATION=<CATALOG>.<SCHEMA>
 ```
+
+| 設定 | 送信先 | 特徴 |
+|------|--------|------|
+| 未設定（デフォルト） | MLflow Experiment | Experiments UI でトレース確認。手軽に始められる |
+| `<CATALOG>.<SCHEMA>` を設定 | Unity Catalog Delta Table | SQL でクエリ可能。長期保持。Unity Catalog の権限で管理 |
+
+Delta Table に送信する場合は、以下の事前準備が必要です：
+
+**1. 権限の付与**（SQL エディタで実行）：
+
+```sql
+GRANT MODIFY, SELECT ON SCHEMA <CATALOG>.<SCHEMA> TO `your.email@company.com`;
+```
+
+**2. トレーステーブルの初期作成**（**Databricks ノートブック**で実行。ローカルからは実行不可）
+
+> **注意：** 紐付ける Experiment にはトレースが1件も入っていない必要があります。既にトレースが入っている場合は、新しい空の Experiment を作成してください：
+> ```bash
+> databricks experiments create-experiment "/Users/$DATABRICKS_USERNAME/freshmart-agent-monitoring-uc"
+> ```
+> 作成した新しい Experiment ID を以下のコードと `.env` の `MLFLOW_EXPERIMENT_ID` に設定してください。
+
+```python
+import os
+os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "<WAREHOUSE-ID>"
+
+import mlflow
+from mlflow.entities import UCSchemaLocation
+
+mlflow.tracing.set_experiment_trace_location(
+    location=UCSchemaLocation(catalog_name="<CATALOG>", schema_name="<SCHEMA>"),
+    experiment_id="<MONITORING-EXPERIMENT-ID>",
+)
+```
+
+これにより、スキーマ内に3つの Delta Table が自動作成されます：
+- `mlflow_experiment_trace_otel_spans` — 各処理ステップ（LLM 呼び出し、ツール実行等）
+- `mlflow_experiment_trace_otel_logs` — トレース実行中のログ
+- `mlflow_experiment_trace_otel_metrics` — レイテンシ・トークン数等のメトリクス
+
+**3. `.env` に送信先を設定**（ローカルで編集）：
+
+```bash
+MLFLOW_TRACING_DESTINATION=<CATALOG>.<SCHEMA>
+```
+
+テーブル作成後にアプリを起動してチャットすると、トレースが Delta Table に書き込まれます。SQL でクエリできます：
+
+```sql
+SELECT * FROM <CATALOG>.<SCHEMA>.mlflow_experiment_trace_otel_spans
+WHERE start_time > current_timestamp() - INTERVAL 1 HOUR;
+```
+
+> **注意：** `set_experiment_trace_location` は Databricks ノートブック上でのみ実行可能です。ローカル環境からは実行できません。
+>
+> 参考：[MLflow トレースを Unity Catalog に送信する](https://docs.databricks.com/aws/en/mlflow3/genai/tracing/trace-unity-catalog)
 
 ---
 
-## ステップ 13：ローカルで実行
+## ステップ 9：ローカルで実行
 
 ```bash
 uv run start-app
@@ -246,107 +314,145 @@ uv run start-app
 
 バックエンドが `http://localhost:8000`、チャット UI が `http://localhost:3000` で起動します。
 
-`http://localhost:3000` を開いて、以下のプロンプトを試してください：
+> **うまく起動しない場合：**
+> - `uv sync` が完了していることを確認
+> - `.env` ファイルが正しく設定されていることを確認
+> - `databricks auth token` でトークンが取得できることを確認
 
-- 「売上トップ 5 の商品は？」（Genie）
-- 「生鮮食品の返品ポリシーは？」（Vector Search）
-- 「オーガニック商品が好きだと覚えておいて」→ 新しいチャットで「私の好みは？」（メモリ）
+### 動作確認
 
-Databricks UI の **Experiments > 対象の実験** でトレースを確認できます。
+ブラウザで `http://localhost:3000` を開き、以下のプロンプトを試してください：
 
----
+**Genie（構造化データクエリ）：**
+- 「売上トップ 5 の商品を教えてください」
+- 「一番安い商品は何ですか？」
 
-## ステップ 14：デプロイ設定ファイルの構成
+**Vector Search（ポリシー検索）：**
+- 「返品ポリシーを教えてください。生鮮食品の返品はできますか？」
+- 「配送料はいくらですか？」
 
-### `databricks.yml` — リソース定義の更新
+**メモリ：**
+- 「私はベジタリアンで、オーガニック商品が好きです。覚えておいてください。」
+- （新しいチャットで）「私の好みを覚えていますか？おすすめの商品を教えてください。」
 
-`resources` セクションに実際のリソース ID を設定：
+### トレースの確認
 
-```yaml
-        - name: "experiment"
-          experiment:
-            experiment_id: "<MONITORING-EXPERIMENT-ID>"
-            permission: "CAN_MANAGE"
-        - name: "retail_grocery_genie"
-          genie_space:
-            name: "Retail Grocery Data"
-            space_id: "<GENIE-SPACE-ID>"
-            permission: "CAN_RUN"
-        - name: "lakebase_memory"
-          database:
-            autoscaling_project: "<PROJECT-NAME>"
-            autoscaling_branch: "<BRANCH-NAME>"
-            database_name: "databricks_postgres"
-            permission: "CAN_CONNECT_AND_CREATE"
-        - name: "policy_docs_index"
-          uc_securable:
-            securable_full_name: "<CATALOG>.<SCHEMA>.policy_docs_index"
-            securable_type: "TABLE"
-            permission: "SELECT"
-```
-
-> **注意：** `databricks.yml` の `experiment` リソースには **モニタリング用** の実験 ID を設定します。評価用実験はローカルの評価スクリプトでのみ使用されます。
-
-Prompt Registry の値を設定：
-```yaml
-          - name: PROMPT_REGISTRY_NAME
-            value: "<CATALOG>.<SCHEMA>.freshmart_system_prompt"
-```
+Databricks UI の **Experiments > freshmart-agent-monitoring** でエージェントのトレースを確認できます。各リクエストの LLM 呼び出し、ツール実行、レイテンシなどが記録されています。評価結果は **Experiments > freshmart-agent-evaluation** で確認できます。
 
 ---
 
-## ステップ 15：Databricks Apps へのデプロイ
+## ステップ 10（オプション）：エージェントの評価
+
+### マルチターン評価（会話シミュレータ）
 
 ```bash
-# バリデーション
-databricks bundle validate -t dev
-
-# デプロイ
-databricks bundle deploy -t dev
-
-# アプリにソースコードをデプロイ
-DATABRICKS_USERNAME=$(databricks current-user me | jq -r .userName)
-databricks apps deploy retail-grocery-ltm-memory \
-  --source-code-path /Workspace/Users/$DATABRICKS_USERNAME/.bundle/retail_grocery_ltm_memory/dev/files
+uv run agent-evaluate
 ```
+
+日本語のテストケース3件を使い、模擬ユーザー（LLM）がエージェントとマルチターンの会話を自動実行します。9 つの MLflow スコアラー（Completeness、ConversationalSafety、Fluency、KnowledgeRetention、RelevanceToQuery、Safety、ToolCallCorrectness、UserFrustration 等）で自動採点されます。
+
+### マルチターン高度な評価（20テストケース + カスタムスコアラー）
+
+```bash
+uv run agent-evaluate-advanced
+```
+
+20件の日本語テストケース（構造化データ、ポリシー検索、複合質問、メモリ）に加え、3つのカスタムスコアラーで評価します：
+
+- **tool_routing_accuracy** — 質問の種類に応じて正しいツール（Genie/Vector Search/Memory）が選ばれているか
+- **policy_specificity** — ポリシー回答に具体的な数字（「48時間」「¥3,000」等）が含まれているか
+- **retail_tone_appropriateness** — 接客トーンが適切か（共感・アクション提示・温かみ）
+
+### チャット評価（expected_facts ベース）
+
+```bash
+uv run agent-evaluate-chat                # ネイティブ版（デフォルト、サーバー不要）
+uv run agent-evaluate-chat --mode mcp     # MCP 版（要サーバー起動）
+```
+
+9件の固定質問（シンプル3件 + 複雑3件 + スコープ外3件）と模範解答（expected_facts）を使い、Correctness / RelevanceToQuery / RetrievalSufficiency / Safety / Fluency で採点します。`--mode` でネイティブ版と MCP 版を切り替えて比較できます。
+
+> **ネイティブ版とMCP版の違い：**
+>
+> | | ネイティブ版（デフォルト） | MCP 版 |
+> |---|---|---|
+> | Vector Search | DatabricksVectorSearch（直接呼び出し） | MCP 経由 |
+> | Genie / Code Interpreter | MCP 経由 | MCP 経由 |
+> | Lakebase メモリ | **なし**（評価に不要） | **あり** |
+> | サーバー起動 | **不要**（直接関数呼び出し） | **必要**（別プロセスで起動） |
+> | RETRIEVER スパン | **生成される**（RetrievalSufficiency 評価可） | 生成されない |
+>
+> **MCP 版でサーバーが必要な理由：**
+> Lakebase の非同期接続プールが、評価フレームワーク（`mlflow.genai.evaluate`）のイベントループと競合してデッドロックを起こすため、エージェントを別プロセス（サーバー）として起動し、HTTP 経由で呼び出す必要があります。
+>
+> **MCP 版の実行手順：**
+> ```bash
+> # ターミナル1: サーバーを起動
+> uv run start-app    # または uv run start-app --no-ui
+>
+> # ターミナル2: 評価を実行
+> uv run agent-evaluate-chat --mode mcp
+> ```
+
+結果は MLflow Experiments UI の **freshmart-agent-evaluation** 実験で確認できます。
 
 ---
 
-## ステップ 16：アプリのサービスプリンシパルにパーミッションを付与
+## ステップ 11（オプション）：Databricks Apps へのデプロイ
+
+> **前提条件：**
+> - ワークスペースの Apps 枠に空きがあること
+> - Apps 環境から PyPI にアクセスできること（2026年3月現在、社内ネットワーク制限で問題が発生する場合があります）
+
+### 11-1. ソースコードの同期
 
 ```bash
-# アプリのサービスプリンシパルを取得
-SP_CLIENT_ID=$(databricks apps get retail-grocery-ltm-memory --output json | jq -r '.service_principal_client_id')
-
-# Lakebase パーミッションの付与
-uv run python scripts/grant_lakebase_permissions.py "$SP_CLIENT_ID" \
-  --memory-type langgraph-short-term --project <PROJECT-NAME> --branch <BRANCH-NAME>
-uv run python scripts/grant_lakebase_permissions.py "$SP_CLIENT_ID" \
-  --memory-type langgraph-long-term --project <PROJECT-NAME> --branch <BRANCH-NAME>
+databricks sync . "/Users/<あなたのメールアドレス>/<アプリ名>" --profile DEFAULT
 ```
 
-サービスプリンシパルに Genie Space へのアクセスも付与します：**Genie > 対象のスペース > Share** > サービスプリンシパルを **Can Run** で追加。
-
----
-
-## ステップ 17：アプリの起動と動作確認
+### 11-2. アプリの作成と起動
 
 ```bash
-databricks apps start retail-grocery-ltm-memory
+# アプリ名は参加者ごとにユニークにしてください
+databricks apps create <アプリ名> --profile DEFAULT
+databricks apps start <アプリ名> --profile DEFAULT
+```
 
-# URL を取得
-APP_URL=$(databricks apps get retail-grocery-ltm-memory --output json | jq -r '.url')
-echo "App URL: $APP_URL"
+### 11-3. ソースコードのデプロイ
 
-# API をテスト
-TOKEN=$(databricks auth token | jq -r .access_token)
+```bash
+databricks apps deploy <アプリ名> \
+  --source-code-path "/Workspace/Users/<あなたのメールアドレス>/<アプリ名>" \
+  --profile DEFAULT
+```
+
+### 11-4. サービスプリンシパルへのパーミッション付与
+
+```bash
+# アプリの SP を取得
+SP_CLIENT_ID=$(databricks apps get <アプリ名> --output json | jq -r '.service_principal_client_id')
+
+# Unity Catalog パーミッション
+# SQL エディタで実行：
+# GRANT USE CATALOG ON CATALOG <CATALOG> TO `<SP_CLIENT_ID>`;
+# GRANT USE SCHEMA ON SCHEMA <CATALOG>.<SCHEMA> TO `<SP_CLIENT_ID>`;
+# GRANT SELECT ON SCHEMA <CATALOG>.<SCHEMA> TO `<SP_CLIENT_ID>`;
+
+# Genie Space: UI で SP を Can Run で追加
+# Vector Search: Catalog Explorer で SP に SELECT を付与
+```
+
+### 11-5. 動作確認
+
+```bash
+APP_URL=$(databricks apps get <アプリ名> --output json | jq -r '.url')
+TOKEN=$(databricks auth token -o json | jq -r .access_token)
+
 curl -X POST "${APP_URL}/invocations" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"input": [{"role": "user", "content": "どんな店舗がありますか？"}]}'
+  -d '{"input": [{"role": "user", "content": "こんにちは！"}]}'
 ```
-
-ブラウザでアプリの URL を開き、ステップ 13 と同じプロンプトを試してください。
 
 ---
 
@@ -354,377 +460,17 @@ curl -X POST "${APP_URL}/invocations" \
 
 | 問題 | 対処法 |
 |------|--------|
+| `python3: command not found` | Python 3.11 以上がインストールされていることを確認。`python` でも可 |
+| `uv sync` で PyPI 接続エラー | インターネット接続を確認。企業ネットワークの場合は社内の PyPI ミラーやプロキシ設定を確認 |
+| `npm install` がタイムアウトする | インターネット接続を確認。`rm -f package-lock.json && npm install` で lockfile を再生成すると解決する場合がある |
+| `delta.enableChangeDataFeed` エラー | ステップ 3 の CDF 有効化を実行し忘れている。SQL エディタで `ALTER TABLE` を実行 |
+| VS インデックスが READY にならない | Catalog Explorer でステータスを確認。エンドポイントが ONLINE であることを確認 |
+| Lakebase `project_id is required` | API のクエリパラメータに `?project_id=<名前>` を指定（JSON ボディではなく URL に） |
+| `experiments create --name` エラー | CLI v0.275+ では `experiments create-experiment "<名前>"` を使用 |
 | `relation "store" does not exist` | メモリテーブルが未作成。アプリを再起動すると初回リクエスト時に自動作成されます |
-| アプリが `STOPPED` のまま | `databricks apps start retail-grocery-ltm-memory` を実行 |
 | API 呼び出しで `302` エラー | PAT ではなく OAuth トークン（`databricks auth token`）を使用 |
-| Lakebase パーミッションエラー | デプロイ済みの場合：ステップ 16 を再実行。ローカルの場合：CLI 認証が有効か確認（`databricks auth token`） |
-| `bundle validate` が失敗 | `value_from` の名前がリソースの `name` フィールドと完全一致しているか確認 |
-| Vector Search が空を返す | Catalog Explorer でインデックスにデータがあるか確認 |
-| ローカルアプリで Lakebase エラー | `.env` の PGHOST/PGUSER を確認。トークン期限切れの場合は `databricks auth login` 後にアプリを再起動 |
-| Genie パーミッションエラー | 自分のユーザー（ステップ 11）またはアプリの SP（ステップ 16）に Can Run を付与 |
-| アプリログの確認 | **Apps > retail-grocery-ltm-memory > Logs** または `databricks apps get-logs retail-grocery-ltm-memory` |
-
----
-
-**[日本語](#ワークショップdatabricks-で食品スーパー向け-ai-エージェントを構築する)** | **[English](#workshop-build-a-retail-grocery-ai-agent-on-databricks)**
-
----
-
-# Workshop: Build a Retail Grocery AI Agent on Databricks
-
-Build and deploy a conversational AI agent with Genie, Vector Search, and long-term memory.
-
-## Prerequisites
-
-| Tool | Install |
-|------|---------|
-| Databricks CLI | `brew tap databricks/tap && brew install databricks` |
-| uv | [install guide](https://docs.astral.sh/uv/getting-started/installation/) |
-| Node.js 20+ | [nodejs.org](https://nodejs.org) |
-| jq | `brew install jq` |
-
-Your workspace needs: Serverless compute, Foundation Model API (Claude), Unity Catalog, Vector Search, and Lakebase.
-
-**Authenticate the CLI before starting:**
-```bash
-databricks auth login --host https://<your-workspace>.cloud.databricks.com --profile DEFAULT
-databricks current-user me  # verify it works
-```
-
-## Placeholders
-
-Replace these throughout the workshop:
-
-| Placeholder | Example |
-|-------------|---------|
-| `<CATALOG>` | `my_catalog` |
-| `<SCHEMA>` | `retail_agent` |
-| `<WAREHOUSE-ID>` | from `databricks warehouses list` |
-| `<PROJECT-NAME>` | `retail-grocery-agent` (Lakebase autoscaling project) |
-| `<BRANCH-NAME>` | `production` (Lakebase autoscaling branch) |
-| `<GENIE-SPACE-ID>` | `01ef...abcd` (from Genie URL) |
-| `<MONITORING-EXPERIMENT-ID>` | `1159599289265540` (for monitoring) |
-| `<EVALUATION-EXPERIMENT-ID>` | `1159599289265541` (for evaluation) |
-
----
-
-## Step 1: Clone the Repo
-
-```bash
-git clone https://github.com/hiouchiy/databricks-ai-workshops.git
-cd databricks-ai-workshops
-```
-
----
-
-## Step 2: Create Catalog and Schema
-
-Run in the Databricks SQL Editor:
-
-```sql
-CREATE CATALOG IF NOT EXISTS <CATALOG>;
-CREATE SCHEMA IF NOT EXISTS <CATALOG>.<SCHEMA>;
-```
-
----
-
-## Step 3: Generate Structured Data
-
-```bash
-cd data
-```
-
-Edit `execute_sql.py` -- set `CATALOG` and `SCHEMA` on lines 19-20, then run:
-
-```bash
-python execute_sql.py --profile DEFAULT --warehouse-id <WAREHOUSE-ID>
-```
-
-This creates 6 tables: customers, products, stores, transactions, transaction_items, payment_history.
-
----
-
-## Step 4: Generate Policy Document Chunks
-
-Edit `execute_chunking.py` — set `CATALOG` and `SCHEMA` on lines 18-19, then run:
-
-```bash
-python execute_chunking.py --profile DEFAULT --warehouse-id <WAREHOUSE-ID>
-```
-
-This chunks 7 policy docs and writes to the `policy_docs_chunked` table.
-
----
-
-## Step 5: Create a Vector Search Endpoint
-
-In the Databricks UI: **Compute > Vector Search > Create Endpoint**
-
-- Name: `freshmart-policies`
-- Wait for status: **READY** (~5-10 min)
-
----
-
-## Step 6: Create a Vector Search Index
-
-In **Catalog Explorer**, navigate to `<CATALOG>.<SCHEMA>.policy_docs_chunked`:
-
-1. Click **Create > Vector Search Index**
-2. Set: name=`policy_docs_index`, primary key=`chunk_id`, endpoint=from Step 5, source column=`content`, model=`databricks-qwen3-embedding-0-6b`, sync=Triggered
-3. Click **Create**
-
-Note the full path: `<CATALOG>.<SCHEMA>.policy_docs_index`
-
----
-
-## Step 7: Create a Genie Space
-
-In the Databricks UI: **Genie > New Genie Space**
-
-1. Name: `Retail Grocery Data`
-2. Add all 6 tables from your schema
-3. Select a SQL warehouse and click **Create**
-4. Copy the **Space ID** from the URL
-
----
-
-## Step 8: Create a Lakebase Autoscaling Instance
-
-```bash
-# Create the project
-databricks api post /api/2.0/postgres/projects --json '{
-  "name": "<PROJECT-NAME>"
-}'
-
-# Create the branch
-databricks api post /api/2.0/postgres/projects/<PROJECT-NAME>/branches --json '{
-  "name": "<BRANCH-NAME>"
-}'
-
-# Verify the endpoint is ACTIVE
-databricks api get /api/2.0/postgres/projects/<PROJECT-NAME>/branches/<BRANCH-NAME>/endpoints \
-  | jq '.endpoints[0].status.current_state'
-# Wait until "ACTIVE"
-```
-
-Get the PGHOST for later:
-```bash
-databricks api get /api/2.0/postgres/projects/<PROJECT-NAME>/branches/<BRANCH-NAME>/endpoints \
-  | jq -r '.endpoints[0].status.hosts.host'
-```
-
----
-
-## Step 9: Create MLflow Experiments
-
-Create **two experiments** — one for monitoring (app runtime tracing) and one for evaluation scripts.
-
-```bash
-cd ../advanced
-DATABRICKS_USERNAME=$(databricks current-user me | jq -r .userName)
-
-# Monitoring (app runtime tracing)
-databricks experiments create-experiment "/Users/$DATABRICKS_USERNAME/freshmart-agent-monitoring"
-
-# Evaluation (evaluation scripts)
-databricks experiments create-experiment "/Users/$DATABRICKS_USERNAME/freshmart-agent-evaluation"
-```
-
-Copy the returned `experiment_id` for each.
-
----
-
-## Step 10: Register the System Prompt
-
-```bash
-uv run register-prompt --name <CATALOG>.<SCHEMA>.freshmart_system_prompt
-```
-
----
-
-## Step 11: Grant Permissions
-
-### Lakebase
-
-For autoscaling Lakebase, permissions are managed via Databricks identity — no manual `psql` role creation needed. Your Databricks user is automatically authenticated via OAuth when connecting.
-
-### Genie Space
-
-**Genie > your space > Share** > Add your user with **Can Run**.
-
-### Vector Search Index
-
-**Catalog Explorer > your index > Permissions** > Add your user with **SELECT**.
-
-### MLflow Experiment
-
-**Experiments > your experiment > Permissions** > Add your user with **Can Manage**.
-
-### Unity Catalog
-
-```sql
-GRANT USE CATALOG ON CATALOG <CATALOG> TO `your.email@company.com`;
-GRANT USE SCHEMA ON SCHEMA <CATALOG>.<SCHEMA> TO `your.email@company.com`;
-GRANT SELECT ON SCHEMA <CATALOG>.<SCHEMA> TO `your.email@company.com`;
-```
-
----
-
-## Step 12: Configure Environment Variables
-
-```bash
-cd advanced
-cp .env.example .env
-```
-
-Edit `.env`:
-
-```bash
-DATABRICKS_CONFIG_PROFILE=DEFAULT
-MLFLOW_EXPERIMENT_ID=<MONITORING-EXPERIMENT-ID>
-MLFLOW_EVAL_EXPERIMENT_ID=<EVALUATION-EXPERIMENT-ID>
-LAKEBASE_AUTOSCALING_PROJECT=<PROJECT-NAME>
-LAKEBASE_AUTOSCALING_BRANCH=<BRANCH-NAME>
-GENIE_SPACE_ID=<GENIE-SPACE-ID>
-VECTOR_SEARCH_INDEX=<CATALOG>.<SCHEMA>.policy_docs_index
-PROMPT_REGISTRY_NAME=<CATALOG>.<SCHEMA>.freshmart_system_prompt
-PGHOST=<your-lakebase-hostname>
-PGUSER=your.email@company.com
-PGDATABASE=databricks_postgres
-```
-
-> **Note:** `MLFLOW_EXPERIMENT_ID` is used for app runtime tracing (monitoring), while `MLFLOW_EVAL_EXPERIMENT_ID` is used by evaluation scripts.
-
-To find your Lakebase hostname (from Step 8):
-```bash
-databricks api get /api/2.0/postgres/projects/<PROJECT-NAME>/branches/<BRANCH-NAME>/endpoints \
-  | jq -r '.endpoints[0].status.hosts.host'
-```
-
----
-
-## Step 13: Run Locally
-
-```bash
-uv run start-app
-```
-
-This starts the backend on `http://localhost:8000` and the chat UI on `http://localhost:3000`.
-
-Open `http://localhost:3000` and try these prompts:
-
-- "What are the top 5 products by revenue?" (Genie)
-- "What is the return policy for perishable items?" (Vector Search)
-- "Remember that I prefer organic products" then in a new chat: "What are my preferences?" (Memory)
-
-Verify traces in **Experiments > your experiment** in the Databricks UI.
-
----
-
-## Step 14: Configure Deployment Files
-
-### `databricks.yml` — Update resource definitions
-
-Set your actual resource IDs in the `resources` section:
-
-```yaml
-        - name: "experiment"
-          experiment:
-            experiment_id: "<MONITORING-EXPERIMENT-ID>"
-            permission: "CAN_MANAGE"
-        - name: "retail_grocery_genie"
-          genie_space:
-            name: "Retail Grocery Data"
-            space_id: "<GENIE-SPACE-ID>"
-            permission: "CAN_RUN"
-        - name: "lakebase_memory"
-          database:
-            autoscaling_project: "<PROJECT-NAME>"
-            autoscaling_branch: "<BRANCH-NAME>"
-            database_name: "databricks_postgres"
-            permission: "CAN_CONNECT_AND_CREATE"
-        - name: "policy_docs_index"
-          uc_securable:
-            securable_full_name: "<CATALOG>.<SCHEMA>.policy_docs_index"
-            securable_type: "TABLE"
-            permission: "SELECT"
-```
-
-> **Note:** The `experiment` resource in `databricks.yml` uses the **monitoring** experiment ID. The evaluation experiment is only used locally by evaluation scripts.
-
-Set the prompt registry value:
-```yaml
-          - name: PROMPT_REGISTRY_NAME
-            value: "<CATALOG>.<SCHEMA>.freshmart_system_prompt"
-```
-
----
-
-## Step 15: Deploy to Databricks Apps
-
-```bash
-# Validate
-databricks bundle validate -t dev
-
-# Deploy
-databricks bundle deploy -t dev
-
-# Deploy source code to the app
-DATABRICKS_USERNAME=$(databricks current-user me | jq -r .userName)
-databricks apps deploy retail-grocery-ltm-memory \
-  --source-code-path /Workspace/Users/$DATABRICKS_USERNAME/.bundle/retail_grocery_ltm_memory/dev/files
-```
-
----
-
-## Step 16: Grant App Service Principal Permissions
-
-```bash
-# Get the app's service principal
-SP_CLIENT_ID=$(databricks apps get retail-grocery-ltm-memory --output json | jq -r '.service_principal_client_id')
-
-# Grant Lakebase permissions
-uv run python scripts/grant_lakebase_permissions.py "$SP_CLIENT_ID" \
-  --memory-type langgraph-short-term --project <PROJECT-NAME> --branch <BRANCH-NAME>
-uv run python scripts/grant_lakebase_permissions.py "$SP_CLIENT_ID" \
-  --memory-type langgraph-long-term --project <PROJECT-NAME> --branch <BRANCH-NAME>
-```
-
-Also grant the SP access to the Genie Space: **Genie > your space > Share** > Add the service principal with **Can Run**.
-
----
-
-## Step 17: Start and Verify the App
-
-```bash
-databricks apps start retail-grocery-ltm-memory
-
-# Get the URL
-APP_URL=$(databricks apps get retail-grocery-ltm-memory --output json | jq -r '.url')
-echo "App URL: $APP_URL"
-
-# Test the API
-TOKEN=$(databricks auth token | jq -r .access_token)
-curl -X POST "${APP_URL}/invocations" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"input": [{"role": "user", "content": "What stores do you have?"}]}'
-```
-
-Open the app URL in your browser and try the same prompts from Step 13.
-
----
-
-## Troubleshooting
-
-| Issue | Fix |
-|-------|-----|
-| `relation "store" does not exist` | Memory tables not created — restart the app, it auto-creates on first request |
-| App stuck in `STOPPED` | `databricks apps start retail-grocery-ltm-memory` |
-| `302` error on API call | Use OAuth token (`databricks auth token`), not a PAT |
-| Lakebase permission denied | Re-run Step 16 (deployed). For local: verify CLI auth is valid (`databricks auth token`) |
-| `bundle validate` fails | Check `value_from` names match resource `name` fields exactly |
-| Vector Search returns empty | Verify the index has data in Catalog Explorer |
-| Local app Lakebase error | Check PGHOST/PGUSER in `.env`. If token expired, restart app after `databricks auth login` |
-| Genie permission error | Grant Can Run to your user (Step 11) or app SP (Step 16) |
-| View app logs | **Apps > retail-grocery-ltm-memory > Logs** or `databricks apps get-logs retail-grocery-ltm-memory` |
+| Lakebase パーミッションエラー | CLI 認証が有効か確認（`databricks auth token`）。期限切れの場合は `databricks auth login` |
+| Vector Search が空を返す | Catalog Explorer でインデックスにデータがあるか確認。Triggered Sync を再実行 |
+| Genie パーミッションエラー | Genie Space の Share で自分のユーザーに Can Run を付与 |
+| Apps デプロイ後にクラッシュ | **Apps > アプリ名 > Logs** でエラーログを確認。PyPI 接続エラーの場合はインフラチームに確認 |
+| Apps の上限（300）エラー | 不要なアプリを削除してから再デプロイ |
