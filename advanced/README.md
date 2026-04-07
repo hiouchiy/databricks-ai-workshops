@@ -43,9 +43,9 @@ workshop-qsic/
 │   ├── utils_memory.py              # 7つのメモリツール（取得/保存/削除 + タスク/会話）
 │   ├── utils.py                     # 認証・スレッド管理・ストリーミングヘルパー
 │   ├── start_server.py              # MLflow AgentServer 起動
-│   ├── evaluate_agent.py            # 9つの MLflow スコアラーによるエージェント評価（英語版）
-│   ├── ja_evaluate_agent.py         # 日本語版エージェント評価（3テストケース）
-│   └── ja_evaluate_agent_advanced.py # 日本語版高度な評価（20テストケース + カスタムスコアラー）
+│   ├── evaluate_agent_multi_turn.py           # マルチターン評価（会話シミュレータ、3テストケース）
+│   ├── evaluate_agent_multi_turn_advanced.py  # マルチターン高度な評価（20テストケース + カスタムスコアラー）
+│   └── evaluate_agent_chat.py                 # チャット評価（expected_facts、ネイティブ/MCP 切替可能）
 │
 ├── e2e-chatbot-app-next/            # フルスタックチャット UI
 │   ├── client/                      # React + Vite フロントエンド
@@ -119,7 +119,7 @@ uv run quickstart
 クイックスタートスクリプトが以下を実行します：
 1. `uv`、`nvm`、Databricks CLI のインストールを確認
 2. Databricks OAuth 認証を設定
-3. MLflow 実験を作成・リンク
+3. MLflow 実験を2つ作成・リンク（モニタリング用 + 評価用）
 4. メモリストレージ用に Lakebase を設定
 5. `.env` ファイルを生成
 6. エージェントサーバーとチャットアプリを起動
@@ -227,18 +227,24 @@ Steps:
    DATABRICKS_CONFIG_PROFILE=DEFAULT
    ```
 
-3. **MLflow 実験の作成**
+3. **MLflow 実験の作成**（モニタリング用 + 評価用の2つ）
 
    ```bash
    DATABRICKS_USERNAME=$(databricks current-user me | jq -r .userName)
-   databricks experiments create-experiment /Users/$DATABRICKS_USERNAME/agents-on-apps
+
+   # モニタリング用（アプリ実行時のトレース記録）
+   databricks experiments create-experiment /Users/$DATABRICKS_USERNAME/freshmart-agent-monitoring
+
+   # 評価用（評価スクリプト実行時）
+   databricks experiments create-experiment /Users/$DATABRICKS_USERNAME/freshmart-agent-evaluation
    ```
 
 4. **環境変数の設定**
 
    ```bash
    cp .env.example .env
-   # .env を編集し、実験 ID・Lakebase インスタンス・Genie スペース ID・Vector Search インデックスを設定
+   # .env を編集し、MLFLOW_EXPERIMENT_ID（モニタリング用）・MLFLOW_EVAL_EXPERIMENT_ID（評価用）・
+   # Lakebase インスタンス・Genie スペース ID・Vector Search インデックスを設定
    ```
 
 5. **アプリケーションの起動**
@@ -282,21 +288,67 @@ Steps:
 | `save_conversation_summary` | 会話終了時の状態を記録（サイレント） | ユーザーが「さようなら」と発言 |
 | `search_past_conversations` | 過去のやり取りを検索 | 「これまで何を話した？」 |
 
+### トレース送信先の切り替え
+
+デフォルトではトレースは MLflow Experiment に記録されます。`.env` で `MLFLOW_TRACING_DESTINATION` を設定すると、Unity Catalog の Delta Table に送信先を切り替えられます。
+
+```bash
+# .env に追加（設定しなければ MLflow Experiment に記録）
+MLFLOW_TRACING_DESTINATION=<CATALOG>.<SCHEMA>
+```
+
+| 設定 | 送信先 | 特徴 |
+|------|--------|------|
+| 未設定（デフォルト） | MLflow Experiment | Experiments UI でトレース確認。手軽 |
+| `<CATALOG>.<SCHEMA>` | Unity Catalog Delta Table | SQL クエリ可能。長期保持。UC 権限で管理 |
+
+Delta Table に送信する場合は、初回のみ **Databricks ノートブック上で** トレーステーブルの初期作成が必要です（ローカルからは実行不可）。紐付ける Experiment にはトレースが1件も入っていない必要があるため、必要に応じて新しい空の Experiment を作成してください。
+
+```python
+import os
+os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "<WAREHOUSE-ID>"
+
+import mlflow
+from mlflow.entities import UCSchemaLocation
+
+mlflow.tracing.set_experiment_trace_location(
+    location=UCSchemaLocation(catalog_name="<CATALOG>", schema_name="<SCHEMA>"),
+    experiment_id="<MONITORING-EXPERIMENT-ID>",
+)
+```
+
+詳細は [MLflow トレースを Unity Catalog に送信する](https://docs.databricks.com/aws/en/mlflow3/genai/tracing/trace-unity-catalog) を参照してください。
+
 ### モジュール 4：エージェントの評価
 
 日本語のテストケースを使った評価スイートを実行します：
 
 ```bash
-# 基本評価（3テストケース、9つの定義済みスコアラー）
-uv run ja-agent-evaluate
+# マルチターン評価（会話シミュレータ、3テストケース、9つの定義済みスコアラー）
+uv run agent-evaluate
 
-# 高度な評価（20テストケース、定義済み + カスタムスコアラー）
-uv run ja-agent-evaluate-advanced
+# マルチターン高度な評価（20テストケース、定義済み + カスタムスコアラー）
+uv run agent-evaluate-advanced
+
+# チャット評価（expected_facts ベース、ネイティブ/MCP 切替可能）
+uv run agent-evaluate-chat                # ネイティブ版（デフォルト）
+uv run agent-evaluate-chat --mode mcp     # MCP 版（要サーバー起動）
 ```
 
 **定義済みスコアラー**：Completeness、ConversationalSafety、ConversationCompleteness、Fluency、KnowledgeRetention、RelevanceToQuery、Safety、ToolCallCorrectness、UserFrustration
 
 **カスタムスコアラー**（高度な評価のみ）：tool_routing_accuracy（ツール選択の正確性）、policy_specificity（ポリシー回答の具体性）、retail_tone_appropriateness（接客トーンの適切さ）
+
+> **チャット評価の `--mode` について：**
+>
+> | | ネイティブ版（デフォルト） | MCP 版 |
+> |---|---|---|
+> | Vector Search | DatabricksVectorSearch（直接呼び出し） | MCP 経由 |
+> | Lakebase メモリ | なし（評価に不要） | あり |
+> | サーバー起動 | **不要** | **必要**（別プロセス） |
+> | RETRIEVER スパン | 生成される | 生成されない |
+>
+> MCP 版は Lakebase の非同期処理と評価フレームワークのイベントループが競合するため、エージェントを別プロセス（サーバー）で起動して HTTP 経由で呼び出します。MCP 版を実行する際は、別ターミナルで `uv run start-app --no-ui` を起動してから `uv run agent-evaluate-chat --mode mcp` を実行してください。
 
 ### モジュール 5：Databricks Apps へのデプロイ
 
@@ -506,7 +558,9 @@ workshop-qsic/
 │   ├── utils_memory.py              # 7 memory tools (get/save/delete + task/conversation)
 │   ├── utils.py                     # Auth, thread management, streaming helpers
 │   ├── start_server.py              # MLflow AgentServer bootstrap
-│   └── evaluate_agent.py            # Agent evaluation with 9 MLflow scorers
+│   ├── evaluate_agent_multi_turn.py           # Multi-turn evaluation (conversation simulator, 3 test cases)
+│   ├── evaluate_agent_multi_turn_advanced.py  # Advanced multi-turn evaluation (20 test cases + custom scorers)
+│   └── evaluate_agent_chat.py                 # Chat evaluation (expected_facts, native/MCP switchable)
 │
 ├── e2e-chatbot-app-next/            # Full-stack chat UI
 │   ├── client/                      # React + Vite frontend
@@ -579,7 +633,7 @@ uv run quickstart
 The quickstart script will:
 1. Verify `uv`, `nvm`, and Databricks CLI installations
 2. Configure Databricks OAuth authentication
-3. Create and link an MLflow experiment
+3. Create and link two MLflow experiments (monitoring + evaluation)
 4. Configure Lakebase for memory storage
 5. Generate your `.env` file
 6. Start the agent server and chat app
@@ -687,18 +741,24 @@ Steps:
    DATABRICKS_CONFIG_PROFILE=DEFAULT
    ```
 
-3. **Create an MLflow experiment**
+3. **Create MLflow experiments** (monitoring + evaluation)
 
    ```bash
    DATABRICKS_USERNAME=$(databricks current-user me | jq -r .userName)
-   databricks experiments create-experiment /Users/$DATABRICKS_USERNAME/agents-on-apps
+
+   # Monitoring (app runtime tracing)
+   databricks experiments create-experiment /Users/$DATABRICKS_USERNAME/freshmart-agent-monitoring
+
+   # Evaluation (evaluation scripts)
+   databricks experiments create-experiment /Users/$DATABRICKS_USERNAME/freshmart-agent-evaluation
    ```
 
 4. **Configure environment variables**
 
    ```bash
    cp .env.example .env
-   # Edit .env with your experiment ID, Lakebase instance, Genie space ID, Vector Search index
+   # Edit .env with MLFLOW_EXPERIMENT_ID (monitoring), MLFLOW_EVAL_EXPERIMENT_ID (evaluation),
+   # Lakebase instance, Genie space ID, Vector Search index
    ```
 
 5. **Start the application**

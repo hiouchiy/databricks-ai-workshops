@@ -4,7 +4,7 @@ bundle:
 resources:
   apps:
     retail_grocery_ltm_memory:
-      name: "retail-grocery-ltm-memory"
+      name: "freshmart-agent-hiroshi"
       description: "Retail grocery conversational agent with Genie, Vector Search, and long-term memory"
       source_code_path: ./
       config:
@@ -21,51 +21,21 @@ resources:
           - name: CHAT_PROXY_TIMEOUT_SECONDS
             value: "300"
           - name: MLFLOW_EXPERIMENT_ID
-            value_from: "experiment"
-          # TODO: Replace with your Lakebase autoscaling project and branch
+            value: "1159599290140385"
           - name: LAKEBASE_AUTOSCALING_PROJECT
-            value_from: "lakebase_memory_project"
+            value: "freshmart-agent-hiroshi"
           - name: LAKEBASE_AUTOSCALING_BRANCH
-            value_from: "lakebase_memory_branch"
-          # TODO: Replace with your Genie Space ID
+            value: "production"
           - name: GENIE_SPACE_ID
-            value_from: "retail_grocery_genie"
-          # TODO: Replace with your Vector Search index (catalog/schema/index-name)
+            value: "01f12c1c31cd18a7989885e681afa7fc"
           - name: VECTOR_SEARCH_INDEX
-            value_from: "policy_docs_index"
-          # Prompt Registry: system prompt loaded from Unity Catalog
-          # NOTE: Uses static value (not value_from) — MLflow prompts are not UC securables
-          - name: PROMPT_REGISTRY_NAME
-            value: "<catalog>.<schema>.freshmart_system_prompt"
-      # Resources which this app has access to
+            value: "hiroshi.agent_demo_2026.policy_docs_index"
       resources:
-        # TODO: Replace experiment_id with your MLflow experiment ID
-        - name: "experiment"
-          experiment:
-            experiment_id: "<your-experiment-id>"
-            permission: "CAN_MANAGE"
-        # TODO: Replace space_id with your Genie Space ID
         - name: "retail_grocery_genie"
           genie_space:
-            name: "Retail Grocery Data"
-            space_id: "<your-genie-space-id>"
+            name: "フレッシュマート 小売データ"
+            space_id: "01f12c1c31cd18a7989885e681afa7fc"
             permission: "CAN_RUN"
-        # TODO: Replace with your Lakebase autoscaling project and branch names
-        - name: "lakebase_memory_project"
-          lakebase_autoscaling_project:
-            project_name: "<your-lakebase-project-name>"
-            permission: "CAN_CONNECT_AND_CREATE"
-        - name: "lakebase_memory_branch"
-          lakebase_autoscaling_branch:
-            project_name: "<your-lakebase-project-name>"
-            branch_name: "<your-lakebase-branch-name>"
-            permission: "CAN_CONNECT_AND_CREATE"
-        # TODO: Replace with your Vector Search index full name
-        - name: "policy_docs_index"
-          uc_securable:
-            securable_full_name: "<catalog>.<schema>.policy_docs_index"
-            securable_type: "TABLE"
-            permission: "SELECT"
 
 targets:
   dev:
@@ -81,4 +51,4 @@ targets:
     resources:
       apps:
         retail_grocery_ltm_memory:
-          name: retail-grocery-ltm-memory
+          name: freshmart-agent-hiroshi

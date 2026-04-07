@@ -1,6 +1,8 @@
 command: ["uv", "run", "start-app"]
 
 env:
+  - name: UV_INDEX_URL
+    value: "https://pypi-proxy.dev.databricks.com/simple"
   - name: MLFLOW_TRACKING_URI
     value: "databricks"
   - name: MLFLOW_REGISTRY_URI
@@ -12,13 +14,12 @@ env:
   - name: CHAT_PROXY_TIMEOUT_SECONDS
     value: "300"
   - name: MLFLOW_EXPERIMENT_ID
-    valueFrom: experiment
-  # TODO: Replace with your Lakebase instance name
-  - name: LAKEBASE_INSTANCE_NAME
-    valueFrom: lakebase_memory # injects hostname → resolved by code
-  # TODO: Replace with your Genie Space ID
+    value: "1159599290140385"
+  - name: LAKEBASE_AUTOSCALING_PROJECT
+    value: "freshmart-agent-hiroshi"
+  - name: LAKEBASE_AUTOSCALING_BRANCH
+    value: "production"
   - name: GENIE_SPACE_ID
-    valueFrom: retail_grocery_genie # injects space_id
-  # TODO: Replace with your Vector Search index (catalog/schema/index-name)
+    value: "01f12c1c31cd18a7989885e681afa7fc"
   - name: VECTOR_SEARCH_INDEX
-    valueFrom: policy_docs_index # injects securable_full_name (dots) → converted by code
+    value: "hiroshi.agent_demo_2026.policy_docs_index"

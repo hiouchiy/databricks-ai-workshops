@@ -238,6 +238,7 @@ def setup_env_file() -> None:
             "# Databricks configuration\n"
             "DATABRICKS_CONFIG_PROFILE=DEFAULT\n"
             "MLFLOW_EXPERIMENT_ID=\n"
+            "MLFLOW_EVAL_EXPERIMENT_ID=\n"
             'MLFLOW_TRACKING_URI="databricks"\n'
             'MLFLOW_REGISTRY_URI="databricks-uc"\n'
         )
@@ -465,14 +466,9 @@ def get_databricks_username(profile_name: str) -> str:
         sys.exit(1)
 
 
-def create_mlflow_experiment(profile_name: str, username: str) -> tuple[str, str]:
-    """Create an MLflow experiment and return (name, id)."""
-    print_step("Creating MLflow experiment...")
-
-    experiment_name = f"/Users/{username}/agents-on-apps"
-
+def _create_single_experiment(profile_name: str, base_name: str) -> tuple[str, str]:
+    """Create a single MLflow experiment and return (name, id)."""
     try:
-        # Try to create with default name
         result = run_command(
             [
                 "databricks",
@@ -480,7 +476,7 @@ def create_mlflow_experiment(profile_name: str, username: str) -> tuple[str, str
                 profile_name,
                 "experiments",
                 "create-experiment",
-                experiment_name,
+                base_name,
                 "--output",
                 "json",
             ],
@@ -489,13 +485,13 @@ def create_mlflow_experiment(profile_name: str, username: str) -> tuple[str, str
 
         if result.returncode == 0:
             experiment_id = json.loads(result.stdout).get("experiment_id", "")
-            print_success(f"Created experiment '{experiment_name}' with ID: {experiment_id}")
-            return experiment_name, experiment_id
+            print_success(f"Created experiment '{base_name}' with ID: {experiment_id}")
+            return base_name, experiment_id
 
         # Name already exists, try with random suffix
-        print("Experiment name already exists, creating with random suffix...")
+        print(f"Experiment '{base_name}' already exists, creating with random suffix...")
         random_suffix = secrets.token_hex(4)
-        experiment_name = f"/Users/{username}/agents-on-apps-{random_suffix}"
+        new_name = f"{base_name}-{random_suffix}"
 
         result = run_command(
             [
@@ -504,19 +500,36 @@ def create_mlflow_experiment(profile_name: str, username: str) -> tuple[str, str
                 profile_name,
                 "experiments",
                 "create-experiment",
-                experiment_name,
+                new_name,
                 "--output",
                 "json",
             ]
         )
         experiment_id = json.loads(result.stdout).get("experiment_id", "")
-        print_success(f"Created experiment '{experiment_name}' with ID: {experiment_id}")
-        return experiment_name, experiment_id
+        print_success(f"Created experiment '{new_name}' with ID: {experiment_id}")
+        return new_name, experiment_id
 
     except Exception as e:
-        print_error(f"Failed to create MLflow experiment: {e}")
+        print_error(f"Failed to create MLflow experiment '{base_name}': {e}")
         print_troubleshooting_api()
         sys.exit(1)
+
+
+def create_mlflow_experiment(
+    profile_name: str, username: str
+) -> tuple[str, str, str, str]:
+    """Create two MLflow experiments (monitoring + evaluation) and return
+    (monitoring_name, monitoring_id, eval_name, eval_id)."""
+    print_step("Creating MLflow experiments (monitoring + evaluation)...")
+
+    monitoring_name, monitoring_id = _create_single_experiment(
+        profile_name, f"/Users/{username}/freshmart-agent-monitoring"
+    )
+    eval_name, eval_id = _create_single_experiment(
+        profile_name, f"/Users/{username}/freshmart-agent-evaluation"
+    )
+
+    return monitoring_name, monitoring_id, eval_name, eval_id
 
 
 def check_lakebase_required() -> bool:
@@ -1286,14 +1299,44 @@ Examples:
         username = get_databricks_username(profile_name)
         print(f"Username: {username}")
 
-        experiment_name, experiment_id = create_mlflow_experiment(profile_name, username)
+        monitoring_name, monitoring_id, eval_name, eval_id = create_mlflow_experiment(
+            profile_name, username
+        )
 
-        # Step 5: Update .env with experiment ID
-        update_env_file("MLFLOW_EXPERIMENT_ID", experiment_id)
-        print_success("Updated .env with experiment ID")
+        # Step 5: Update .env with experiment IDs
+        update_env_file("MLFLOW_EXPERIMENT_ID", monitoring_id)
+        update_env_file("MLFLOW_EVAL_EXPERIMENT_ID", eval_id)
+        print_success("Updated .env with monitoring and evaluation experiment IDs")
 
-        # Step 5b: Update databricks.yml to use literal experiment ID
-        update_databricks_yml_experiment(experiment_id)
+        # Step 5b: Update databricks.yml to use literal experiment ID (monitoring)
+        update_databricks_yml_experiment(monitoring_id)
+
+        # Step 5c: Tracing destination (optional: Unity Catalog Delta Table)
+        print_step("Tracing destination configuration")
+        print("  Default: MLflow Experiment (recommended for getting started)")
+        print("  Optional: Unity Catalog Delta Table (SQL queryable, long-term retention)")
+        use_delta = input("\n  Send traces to Unity Catalog Delta Table? (y/N): ").strip().lower()
+        if use_delta == "y":
+            default_schema = f"{args.catalog}.{args.schema}" if hasattr(args, "catalog") and hasattr(args, "schema") and args.catalog and args.schema else ""
+            tracing_dest = input(f"  Unity Catalog schema (catalog.schema) [{default_schema}]: ").strip() or default_schema
+            if tracing_dest:
+                update_env_file("MLFLOW_TRACING_DESTINATION", tracing_dest)
+                # Link experiment to UC schema
+                try:
+                    run_command(
+                        ["python", "-c",
+                         f"import mlflow; mlflow.set_experiment_trace_location("
+                         f"experiment_id='{monitoring_id}', uc_schema='{tracing_dest}')"],
+                        check=False,
+                    )
+                    print_success(f"Tracing destination set to Unity Catalog: {tracing_dest}")
+                except Exception:
+                    print_success(f"MLFLOW_TRACING_DESTINATION set to {tracing_dest}")
+                    print("  Note: Run mlflow.set_experiment_trace_location() manually if needed")
+            else:
+                print("  Skipped — using MLflow Experiment (default)")
+        else:
+            print("  Using MLflow Experiment (default)")
 
         # Step 6: Lakebase setup (if needed for memory features)
         lakebase_config = None
@@ -1323,11 +1366,22 @@ Examples:
 ✓ Databricks authenticated with profile: {profile_name}
 ✓ Configuration files created (.env)
 
-✓ MLflow experiment created for tracing and evaluation: {experiment_name}
-✓ Experiment ID: {experiment_id}"""
+✓ MLflow monitoring experiment: {monitoring_name}
+  Experiment ID: {monitoring_id}
+✓ MLflow evaluation experiment: {eval_name}
+  Experiment ID: {eval_id}"""
 
-        if host and experiment_id:
-            summary += f"\n  {host}/ml/experiments/{experiment_id}"
+        if host and monitoring_id:
+            summary += f"\n  {host}/ml/experiments/{monitoring_id}"
+        if host and eval_id:
+            summary += f"\n  {host}/ml/experiments/{eval_id}"
+
+        _tracing_dest = os.environ.get("MLFLOW_TRACING_DESTINATION", "")
+        if _tracing_dest:
+            summary += f"\n\n✓ Tracing destination: Unity Catalog ({_tracing_dest})"
+            summary += "\n  ⚠ トレーステーブルの初期作成が必要です（下記参照）"
+        else:
+            summary += "\n\n✓ Tracing destination: MLflow Experiment (default)"
 
         if lakebase_config:
             if lakebase_config["type"] == "provisioned":
@@ -1342,6 +1396,44 @@ Examples:
 
         summary += "\nNext step: Run 'uv run start-app' to start the agent locally\n"
         print(summary)
+
+        # Delta Table 送信を選択した場合、ノートブックで実行すべき手順を表示
+        if _tracing_dest and "." in _tracing_dest:
+            _cat, _sch = _tracing_dest.split(".", 1)
+            print("=" * 60)
+            print("⚠ Unity Catalog トレーステーブルの初期作成が必要です")
+            print("=" * 60)
+            print()
+            print("トレーステーブルは Databricks ノートブック上でのみ作成可能です。")
+            print("ローカルからは実行できません。")
+            print()
+            print("【手順】")
+            print("1. Databricks ワークスペースでノートブックを開く")
+            print("2. SQL Warehouse ID を確認する：")
+            print("   Databricks UI > SQL Warehouses > 対象のウェアハウス > 概要タブの ID")
+            print("   または CLI: databricks warehouses list -o json | jq '.[].id'")
+            print("3. 以下のコードをノートブックで実行する：")
+            print()
+            print("```python")
+            print("import os")
+            print(f'os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "<WAREHOUSE-ID>"  # 上で確認した ID に置き換え')
+            print()
+            print("import mlflow")
+            print("from mlflow.entities import UCSchemaLocation")
+            print()
+            print("mlflow.tracing.set_experiment_trace_location(")
+            print(f'    location=UCSchemaLocation(catalog_name="{_cat}", schema_name="{_sch}"),')
+            print(f'    experiment_id="{monitoring_id}",')
+            print(")")
+            print("```")
+            print()
+            print("実行後、以下の3つの Delta Table が自動作成されます：")
+            print(f"  - {_tracing_dest}.mlflow_experiment_trace_otel_spans")
+            print(f"  - {_tracing_dest}.mlflow_experiment_trace_otel_logs")
+            print(f"  - {_tracing_dest}.mlflow_experiment_trace_otel_metrics")
+            print()
+            print("テーブル作成後に 'uv run start-app' を実行してください。")
+            print("=" * 60)
 
     except KeyboardInterrupt:
         print("\n\nSetup cancelled.")

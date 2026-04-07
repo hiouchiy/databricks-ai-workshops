@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 
 import mlflow
 from dotenv import load_dotenv
@@ -21,6 +22,12 @@ from mlflow.types.responses import ResponsesAgentRequest
 
 # .envファイルが存在する場合、環境変数を読み込む
 load_dotenv(dotenv_path=".env", override=True)
+
+# 評価用 Experiment に切り替え（モニタリング用と分離するため）
+_eval_exp_id = os.environ.get("MLFLOW_EVAL_EXPERIMENT_ID")
+if _eval_exp_id:
+    os.environ["MLFLOW_EXPERIMENT_ID"] = _eval_exp_id
+
 logging.getLogger("mlflow.utils.autologging_utils").setLevel(logging.ERROR)
 
 # @invokeデコレータで登録された関数を見つけるために、agentモジュールをインポートする必要がある

@@ -24,6 +24,9 @@ dependencies = [
 requires = ["setuptools>=75.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.packages.find]
+include = ["agent_server*", "scripts*"]
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
@@ -34,9 +37,9 @@ dev = [
 quickstart = "scripts.quickstart:main"
 start-app = "scripts.start_app:main"
 start-server = "agent_server.start_server:main"
-agent-evaluate = "agent_server.evaluate_agent:evaluate"
-ja-agent-evaluate = "agent_server.ja_evaluate_agent:evaluate"
-ja-agent-evaluate-advanced = "agent_server.ja_evaluate_agent_advanced:evaluate"
+agent-evaluate = "agent_server.evaluate_agent_multi_turn:evaluate"
+agent-evaluate-advanced = "agent_server.evaluate_agent_multi_turn_advanced:evaluate"
+agent-evaluate-chat = "agent_server.evaluate_agent_chat:evaluate"
 discover-tools = "scripts.discover_tools:main"
 register-prompt = "scripts.register_prompt:main"
 ja-register-prompt = "scripts.ja_register_prompt:main"
