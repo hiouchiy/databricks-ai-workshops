@@ -155,15 +155,20 @@ This folder contains scripts and source documents to generate all the data requi
 
 ## Folder Structure
 
+> **Note:** The English original scripts and policy docs have been moved to `english/` subdirectories and are not included in the repository. The `ja_*` files are the primary versions used in the workshop.
+
 ```
 data/
 ├── README.md
-├── create_structured_data.py     # PySpark script — generates structured tables (run on cluster or locally)
-├── create_chunked_docs.py        # PySpark script — chunks policy docs (requires UC Volumes access)
-├── execute_sql.py                # Local script — generates structured tables via SQL REST API
-├── execute_chunking.py           # Local script — chunks policy docs via SQL REST API
-├── run_sql_generation.py         # Local script — generates structured tables via Databricks CLI
-└── policy_docs/                  # Source markdown policy documents (7 files)
+├── ja_create_structured_data.py  # PySpark script — generates structured tables (Japanese data)
+├── ja_create_chunked_docs.py     # PySpark script — chunks policy docs (requires UC Volumes access)
+├── ja_execute_sql.py             # Local script — generates structured tables via SQL REST API
+├── ja_execute_chunking.py        # Local script — chunks policy docs via SQL REST API
+├── ja_run_sql_generation.py      # Local script — generates structured tables via Databricks CLI
+├── english/                      # English originals (local only, not in repo)
+└── policy_docs/                  # Source markdown policy documents
+    ├── ja_*.md                   # Japanese policy documents (7 files)
+    └── english/                  # English originals (local only, not in repo)
     ├── customer_service_guidelines.md
     ├── delivery_pickup_procedures.md
     ├── membership_loyalty_program.md
