@@ -1682,6 +1682,7 @@ def main():
         print("  トレース送信先の選択:")
         print("    デフォルト: MLflow Experiment（すぐに使える）")
         print("    オプション: Unity Catalog Delta Table（SQL クエリ可能、長期保持）")
+        tracing_dest = ""
         use_delta = input("\n  Unity Catalog Delta Table に送信しますか？ (y/N): ").strip().lower()
         if use_delta == "y":
             tracing_dest = f"{catalog}.{schema}"
@@ -1712,9 +1713,8 @@ def main():
         if host:
             summary += f"\n  {host}/ml/experiments/{monitoring_id}"
 
-        _tracing_dest = os.environ.get("MLFLOW_TRACING_DESTINATION", "")
-        if _tracing_dest:
-            summary += f"\n\n✓ トレース送信先: Unity Catalog ({_tracing_dest})"
+        if tracing_dest:
+            summary += f"\n\n✓ トレース送信先: Unity Catalog ({tracing_dest})"
             summary += "\n  ⚠ トレーステーブルの初期作成が必要です（下記参照）"
         else:
             summary += "\n\n✓ トレース送信先: MLflow Experiment（デフォルト）"
@@ -1729,8 +1729,8 @@ def main():
         print(summary)
 
         # Delta Table の手順表示（選択した場合のみ）
-        if _tracing_dest and "." in _tracing_dest:
-            _cat, _sch = _tracing_dest.split(".", 1)
+        if tracing_dest and "." in tracing_dest:
+            _cat, _sch = tracing_dest.split(".", 1)
             print("=" * 60)
             print("⚠ Unity Catalog トレーステーブルの初期作成が必要です")
             print("=" * 60)
@@ -1758,9 +1758,9 @@ def main():
             print("```")
             print()
             print("実行後、以下の3つの Delta Table が自動作成されます：")
-            print(f"  - {_tracing_dest}.mlflow_experiment_trace_otel_spans")
-            print(f"  - {_tracing_dest}.mlflow_experiment_trace_otel_logs")
-            print(f"  - {_tracing_dest}.mlflow_experiment_trace_otel_metrics")
+            print(f"  - {tracing_dest}.mlflow_experiment_trace_otel_spans")
+            print(f"  - {tracing_dest}.mlflow_experiment_trace_otel_logs")
+            print(f"  - {tracing_dest}.mlflow_experiment_trace_otel_metrics")
             print()
             print("テーブル作成後に 'uv run start-app' を実行してください。")
             print("=" * 60)
