@@ -1,76 +1,92 @@
-# FreshMart Return & Refund Policy
+# フレッシュマート 返品・返金ポリシー
 
-**Effective Date:** January 1, 2025
-**Last Updated:** January 15, 2025
+**施行日：** 2025年1月1日
+**最終更新日：** 2025年1月15日
 
-## General Return Policy
+## 返品に関する基本方針
 
-FreshMart is committed to customer satisfaction. If you are not completely satisfied with your purchase, we offer the following return options:
+フレッシュマートでは、お客様にご満足いただける商品をお届けすることを第一に考えております。万が一、ご購入いただいた商品にご不満がございましたら、以下の返品・返金制度をご利用ください。
 
-### Standard Returns (Non-Perishable Items)
-- **90-day return window** from date of purchase
-- Items must be in original packaging, unopened
-- Receipt or proof of purchase required
-- Refund issued to original payment method within 5-7 business days
+### 一般食品・日用品（常温保存品）の返品
 
-### Perishable Items (Produce, Dairy, Meat, Bakery, Deli)
-- **48-hour return window** from date of purchase
-- Items may be returned in any condition if quality is unsatisfactory
-- No receipt required for items under $25 — we can look up your purchase by loyalty card
-- Immediate refund or exchange offered at the service desk
+- ご購入日より **90日以内** に返品をお申し出ください
+- 商品は未開封で、元のパッケージに入った状態に限ります
+- レシートまたはご購入の証明が必要です
+- 返金はお支払い時と同じ方法にて、5〜7営業日以内に処理いたします
 
-### Frozen Foods
-- **30-day return window** from date of purchase
-- Must show signs of quality issue (freezer burn, damaged packaging)
-- Receipt required for refunds over $15
+### 生鮮食品（青果・乳製品・精肉・ベーカリー・惣菜）の返品
 
-## Refund Methods
+- ご購入日より **48時間以内** にお申し出ください
+- 品質にご満足いただけない場合、商品の状態を問わず返品をお受けいたします
+- **¥3,000以下** の商品については、レシートがなくてもポイントカードの履歴で確認可能です
+- サービスカウンターにて、即時返金または同等品との交換をいたします
 
-| Original Payment | Refund Method | Processing Time |
-|-----------------|---------------|-----------------|
-| Credit Card | Original card | 5-7 business days |
-| Debit Card | Original card | 3-5 business days |
-| Cash | Cash at register | Immediate |
-| Mobile Pay | Original account | 5-7 business days |
-| Gift Card | New gift card | Immediate |
+### 冷凍食品の返品
 
-## Special Cases
+- ご購入日より **30日以内** にお申し出ください
+- 冷凍焼けや包装の破損など、品質上の問題が確認できることが条件です
+- **¥1,500を超える** 返金の場合はレシートが必要です
 
-### Product Recalls
-- Full refund regardless of time since purchase
-- No receipt required
-- Return at any FreshMart location
-- See our Product Safety & Recalls policy for details
+## 返金方法
 
-### Price Matching
-- If an item goes on sale within **7 days** of your purchase, bring your receipt for a price adjustment
-- Only applies to FreshMart's own sales — competitor price matching is handled separately
+| お支払い方法 | 返金方法 | 処理期間 |
+|------------|---------|---------|
+| クレジットカード | ご利用カードへの返金 | 5〜7営業日 |
+| デビットカード | ご利用カードへの返金 | 3〜5営業日 |
+| 現金 | レジにて現金返金 | 即時 |
+| モバイル決済（PayPay・楽天ペイ等） | ご利用アカウントへの返金 | 5〜7営業日 |
+| ギフトカード | 新しいギフトカードの発行 | 即時 |
 
-### Bulk/Case Purchases
-- Partial returns accepted — return unopened items from the case
-- Refund calculated per-unit based on case price divided by quantity
+## 特別な場合の対応
 
-## Exceptions — Non-Returnable Items
-- Gift cards and prepaid cards
-- Magazine and newspaper purchases
-- Special-order items (custom cakes, catering orders) — see cancellation policy
-- Items purchased with a final-sale promotional discount
+### 商品リコール
 
-## No-Receipt Returns
-- Up to **$50 per transaction** without receipt
-- Must present valid government-issued ID
-- Refund issued as FreshMart store credit (gift card)
-- Maximum **3 no-receipt returns per rolling 90-day period**
+- ご購入時期に関わらず、全額返金いたします
+- レシートは不要です
+- 全国のフレッシュマート各店舗にてお受けいたします
+- 詳細は「商品安全・リコール情報」をご確認ください
 
-## How to Return
+### 価格保証（セール差額返金）
 
-1. **In-Store:** Bring the item and receipt to the Customer Service desk at any FreshMart location
-2. **Delivery Orders:** Contact customer support within the return window. A refund will be issued; no need to return perishable items.
-3. **Curbside Pickup Orders:** Return items at the Customer Service desk during your next visit
+- ご購入後 **7日以内** に同一商品がセール価格となった場合、レシートをお持ちいただければ差額を返金いたします
+- フレッシュマート自社のセールに限ります（他社の価格との照合については別途ご案内いたします）
 
-## Contact
+### まとめ買い・箱買いの返品
 
-For questions about returns or refunds:
-- **Phone:** 1-800-FRESHMT (1-800-373-7468)
-- **Email:** returns@freshmart.example.com
-- **In-Store:** Customer Service desk
+- 一部のみの返品も承ります（未開封の商品に限ります）
+- 返金額は、箱単位の価格を個数で割った単価に基づいて算出いたします
+
+## 返品をお受けできない商品
+
+以下の商品につきましては、原則として返品・返金の対象外とさせていただきます。
+
+- ギフトカード・プリペイドカード
+- 雑誌・新聞
+- オーダーメイド商品（特注ケーキ、ケータリング等）— キャンセルポリシーをご参照ください
+- 最終セール・在庫処分セールにてご購入の商品
+
+## レシートなしでの返品
+
+レシートをお持ちでない場合も、以下の条件にて返品を承ります。
+
+- 1回あたり **¥5,000まで** の商品が対象です
+- 運転免許証やマイナンバーカードなど、写真付き本人確認書類のご提示が必要です
+- 返金はフレッシュマートのストアクレジット（ギフトカード）にて発行いたします
+- **90日間で3回まで** のご利用とさせていただきます
+
+## 返品方法
+
+1. **店頭での返品：** 商品とレシートをお持ちのうえ、最寄りのフレッシュマート各店舗のサービスカウンターまでお越しください
+2. **配達注文の返品：** 返品受付期間内にカスタマーサポートへご連絡ください。生鮮食品の返送は不要です。確認後、返金処理を行います
+3. **店頭受取注文の返品：** 次回ご来店時に、サービスカウンターへ商品をお持ちください
+
+## お問い合わせ
+
+返品・返金に関するご質問は、下記までお気軽にお問い合わせください。
+
+- **お電話：** 0120-373-946（フリーダイヤル・受付時間 9:00〜18:00）
+- **メール：** henpin@freshmart.example.co.jp
+- **店頭：** 各店舗サービスカウンター
+
+**フレッシュマート株式会社**
+〒106-0032 東京都港区六本木1-1-1 フレッシュマート本社

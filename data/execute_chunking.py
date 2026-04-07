@@ -1,6 +1,8 @@
 """
 Chunk local policy docs and insert into UC table via SQL API for vector search indexing.
 
+Japanese localized version: processes *.md policy docs in the policy_docs directory.
+
 Usage:
     python synthetic_data/execute_chunking.py --profile DEFAULT --warehouse-id <id>
 """
@@ -15,8 +17,8 @@ import time
 import urllib.request
 import urllib.error
 
-CATALOG = "ananyaroy"
-SCHEMA = "retail_wiab"
+CATALOG = "<CATALOG>"
+SCHEMA = "<SCHEMA>"
 FULL_SCHEMA = f"{CATALOG}.{SCHEMA}"
 TARGET_TABLE = f"{FULL_SCHEMA}.policy_docs_chunked"
 DOCS_DIR = os.path.join(os.path.dirname(__file__), "policy_docs")

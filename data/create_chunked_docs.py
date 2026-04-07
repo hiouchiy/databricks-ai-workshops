@@ -2,6 +2,8 @@
 Read policy documents from UC Volume, chunk them, and write to a Unity Catalog table
 for vector search indexing.
 
+Japanese localized version: processes *.md policy docs in the policy_docs directory.
+
 Usage:
     Run as a Databricks notebook after uploading policy docs to the UC Volume.
 

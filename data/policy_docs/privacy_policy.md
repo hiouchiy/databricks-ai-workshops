@@ -1,100 +1,122 @@
-# FreshMart Privacy Policy
+# フレッシュマート 個人情報保護方針（プライバシーポリシー）
 
-**Effective Date:** January 1, 2025
-**Last Updated:** January 10, 2025
+**施行日:** 2025年1月1日
+**最終更新日:** 2025年1月10日
 
-## Information We Collect
+株式会社フレッシュマート（以下「当社」といいます）は、お客様の個人情報の保護を重要な責務と認識し、個人情報の保護に関する法律（以下「個人情報保護法」といいます）をはじめとする関連法令およびガイドラインを遵守し、以下のとおり個人情報保護方針を定め、適切な取り扱いに努めてまいります。
 
-### Information You Provide
-- **Account information:** Name, email, phone number, mailing address
-- **Payment information:** Credit/debit card numbers, billing address (processed by our PCI-compliant payment processor; we store only the last 4 digits)
-- **Loyalty program data:** Purchase history, points balance, tier status
-- **Communications:** Customer service interactions, survey responses, product reviews
+## 取得する個人情報
 
-### Information Collected Automatically
-- **Transaction data:** Items purchased, prices, store location, date/time
-- **App usage:** Pages viewed, features used, device type, operating system
-- **Website activity:** Browsing history on freshmart.example.com, search queries, cookies
-- **Location data:** Store check-ins, delivery addresses (with your permission)
+### お客様からご提供いただく情報
+- **アカウント情報：** 氏名、メールアドレス、電話番号、住所
+- **お支払い情報：** クレジットカード・デビットカード番号、請求先住所（PCI DSS準拠の決済代行事業者が処理し、当社はカード番号の下4桁のみ保管いたします）
+- **ポイントプログラムに関する情報：** 購入履歴、ポイント残高、会員ランク
+- **お問い合わせに関する情報：** カスタマーサービスへのご連絡内容、アンケート回答、商品レビュー
 
-### Information From Third Parties
-- **Delivery partners:** Delivery status and confirmation
-- **Social media:** If you connect your social accounts
-- **Analytics providers:** Aggregated shopping trends
+### 自動的に収集される情報
+- **取引データ：** 購入商品、価格、店舗名、購入日時
+- **アプリ利用情報：** 閲覧ページ、利用機能、端末種別、オペレーティングシステム
+- **ウェブサイト閲覧情報：** freshmart.example.com における閲覧履歴、検索キーワード、Cookie情報
+- **位置情報：** 店舗チェックイン、配達先住所（お客様の同意を得た場合に限ります）
 
-## How We Use Your Information
+### 第三者から取得する情報
+- **配達パートナー：** 配達状況および配達完了の確認情報
+- **ソーシャルメディア：** お客様がSNSアカウントを連携された場合の情報
+- **分析サービス提供事業者：** 集計・匿名化された購買動向データ
 
-- **Order fulfillment:** Processing purchases, deliveries, and returns
-- **Personalization:** Recommending products based on your purchase history and preferences
-- **Loyalty program:** Managing points, tier status, and rewards
-- **Communications:** Sending receipts, order updates, recall alerts, and promotional offers (with your consent)
-- **Improvement:** Analyzing shopping trends to improve product selection, store layout, and services
-- **Safety:** Contacting you about recalled products you may have purchased
-- **Legal compliance:** Tax reporting, fraud prevention, and regulatory requirements
+## 利用目的
 
-## Information Sharing
+当社は、取得した個人情報を以下の目的で利用いたします。
 
-We do **not** sell your personal information. We share data only with:
+- **ご注文の履行：** 商品の購入処理、配達、返品・返金対応のため
+- **パーソナライズ：** 購入履歴やお好みに基づく商品の推薦のため
+- **ポイントプログラムの運営：** ポイント管理、会員ランクの判定、特典のご提供のため
+- **ご連絡：** レシート送付、注文状況のご案内、リコール情報の通知、キャンペーン情報の配信（お客様の同意がある場合）のため
+- **サービスの改善：** 購買動向の分析による品揃え、店舗レイアウト、サービスの改善のため
+- **安全管理：** お客様がご購入された商品にリコール等が発生した場合のご連絡のため
+- **法令遵守：** 税務申告、不正防止、消費者庁・厚生労働省等の行政機関が定める規制要件への対応のため
 
-| Recipient | Purpose | Data Shared |
-|-----------|---------|-------------|
-| Payment processors | Transaction processing | Payment card data |
-| Delivery partners | Order delivery | Name, address, phone, order details |
-| Analytics providers | Service improvement | Anonymized/aggregated usage data |
-| Law enforcement | Legal requirement | As required by law |
+## 第三者への提供
 
-## Your Rights & Choices
+当社は、お客様の個人情報を販売することはありません。以下の場合に限り、必要な範囲で第三者に提供いたします。
 
-### Opt-Out Options
-- **Marketing emails:** Unsubscribe link in every email, or manage in app settings
-- **SMS alerts:** Reply STOP to any text message
-- **Push notifications:** Manage in your device settings
-- **Personalized recommendations:** Toggle off in app settings > Privacy
-- **Cookies:** Manage via browser settings or our cookie preference center
+| 提供先 | 提供目的 | 提供する情報 |
+|--------|----------|--------------|
+| 決済代行事業者 | 決済処理 | クレジットカード等のお支払い情報 |
+| 配達パートナー | 商品の配達 | 氏名、住所、電話番号、注文内容 |
+| 分析サービス提供事業者 | サービス改善 | 匿名化・集計化された利用データ |
+| 法執行機関 | 法令に基づく要請 | 法令により開示が求められる情報 |
 
-### Data Access & Deletion
-- **Access your data:** Request a copy of your data via Settings > Privacy > Download My Data, or email privacy@freshmart.example.com
-- **Delete your data:** Request deletion via Settings > Privacy > Delete My Account
-  - Deletion is processed within 30 days
-  - Some data may be retained for legal/tax purposes (up to 7 years for transaction records)
-  - Loyalty points are forfeited upon account deletion
-- **Correct your data:** Update your profile in the app or contact customer service
+※ 上記の第三者への提供にあたっては、個人情報保護法第27条に基づき、お客様の同意を得るか、法令に定める例外事由に該当する場合に限り行います。
 
-### California Residents (CCPA)
-- Right to know what personal information is collected and how it's used
-- Right to delete personal information
-- Right to opt out of sale of personal information (we do not sell your data)
-- Right to non-discrimination for exercising your rights
+## お客様の権利と選択
 
-## Data Security
+### 配信の停止
+- **マーケティングメール：** 各メール内の配信停止リンク、またはアプリ設定より配信停止が可能です
+- **SMS通知：** 受信したSMSに「停止」と返信してください
+- **プッシュ通知：** 端末の設定画面より管理できます
+- **おすすめ商品の表示：** アプリ設定 ＞ プライバシー よりオフに切り替えできます
+- **Cookie：** ブラウザの設定または当社のCookie設定画面より管理できます
 
-- All data transmitted using TLS 1.3 encryption
-- Payment data handled by PCI DSS Level 1 compliant processors
-- Access to customer data restricted to authorized personnel
-- Regular security audits and penetration testing
-- Multi-factor authentication required for all employee accounts accessing customer data
+### 個人情報保護法に基づく権利（開示等の請求）
 
-## Data Retention
+お客様は、個人情報保護法に基づき、以下の権利を行使することができます。
 
-| Data Type | Retention Period |
-|-----------|-----------------|
-| Account information | Duration of account + 30 days |
-| Transaction history | 7 years (tax compliance) |
-| Loyalty points/tier data | Duration of account |
-| Customer service records | 3 years |
-| App usage analytics | 2 years (anonymized) |
-| Delivery records | 1 year |
+- **利用目的の通知：** 当社が保有するお客様の個人情報について、その利用目的の通知を請求することができます
+- **開示請求：** 当社が保有するお客様の個人情報の開示を請求することができます。アプリの「設定 ＞ プライバシー ＞ マイデータのダウンロード」から、またはメールにて請求が可能です
+- **訂正・追加・削除：** 当社が保有するお客様の個人情報に誤りがある場合、その訂正、追加または削除を請求することができます。アプリ内のプロフィール編集画面、またはカスタマーサービスへのご連絡にて対応いたします
+- **利用停止・消去：** 当社が個人情報を利用目的の範囲を超えて利用している場合、または不正に取得した場合、その利用停止または消去を請求することができます
+- **第三者提供の停止：** 当社がお客様の同意なく個人情報を第三者に提供している場合、その停止を請求することができます
 
-## Children's Privacy
+#### 開示等の請求手続き
+- アプリの「設定 ＞ プライバシー ＞ マイデータの管理」から請求いただけます
+- メール（privacy@freshmart.example.com）でも受け付けております
+- ご本人確認のため、所定の本人確認書類のご提出をお願いする場合がございます
+- 請求への対応は、原則として請求受付日から30日以内に行います
+- アカウント削除を行った場合、ポイント残高は失効いたします
+- 法令上の保存義務がある情報（取引記録等、最長7年間）については、削除の対象外となる場合がございます
 
-FreshMart does not knowingly collect personal information from children under 13. If you believe we have collected data from a child, please contact us immediately.
+## 安全管理措置
 
-## Changes to This Policy
+当社は、個人情報の漏えい、滅失またはき損の防止のため、以下の安全管理措置を講じております。
 
-We will notify you of material changes via email and/or app notification at least 30 days before changes take effect.
+- すべてのデータ通信においてTLS 1.3による暗号化を実施しています
+- お支払い情報はPCI DSS レベル1準拠の決済代行事業者が処理いたします
+- お客様の個人情報へのアクセスは、権限を付与された担当者に限定しています
+- 定期的なセキュリティ監査および脆弱性診断（ペネトレーションテスト）を実施しています
+- お客様の個人情報にアクセスする全従業員に対し、多要素認証を義務付けています
+- 個人情報の取り扱いに関する社内規程を整備し、従業員への定期的な教育・研修を実施しています
 
-## Contact Us
+## 個人情報の保管期間
 
-- **Privacy team:** privacy@freshmart.example.com
-- **Phone:** 1-800-FRESHMT, option 7
-- **Mail:** FreshMart Privacy Office, 1000 Market Street, Portland, OR 97201
+| データの種類 | 保管期間 |
+|-------------|----------|
+| アカウント情報 | アカウント存続期間 ＋ 30日 |
+| 取引履歴 | 7年間（税法上の保存義務） |
+| ポイント・会員ランク情報 | アカウント存続期間 |
+| カスタマーサービス対応記録 | 3年間 |
+| アプリ利用に関する分析データ | 2年間（匿名化処理済み） |
+| 配達記録 | 1年間 |
+
+## お子様の個人情報について
+
+当社は、16歳未満のお子様から故意に個人情報を収集することはありません。16歳未満のお子様の個人情報が当社に提供されたと思われる場合は、速やかに当社までご連絡ください。確認のうえ、適切に対応いたします。
+
+## 本方針の変更について
+
+本方針の重要な変更を行う場合は、変更の効力発生日の30日前までに、メールおよび／またはアプリ内通知にてお知らせいたします。
+
+## 個人情報に関するお問い合わせ窓口
+
+個人情報の取り扱いに関するお問い合わせ、開示等の請求は、下記までご連絡ください。
+
+- **個人情報保護管理者：** 株式会社フレッシュマート 個人情報保護管理室長
+- **メール：** privacy@freshmart.example.com
+- **電話：** 0120-XXX-XXX（通話料無料・受付時間：平日9:00～18:00）
+- **郵送先：** 〒106-0032 東京都港区六本木1-1-1 フレッシュマート本社 個人情報保護管理室
+
+---
+
+制定日：2025年1月1日
+株式会社フレッシュマート
+代表取締役社長

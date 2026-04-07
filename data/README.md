@@ -14,11 +14,11 @@
 ```
 data/
 ├── README.md
-├── ja_create_structured_data.py  # PySparkスクリプト — 構造化テーブルを生成（クラスタまたはローカルで実行）
-├── ja_create_chunked_docs.py     # PySparkスクリプト — ポリシー文書をチャンク分割（UC Volumesへのアクセスが必要）
-├── ja_execute_sql.py             # ローカルスクリプト — SQL REST APIで構造化テーブルを生成
-├── ja_execute_chunking.py        # ローカルスクリプト — SQL REST APIでポリシー文書をチャンク分割
-├── ja_run_sql_generation.py      # ローカルスクリプト — Databricks CLIで構造化テーブルを生成
+├── create_structured_data.py  # PySparkスクリプト — 構造化テーブルを生成（クラスタまたはローカルで実行）
+├── create_chunked_docs.py     # PySparkスクリプト — ポリシー文書をチャンク分割（UC Volumesへのアクセスが必要）
+├── execute_sql.py             # ローカルスクリプト — SQL REST APIで構造化テーブルを生成
+├── execute_chunking.py        # ローカルスクリプト — SQL REST APIでポリシー文書をチャンク分割
+├── run_sql_generation.py      # ローカルスクリプト — Databricks CLIで構造化テーブルを生成
 └── policy_docs/                  # ソースのマークダウンポリシードキュメント（7ファイル）
     ├── customer_service_guidelines.md
     ├── delivery_pickup_procedures.md
@@ -39,9 +39,9 @@ data/
 
 | スクリプト | 実行環境 | 方法 |
 |-----------|---------|------|
-| `ja_create_structured_data.py` | Databricksクラスタまたはローカル（PySpark環境） | PySpark DataFrames |
-| `ja_execute_sql.py` | ローカルマシン | REST API経由のSQL（`urllib`） |
-| `ja_run_sql_generation.py` | ローカルマシン | `databricks api` CLI経由のSQL |
+| `create_structured_data.py` | Databricksクラスタまたはローカル（PySpark環境） | PySpark DataFrames |
+| `execute_sql.py` | ローカルマシン | REST API経由のSQL（`urllib`） |
+| `run_sql_generation.py` | ローカルマシン | `databricks api` CLI経由のSQL |
 
 ### タスク2：ベクトル検索用ポリシードキュメントのチャンク分割
 
@@ -49,8 +49,8 @@ data/
 
 | スクリプト | 実行環境 | 方法 |
 |-----------|---------|------|
-| `ja_create_chunked_docs.py` | Databricksクラスタまたはローカル（PySpark環境） | PySpark + UC Volumes |
-| `ja_execute_chunking.py` | ローカルマシン | REST API経由のSQL（`urllib`） |
+| `create_chunked_docs.py` | Databricksクラスタまたはローカル（PySpark環境） | PySpark + UC Volumes |
+| `execute_chunking.py` | ローカルマシン | REST API経由のSQL（`urllib`） |
 
 ## TODO：新しいワークスペースで変更が必要な項目
 
@@ -64,17 +64,17 @@ data/
 | `SCHEMA` | `"retail_agent"` | 対象のスキーマ名 |
 
 更新が必要なファイル：
-- [ ] `ja_create_structured_data.py` — `CATALOG` と `SCHEMA` の行
-- [ ] `ja_create_chunked_docs.py` — `CATALOG` と `SCHEMA` の行
-- [ ] `ja_execute_sql.py` — `CATALOG` と `SCHEMA` の行
-- [ ] `ja_execute_chunking.py` — `CATALOG` と `SCHEMA` の行
-- [ ] `ja_run_sql_generation.py` — `CATALOG` と `SCHEMA` の行
+- [ ] `create_structured_data.py` — `CATALOG` と `SCHEMA` の行
+- [ ] `create_chunked_docs.py` — `CATALOG` と `SCHEMA` の行
+- [ ] `execute_sql.py` — `CATALOG` と `SCHEMA` の行
+- [ ] `execute_chunking.py` — `CATALOG` と `SCHEMA` の行
+- [ ] `run_sql_generation.py` — `CATALOG` と `SCHEMA` の行
 
 ### 新しいワークスペースの前提条件
 
 - [ ] Unity Catalogで対象のカタログとスキーマを作成する
 - [ ] PySparkスクリプトの場合：Databricksクラスタ上で実行する（例：`databricks jobs submit` 経由）か、PySpark + UC接続が可能なローカル環境で実行する
-- [ ] `ja_create_chunked_docs.py` の場合：UC Volumeを作成し、`policy_docs/*.md` ファイルをアップロードする：
+- [ ] `create_chunked_docs.py` の場合：UC Volumeを作成し、`policy_docs/*.md` ファイルをアップロードする：
   ```bash
   databricks fs cp ./policy_docs/ dbfs:/Volumes/<CATALOG>/<SCHEMA>/policy_docs/ --recursive --profile <profile>
   ```
@@ -87,11 +87,11 @@ data/
 
 ```bash
 # 構造化データの生成
-python ja_execute_sql.py --profile <PROFILE> --warehouse-id <WAREHOUSE_ID>
-python ja_run_sql_generation.py --profile <PROFILE> --warehouse-id <WAREHOUSE_ID>
+python execute_sql.py --profile <PROFILE> --warehouse-id <WAREHOUSE_ID>
+python run_sql_generation.py --profile <PROFILE> --warehouse-id <WAREHOUSE_ID>
 
 # ドキュメントのチャンク分割
-python ja_execute_chunking.py --profile <PROFILE> --warehouse-id <WAREHOUSE_ID>
+python execute_chunking.py --profile <PROFILE> --warehouse-id <WAREHOUSE_ID>
 ```
 
 ### データ生成後：Genieスペースのセットアップ
@@ -136,7 +136,7 @@ python ja_execute_chunking.py --profile <PROFILE> --warehouse-id <WAREHOUSE_ID>
 
 - [ ] Databricks CLIプロファイルが正しいワークスペースホストを指していることを確認する
 - [ ] サービスプリンシパルまたはユーザーが対象スキーマに対する `CREATE TABLE` および `WRITE` 権限を持っていることを確認する
-- [ ] チャンク分割パラメータ（サイズ/オーバーラップ）を変更する場合は、`ja_create_chunked_docs.py` と `ja_execute_chunking.py` の両方を更新して同期を保つ
+- [ ] チャンク分割パラメータ（サイズ/オーバーラップ）を変更する場合は、`create_chunked_docs.py` と `execute_chunking.py` の両方を更新して同期を保つ
 - [ ] すべてのスクリプトは再現性のために `random.seed(42)` を使用しており、実行ごとに同一のデータが生成されます
 - [ ] ワークスペースにエンベディング生成用のFoundation Model APIエンドポイント（例：`databricks-gte-large-en`）が利用可能であることを確認する
 
@@ -155,20 +155,20 @@ This folder contains scripts and source documents to generate all the data requi
 
 ## Folder Structure
 
-> **Note:** The English original scripts and policy docs have been moved to `english/` subdirectories and are not included in the repository. The `ja_*` files are the primary versions used in the workshop.
+> **Note:** The English original scripts and policy docs have been moved to `english/` subdirectories and are not included in the repository. The files in this directory are the primary Japanese versions used in the workshop.
 
 ```
 data/
 ├── README.md
-├── ja_create_structured_data.py  # PySpark script — generates structured tables (Japanese data)
-├── ja_create_chunked_docs.py     # PySpark script — chunks policy docs (requires UC Volumes access)
-├── ja_execute_sql.py             # Local script — generates structured tables via SQL REST API
-├── ja_execute_chunking.py        # Local script — chunks policy docs via SQL REST API
-├── ja_run_sql_generation.py      # Local script — generates structured tables via Databricks CLI
-├── english/                      # English originals (local only, not in repo)
-└── policy_docs/                  # Source markdown policy documents
-    ├── ja_*.md                   # Japanese policy documents (7 files)
-    └── english/                  # English originals (local only, not in repo)
+├── create_structured_data.py  # PySpark script — generates structured tables (Japanese data)
+├── create_chunked_docs.py     # PySpark script — chunks policy docs (requires UC Volumes access)
+├── execute_sql.py             # Local script — generates structured tables via SQL REST API
+├── execute_chunking.py        # Local script — chunks policy docs via SQL REST API
+├── run_sql_generation.py      # Local script — generates structured tables via Databricks CLI
+├── english/                   # English originals (local only, not in repo)
+└── policy_docs/               # Source markdown policy documents
+    ├── *.md                   # Japanese policy documents (7 files)
+    └── english/               # English originals (local only, not in repo)
     ├── customer_service_guidelines.md
     ├── delivery_pickup_procedures.md
     ├── membership_loyalty_program.md

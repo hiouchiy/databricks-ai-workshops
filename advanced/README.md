@@ -58,7 +58,7 @@ advanced/
 │   ├── start_app.py                 # フロントエンド + バックエンドを同時起動
 │   ├── discover_tools.py            # 利用可能な Databricks ツールの検出
 │   ├── grant_lakebase_permissions.py
-│   └── ja_register_prompt.py        # 日本語システムプロンプトを Prompt Registry に登録
+│   └── register_prompt.py           # 日本語システムプロンプトを Prompt Registry に登録
 │
 ├── .claude/skills/                  # Claude Code 用 AI 開発支援スキル
 ├── databricks.yml                   # Databricks Asset Bundle 設定

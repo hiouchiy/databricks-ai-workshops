@@ -1,123 +1,120 @@
-# FreshMart Store Operating Procedures
+# フレッシュマート 店舗運営規程
 
-**Effective Date:** January 1, 2025
+**施行日：** 2025年1月1日
 
-## Store Hours
+## 営業時間
 
-### Regular Hours
-- **Monday – Saturday:** 7:00 AM – 10:00 PM
-- **Sunday:** 8:00 AM – 9:00 PM
+### 通常営業時間
+- **月曜日～土曜日：** 9:00～22:00
+- **日曜日・祝日：** 9:00～21:00
 
-### Holiday Hours
+### 祝日・特別営業日
 
-| Holiday | Hours |
-|---------|-------|
-| New Year's Day | 9:00 AM – 6:00 PM |
-| Martin Luther King Jr. Day | Regular hours |
-| Presidents' Day | Regular hours |
-| Memorial Day | 7:00 AM – 8:00 PM |
-| Independence Day | 7:00 AM – 6:00 PM |
-| Labor Day | 7:00 AM – 8:00 PM |
-| Columbus Day | Regular hours |
-| Veterans Day | Regular hours |
-| Thanksgiving Day | 7:00 AM – 3:00 PM |
-| Black Friday | 6:00 AM – 10:00 PM |
-| Christmas Eve | 7:00 AM – 6:00 PM |
-| Christmas Day | **Closed** |
-| New Year's Eve | 7:00 AM – 8:00 PM |
+| 祝日・行事 | 営業時間 |
+|-----------|---------|
+| 元日（1月1日） | **休業** |
+| 1月2日・3日 | 10:00～18:00 |
+| 成人の日（1月第2月曜日） | 通常営業 |
+| 建国記念の日（2月11日） | 通常営業 |
+| 春分の日（3月20日頃） | 通常営業 |
+| 昭和の日（4月29日） | 通常営業 |
+| ゴールデンウィーク（5月3日～5日） | 9:00～20:00 |
+| 海の日（7月第3月曜日） | 通常営業 |
+| お盆（8月13日～15日） | 9:00～20:00 |
+| 敬老の日（9月第3月曜日） | 通常営業 |
+| 秋分の日（9月23日頃） | 通常営業 |
+| スポーツの日（10月第2月曜日） | 通常営業 |
+| 文化の日（11月3日） | 通常営業 |
+| 勤労感謝の日（11月23日） | 通常営業 |
+| 大晦日（12月31日） | 9:00～18:00 |
 
-### Pharmacy Hours (Where Available)
-- **Monday – Friday:** 9:00 AM – 8:00 PM
-- **Saturday:** 9:00 AM – 6:00 PM
-- **Sunday:** 10:00 AM – 5:00 PM
+## 売り場・サービス
 
-## Departments & Services
+### 対面販売コーナー
+| 売り場 | 営業時間 | 備考 |
+|--------|---------|------|
+| ベーカリー | 9:00～21:00 | 焼きたてパンは午前10時頃より順次ご提供 |
+| 惣菜 | 9:00～21:00 | 揚げ物・お弁当は20時まで調理 |
+| 精肉・鮮魚 | 9:00～21:00 | お好みのカット・刺身盛り合わせは20時まで承ります |
+| 青果 | 9:00～閉店まで | 旬の地場野菜を毎朝入荷 |
+| 花売り場 | 9:00～20:00 | アレンジメントのご注文は2日前までにお願いいたします |
 
-### Full-Service Departments
-| Department | Hours | Notes |
-|-----------|-------|-------|
-| Bakery | Opens at 6:00 AM | Fresh bread available by 7 AM |
-| Deli | 7:00 AM – 9:00 PM | Hot bar closes at 8 PM |
-| Meat & Seafood | 7:00 AM – 9:00 PM | Custom cuts available until 8 PM |
-| Floral | 7:00 AM – 8:00 PM | Custom arrangements: 24-hour advance order |
-| Pharmacy | See above | Prescription transfer welcome |
+### セルフサービス
+- **セルフレジ：** 営業時間中いつでもご利用いただけます（各店舗4～6台設置）
+- **PETボトル回収機：** 営業時間中ご利用可能（リサイクルポイント付与）
 
-### Self-Service
-- **Self-checkout:** Available during all store hours (6-8 stations per store)
-- **Coin counting machine:** Available during store hours ($0.08/dollar fee, free for loyalty members)
-- **Bottle/can return:** 7:00 AM – 9:00 PM (where applicable by state law)
+## 価格保証
 
-## Price Matching
+### フレッシュマート チラシ価格保証
+近隣競合店の広告掲載価格と同一商品について、価格を合わせます。
 
-### FreshMart Price Match Policy
-We match advertised prices from local competitors on identical items:
+- **対象：** 当店から10km圏内の競合店の有効なチラシ掲載商品
+- **ご提示いただくもの：** 競合店のチラシ（紙面またはデジタル版）
+- **上限：** お一人様1回のご来店につき10品まで
+- **対象外：**
+  - 見切り品・在庫処分品
+  - セット割引・○割引セールなどの特別販売
+  - ネット限定価格
+  - 会員制倉庫型店舗の価格
+  - フレッシュマートで既にセール中の商品
 
-- **Eligible:** Current weekly ads from competitors within 10 miles
-- **Must present:** Physical or digital copy of the competitor's ad
-- **Limit:** 10 price-matched items per customer per visit
-- **Exclusions:**
-  - Clearance/closeout items
-  - Buy-one-get-one (BOGO) or percentage-off promotions
-  - Online-only prices
-  - Membership/warehouse club prices
-  - Items already on FreshMart sale
+### お取り置き券（レインチェック）
+- 広告掲載のセール商品が品切れの場合に発行いたします
+- 発行日から **30日間** 有効です
+- 再入荷時にセール価格でのご購入を保証いたします
+- サービスカウンターにてお申し付けください
 
-### Rain Checks
-- Issued when advertised sale items are out of stock
-- Valid for **30 days** from issue date
-- Guarantees the sale price when the item is restocked
-- Available at the Customer Service desk
+## お支払い方法
 
-## Payment Methods
+| お支払い方法 | 対応状況 | 備考 |
+|-------------|---------|------|
+| クレジットカード（Visa / Mastercard / JCB / AMEX） | ○ | 1回払い・分割払い対応 |
+| デビットカード | ○ | 各種ブランドデビット対応 |
+| 交通系電子マネー（Suica / PASMO など） | ○ | 全レジNFC対応端末設置 |
+| QRコード決済（PayPay / 楽天ペイ / d払い） | ○ | 各レジにてご利用いただけます |
+| フレッシュマートギフトカード | ○ | チャージ可能、残高はレジまたはWebでご確認いただけます |
+| 商品券・ギフト券（全国共通商品券、ビール券など） | ○ | 一部お釣りが出ない商品券がございます |
+| 現金 | ○ | 1万円札以上のお支払いは確認にお時間をいただく場合がございます |
 
-| Method | Accepted | Notes |
-|--------|----------|-------|
-| Visa / Mastercard / Amex / Discover | Yes | Credit and debit |
-| Apple Pay / Google Pay / Samsung Pay | Yes | All NFC-enabled terminals |
-| FreshMart Gift Cards | Yes | Reloadable, check balance online or at register |
-| EBT / SNAP | Yes | Eligible items only |
-| WIC | Yes | Approved items only |
-| Personal Checks | Yes | With valid ID, up to $100 over purchase |
-| Cash | Yes | Bills $100+ may require manager verification |
+## バリアフリー対応
 
-## Accessibility
+- **バリアフリー設計：** 全店舗でバリアフリー基準に準拠した設計を採用しています
+- **車いす・シニアカート：** 入口付近にご用意しております（先着順）
+- **お買い物サポート：** 高い棚の商品の取り出し、お荷物の運搬、お車への積み込みなど、お気軽にスタッフにお声がけください
+- **補助犬：** 盲導犬・介助犬・聴導犬は全エリアにてご同伴いただけます
+- **視覚サポート：** 大きな文字の価格表示をご用意しております。商品ラベルの読み上げもスタッフが承ります
+- **聴覚サポート：** 筆談ボードを各サービスカウンターに常備しております
 
-- **ADA Compliance:** All stores are fully ADA accessible
-- **Motorized carts:** Available at store entrance (first-come, first-served)
-- **Assistance:** Employees available to help with reaching items, carrying groceries, loading vehicles
-- **Service animals:** Welcome in all areas of the store
-- **Visual assistance:** Large-print price tags available; staff can read labels on request
-- **Hearing assistance:** Written communication available; select stores have video relay
+## サステナビリティへの取り組み
 
-## Sustainability Practices
+- **マイバッグ推進：** マイバッグをご持参のお客様に1回のお買い物につきポイント10pt進呈
+- **レジ袋有料化：** 1枚 ¥5（法令に基づく有料化）
+- **食品ロス削減：** 賞味期限・消費期限の近い商品は「おつとめ品」コーナーにて50%引きで販売
+- **フードバンク寄付：** 販売期限を過ぎた未開封食品は、毎日フードバンクへ寄付しています
+- **リサイクル：** 店頭にPETボトル・食品トレー・紙パック・アルミ缶の回収ボックスを設置しています
+- **生ごみ堆肥化：** 青果くずなどの食品廃棄物は堆肥化処理を行っています
 
-- **Reusable bags:** Bring your own and earn 10 loyalty points per trip
-- **Plastic bag fee:** $0.05 per bag (where required by law; $0.10 in Portland)
-- **Food waste reduction:** Nearly-expired items discounted 50% in "Last Chance" section
-- **Donations:** Unsold food donated to local food banks nightly
-- **Composting:** All produce waste composted through municipal partnership
-- **Recycling:** In-store bins for plastic bags, batteries, and cardboard
+## 店舗ポリシー
 
-## Store Policies
+### ペットについて
+- 店内へのペットの同伴はご遠慮いただいております
+- 身体障害者補助犬法に基づく **盲導犬・介助犬・聴導犬** のみ同伴可能です
+- 入口付近にリードフックを設置しておりますのでご利用ください
 
-### Pets
-- Only certified service animals and emotional support animals (with documentation) are allowed inside
-- Pet-friendly "patio seating" available at select locations with café service
+### 返品・交換
+- 詳細は「返品・返金ポリシー」をご確認ください
+- 少額商品（¥2,500未満）や生鮮食品の返品は、どのレジでも承ります
+- その他の返品・交換はサービスカウンターにて承ります
 
-### Returns
-- See our Return & Refund Policy for full details
-- Quick returns (under $25, perishables): handled at any register
-- All other returns: Customer Service desk
+### 忘れ物・落とし物
+- お預かりした忘れ物はサービスカウンターにて30日間保管いたします
+- 30日経過後は、所轄の警察署へお届けいたします
+- お心当たりのある方は、直接店舗までお問い合わせください
 
-### Lost & Found
-- Found items held for 30 days at Customer Service
-- After 30 days, items are donated to charity
-- Contact the store directly to inquire about lost items
-
-### Inclement Weather
-- Store closures during severe weather are announced via:
-  - FreshMart app push notification
-  - Website banner at freshmart.example.com
-  - Local news/radio
-- Delivery service suspended during severe weather warnings
-- Curbside pickup may operate with extended wait times
+### 悪天候時の対応
+- 台風・大雪などによる臨時休業は、以下の方法でお知らせいたします：
+  - フレッシュマート公式アプリのプッシュ通知
+  - 公式Webサイト（freshmart.example.jp）のお知らせバナー
+  - 店頭掲示
+- 悪天候警報発令時は宅配サービスを一時停止する場合がございます
+- ネットスーパーのお届け時間に遅延が生じる場合がございます

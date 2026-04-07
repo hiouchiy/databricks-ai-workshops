@@ -1,94 +1,93 @@
-# FreshMart Rewards — Membership & Loyalty Program
+# フレッシュマート リワード — 会員・ポイントプログラム
 
-**Effective Date:** January 1, 2025
+**施行日:** 2025年1月1日
 
-## Program Overview
+## プログラム概要
 
-FreshMart Rewards is our free loyalty program that lets you earn points on every purchase and unlock exclusive benefits. Join at any register, online, or through the FreshMart app.
+フレッシュマート リワードは、お買い物のたびにポイントが貯まり、会員限定の特典をご利用いただける無料のポイントプログラムです。店頭レジ、公式ウェブサイト、またはフレッシュマートアプリからご入会いただけます。
 
-## Membership Tiers
+## 会員ランク
 
-### Bronze (Entry Level)
-- **Requirement:** Free signup, no minimum spend
-- **Earn Rate:** 1 point per $1 spent
-- **Benefits:**
-  - Digital coupons and weekly specials
-  - Birthday reward: $5 off coupon
-  - Access to member-only pricing on select items
-  - E-receipt tracking
+### ブロンズ（入会時）
+- **入会条件:** 無料登録、最低利用金額の条件はございません
+- **ポイント付与率:** ¥100につき1ポイント
+- **特典:**
+  - デジタルクーポンおよび週替わりセール情報の配信
+  - お誕生日特典：¥500引きクーポン
+  - 会員限定価格（対象商品）
+  - 電子レシートの閲覧・管理
 
-### Silver
-- **Requirement:** Spend $500+ in a calendar quarter
-- **Earn Rate:** 1.5 points per $1 spent
-- **Benefits:** All Bronze benefits, plus:
-  - 5% off store-brand products
-  - Free delivery on orders over $75 (normally $50 minimum with $5.99 fee)
-  - Early access to weekly sales (preview on Wednesdays)
-  - Quarterly bonus: 200 bonus points
+### シルバー
+- **昇格条件:** 四半期のお買い物合計が¥50,000以上
+- **ポイント付与率:** ¥100につき1.5ポイント
+- **特典:** ブロンズ特典のすべてに加え、以下の特典が追加されます
+  - プライベートブランド商品 5%割引
+  - ¥7,500以上のご注文で配送料無料（通常は¥5,000以上のご注文で配送料¥600）
+  - 週替わりセールの先行案内（毎週水曜日に先行公開）
+  - 四半期ボーナス：200ボーナスポイント進呈
 
-### Gold
-- **Requirement:** Spend $1,500+ in a calendar quarter
-- **Earn Rate:** 2 points per $1 spent
-- **Benefits:** All Silver benefits, plus:
-  - 10% off store-brand products
-  - Free delivery on orders over $50
-  - Priority curbside pickup (ready in 1 hour vs. 2 hours)
-  - Monthly bonus: 500 bonus points
-  - Free birthday cake (up to $25 value)
-  - Exclusive Gold member events (tastings, cooking demos)
+### ゴールド
+- **昇格条件:** 四半期のお買い物合計が¥150,000以上
+- **ポイント付与率:** ¥100につき2ポイント
+- **特典:** シルバー特典のすべてに加え、以下の特典が追加されます
+  - プライベートブランド商品 10%割引
+  - ¥5,000以上のご注文で配送料無料
+  - 優先カーブサイドピックアップ（通常2時間のところ、1時間でお渡し）
+  - 月次ボーナス：500ボーナスポイント進呈
+  - お誕生日特典：バースデーケーキ無料プレゼント（¥2,500相当まで）
+  - ゴールド会員限定イベント（試食会、料理教室など）
 
-### Platinum
-- **Requirement:** Spend $3,000+ in a calendar quarter
-- **Earn Rate:** 3 points per $1 spent
-- **Benefits:** All Gold benefits, plus:
-  - 15% off store-brand products
-  - Free delivery on all orders (no minimum)
-  - Dedicated customer service line: 1-800-PLAT-FM
-  - Personal shopper service (up to 2 visits/month)
-  - Annual reward: $50 FreshMart gift card
-  - Priority access to limited/seasonal products
-  - Free gift wrapping for gift baskets
+### プラチナ
+- **昇格条件:** 四半期のお買い物合計が¥300,000以上
+- **ポイント付与率:** ¥100につき3ポイント
+- **特典:** ゴールド特典のすべてに加え、以下の特典が追加されます
+  - プライベートブランド商品 15%割引
+  - 全ご注文で配送料無料（最低注文金額の条件なし）
+  - プラチナ会員専用カスタマーサービスダイヤル：0120-XXX-PLAT
+  - パーソナルショッパーサービス（月2回までご利用可能）
+  - 年間特典：¥5,000分のフレッシュマートギフトカード
+  - 数量限定商品・季節限定商品の優先購入権
+  - ギフトバスケットの無料ラッピングサービス
 
-## Points Redemption
+## ポイント交換
 
-| Points | Reward |
-|--------|--------|
-| 100 | $1 off any purchase |
-| 500 | $5 off any purchase |
-| 1,000 | $12 off any purchase |
-| 2,500 | $35 off any purchase |
-| 5,000 | $75 off any purchase |
-| 10,000 | $175 off any purchase |
+| ポイント数 | 特典内容 |
+|-----------|---------|
+| 100 | お買い物から¥100引き |
+| 500 | お買い物から¥500引き |
+| 1,000 | お買い物から¥1,200引き |
+| 2,500 | お買い物から¥3,500引き |
+| 5,000 | お買い物から¥7,500引き |
+| 10,000 | お買い物から¥17,500引き |
 
-Points can also be redeemed for:
-- **Gas rewards:** 100 points = $0.10 off per gallon at partner gas stations
-- **Charity donation:** Donate points to local food banks (100 points = $1 donation)
-- **Experiences:** Cooking classes, farm tours (point values vary)
+ポイントは以下の方法でもご利用いただけます。
+- **チャリティー寄付:** 地域のフードバンクへポイントを寄付（100ポイント = ¥100相当の寄付）
+- **体験型特典:** 料理教室、産地見学ツアーなど（必要ポイント数は内容により異なります）
 
-## Points Expiration
-- Points expire **12 months** after the date earned
-- Activity (any purchase) extends all points by 12 months
-- Platinum members: points never expire as long as tier is maintained
+## ポイントの有効期限
+- ポイントは獲得日から**12か月間**有効です
+- 期間中にお買い物（ポイント対象のご購入）をされた場合、すべてのポイントの有効期限が12か月延長されます
+- プラチナ会員の方は、ランクを維持している限りポイントの有効期限はございません
 
-## Tier Maintenance
-- Tiers are evaluated quarterly
-- If spend drops below threshold, you have **one grace quarter** before downgrade
-- Tier downgrades take effect at the start of the next quarter
-- Upgrades are effective immediately upon qualifying
+## ランクの維持・変動について
+- ランクの判定は四半期ごとに行われます
+- お買い物金額が昇格条件を下回った場合でも、**1四半期の猶予期間**がございます
+- ランクダウンは翌四半期の初日より適用されます
+- ランクアップは条件達成後、即時適用されます
 
-## Earning Bonus Points
+## ボーナスポイントの獲得
 
-| Activity | Bonus Points |
-|----------|-------------|
-| First purchase after signup | 100 |
-| Refer a friend (after their first purchase) | 250 |
-| Buy 5+ store-brand items in one trip | 50 |
-| Use reusable bags | 10 per trip |
-| Complete a survey | 25 |
-| Purchase during double-points events | 2x standard rate |
+| 対象アクション | ボーナスポイント |
+|--------------|----------------|
+| ご入会後の初回お買い物 | 100ポイント |
+| お友達紹介（紹介された方の初回購入後） | 250ポイント |
+| プライベートブランド商品を1回のお買い物で5点以上ご購入 | 50ポイント |
+| マイバッグ（エコバッグ）のご持参 | 1回につき10ポイント |
+| アンケートへのご回答 | 25ポイント |
+| ポイント2倍キャンペーン期間中のお買い物 | 通常付与率の2倍 |
 
-## Contact & Account Management
-- **App:** FreshMart Rewards app (iOS/Android)
-- **Website:** rewards.freshmart.example.com
-- **Phone:** 1-800-FRESHMT
-- **In-Store:** Any register or Customer Service desk
+## お問い合わせ・アカウント管理
+- **公式アプリ:** フレッシュマート リワードアプリ（iOS／Android対応）
+- **公式サイト:** rewards.freshmart-jp.example.com
+- **お電話:** 0120-XXX-FRSH（フリーダイヤル・年中無休 9:00〜21:00）
+- **店頭:** レジまたはサービスカウンターまでお気軽にお申し付けください

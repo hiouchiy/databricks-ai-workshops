@@ -1,81 +1,79 @@
-# FreshMart Delivery & Pickup Procedures
+# フレッシュマート 配送・受取サービスのご案内
 
-**Effective Date:** January 1, 2025
+**施行日:** 2025年1月1日
 
-## Delivery Service
+## 配送サービス
 
-### Same-Day Delivery
-- **Availability:** Orders placed by 2:00 PM local time
-- **Delivery Window:** 4:00 PM – 8:00 PM same day
-- **Coverage Area:** Within 15 miles of any FreshMart store
-- **Minimum Order:** $35
+### 当日配送
+- **受付締切:** 当日14:00までのご注文が対象です
+- **配送時間帯:** 16:00～20:00
+- **配送対象エリア:** フレッシュマート各店舗から10km圏内
+- **最低注文金額:** ¥3,500
 
-### Scheduled Delivery
-- **Lead Time:** Order at least 24 hours in advance
-- **Delivery Windows:** 2-hour windows available from 8:00 AM – 9:00 PM
-- **Coverage Area:** Within 25 miles of any FreshMart store
-- **Minimum Order:** $25
+### 日時指定配送
+- **受付条件:** 配送希望日の24時間前までにご注文ください
+- **配送時間帯:** 8:00～21:00の間で2時間単位の時間帯をお選びいただけます
+- **配送対象エリア:** フレッシュマート各店舗から15km圏内
+- **最低注文金額:** ¥2,500
 
-### Delivery Fees
+### 配送料金
 
-| Membership Tier | Order Minimum for Free Delivery | Standard Fee |
-|----------------|-------------------------------|-------------|
-| Bronze | $100 | $7.99 |
-| Silver | $75 | $5.99 |
-| Gold | $50 | $3.99 |
-| Platinum | No minimum | Free |
+| 会員ランク | 配送無料の最低注文金額 | 通常配送料 |
+|-----------|---------------------|-----------|
+| Bronze | ¥10,000 | ¥800 |
+| Silver | ¥7,500 | ¥600 |
+| Gold | ¥5,000 | ¥400 |
+| Platinum | 金額制限なし | 無料 |
 
-Express delivery (within 2 hours): Add $4.99 to standard fee. Available for orders placed before 4:00 PM.
+特急配送（2時間以内）: 通常配送料に加えて¥500が追加されます。16:00までのご注文が対象です。
 
-### Delivery Tipping
-- Tips are optional but appreciated
-- 100% of tips go to the delivery driver
-- Default tip suggestion: 15% of order total
-- Tips can be adjusted up to 24 hours after delivery
+### 配送料に含まれるサービスについて
+- 配送料には配送スタッフによるサービス料がすべて含まれております
+- 玄関先までの丁寧なお届け、商品のお渡し時のご確認対応など、追加料金は一切かかりません
 
-### Delivery Substitutions
-- If an item is out of stock, our shoppers will:
-  1. Substitute with a comparable item of equal or lesser value (default)
-  2. Contact you for approval if you've opted into "ask before substituting"
-  3. Remove the item (if you've selected "no substitutions")
-- Substitution preferences can be set per-item or for the entire order
+### 商品の代替品対応
+- ご注文の商品が在庫切れの場合、以下のいずれかの方法で対応いたします:
+  1. 同等品または同価格以下の類似商品へ代替（初期設定）
+  2. 「代替前に確認する」をご選択の場合、お客様にご連絡のうえ確認いたします
+  3. 「代替不要」をご選択の場合、該当商品をキャンセルいたします
+- 代替品の設定は、商品ごとまたは注文全体に対して指定が可能です
 
-## Curbside Pickup
+## カーブサイドピックアップ（駐車場受取）
 
-### Standard Curbside
-- **Turnaround Time:** Order ready within 2 hours (Gold/Platinum: 1 hour)
-- **Hours:** 8:00 AM – 8:00 PM daily
-- **Fee:** Free for all members
-- **How It Works:**
-  1. Place your order online or via the FreshMart app
-  2. Select "Curbside Pickup" and choose your preferred store
-  3. You'll receive a notification when your order is ready
-  4. Drive to the designated curbside pickup spots (marked with signs)
-  5. Check in via the app or call the store
-  6. A team member will bring your order to your vehicle within 5 minutes
+### ご利用方法
+- **準備時間:** ご注文から2時間以内にご用意いたします（Gold/Platinum会員は1時間以内）
+- **受付時間:** 毎日 8:00～20:00
+- **手数料:** 全会員無料
+- **ご利用の流れ:**
+  1. オンラインまたはフレッシュマートアプリからご注文ください
+  2. 「カーブサイドピックアップ」を選択し、ご希望の店舗を指定してください
+  3. ご注文の準備が完了しましたら通知をお送りいたします
+  4. 店舗の専用ピックアップスペース（案内標識あり）までお車でお越しください
+  5. アプリで到着チェックイン、または店舗へお電話ください
+  6. スタッフが5分以内にお車までお届けいたします
 
-### Pickup Holding
-- Orders are held for **24 hours** after the ready notification
-- After 24 hours, perishable items are returned to shelves
-- Non-perishable items are held for an additional 48 hours
-- Unclaimed orders are refunded minus a $5 restocking fee
+### お取り置き期間
+- ご注文品は準備完了通知後、**24時間**お取り置きいたします
+- 24時間経過後、生鮮食品は売場へ戻させていただきます
+- 常温保存品はさらに48時間お取り置きいたします
+- お受け取りのないご注文は、再陳列手数料¥500を差し引いた金額をご返金いたします
 
-## In-Store Pickup
-- Same as curbside, but pick up at the Customer Service desk
-- Available during all store operating hours
+## 店頭受取
+- カーブサイドピックアップと同様のサービスですが、サービスカウンターでのお受け取りとなります
+- 店舗営業時間内はいつでもご利用いただけます
 
-## Order Modifications
-- Orders can be modified up to **1 hour before** the scheduled pickup/delivery time
-- Add items, remove items, or change quantities
-- Modifications may affect delivery fee if order total changes
+## ご注文の変更
+- 受取・配送予定時刻の**1時間前**までであれば、ご注文内容の変更が可能です
+- 商品の追加・削除・数量変更が行えます
+- 注文金額の変更により、配送料が変わる場合がございますのでご了承ください
 
-## Temperature-Sensitive Items
-- All perishable items are kept at appropriate temperatures during shopping and delivery
-- Insulated bags used for frozen and refrigerated items
-- Delivery drivers are trained in food safety handling
-- If items arrive at an unsafe temperature, contact us immediately for a full refund
+## 温度管理が必要な商品について
+- 生鮮食品はすべて、買い物から配送まで適切な温度で管理いたします
+- 冷凍・冷蔵品には専用の保冷バッグを使用いたします
+- 配送スタッフは食品安全に関する研修を受けております
+- 万が一、商品の温度に問題があった場合は、すぐにご連絡ください。全額返金にて対応いたします
 
-## Contact
-- **Delivery Support:** 1-800-FRESHMT, option 3
-- **App Chat:** Available in the FreshMart app
-- **Email:** delivery@freshmart.example.com
+## お問い合わせ
+- **配送サポート:** 0120-373-810（フレッシュマート配送専用ダイヤル）
+- **アプリチャット:** フレッシュマートアプリ内のチャット機能をご利用ください
+- **メール:** delivery@freshmart.example.com

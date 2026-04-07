@@ -1,84 +1,84 @@
-# FreshMart Product Safety & Recalls
+# フレッシュマート 商品安全・リコール情報
 
-**Effective Date:** January 1, 2025
+**施行日：** 2025年1月1日
 
-## Our Commitment to Safety
+## 安全への取り組み
 
-FreshMart is dedicated to providing safe, high-quality products. We actively monitor FDA, USDA, and CPSC recall notices and take immediate action to protect our customers.
+フレッシュマートは、安全で高品質な商品をお届けすることに全力を注いでおります。消費者庁、厚生労働省、農林水産省が発表するリコール・自主回収情報を常に監視し、お客様の安全を守るために迅速な対応を行っています。
 
-## Current Active Recalls
+## 現在の回収対象商品
 
-*Note: This section is updated as recalls are issued. Check freshmart.example.com/recalls for the most current information.*
+*本セクションは回収情報の発表に合わせて随時更新いたします。最新情報は freshmart.example.com/recalls をご確認ください。*
 
-### Recent Recalls (Last 90 Days)
+### 最近の回収情報（過去90日間）
 
-1. **SunBright Organic Baby Spinach (5oz bags)**
-   - **Date Issued:** December 15, 2024
-   - **Reason:** Potential E. coli contamination
-   - **Lot Numbers:** LN2024-1201 through LN2024-1215
-   - **Best By Dates:** December 20, 2024 – January 5, 2025
-   - **Action:** Do not consume. Return for full refund.
+1. **サンブライト有機ベビーほうれん草（150g袋）**
+   - **発表日：** 2024年12月15日
+   - **回収理由：** 大腸菌（O157）汚染の可能性
+   - **対象ロット番号：** LN2024-1201～LN2024-1215
+   - **消費期限：** 2024年12月20日～2025年1月5日
+   - **対応：** 絶対に食べないでください。店舗にお持ちいただければ全額返金いたします。
 
-2. **Happy Farms Shredded Cheddar (8oz bags)**
-   - **Date Issued:** November 28, 2024
-   - **Reason:** Undeclared soy allergen
-   - **UPC:** 0-12345-67890-1
-   - **Action:** Customers with soy allergies should not consume. Return for full refund.
+2. **はっぴーファーム とろけるチーズ（200g袋）**
+   - **発表日：** 2024年11月28日
+   - **回収理由：** 大豆アレルゲン（特定原材料に準ずるもの）の表示漏れ
+   - **JANコード：** 4901234567890
+   - **対応：** 大豆アレルギーをお持ちのお客様は絶対に食べないでください。店舗にお持ちいただければ全額返金いたします。
 
-3. **CrunchTime Peanut Butter Crackers (6-pack)**
-   - **Date Issued:** November 10, 2024
-   - **Reason:** Undeclared milk allergen
-   - **Lot Numbers:** CT-2024-0900 through CT-2024-0950
-   - **Action:** Customers with milk allergies should not consume. Return for full refund.
+3. **クランチタイム ピーナッツバタークラッカー（6個入）**
+   - **発表日：** 2024年11月10日
+   - **回収理由：** 乳アレルゲン（特定原材料）の表示漏れ
+   - **対象ロット番号：** CT-2024-0900～CT-2024-0950
+   - **対応：** 乳アレルギーをお持ちのお客様は絶対に食べないでください。店舗にお持ちいただければ全額返金いたします。
 
-## How We Handle Recalls
+## リコール・回収への対応方法
 
-### Notification Process
-1. **Immediate shelf removal** — Recalled products are removed from all stores within 4 hours of notification
-2. **Customer alerts** — Loyalty members who purchased the recalled product receive:
-   - Push notification via FreshMart app
-   - Email notification
-   - SMS alert (if opted in)
-3. **In-store signage** — Posted at Customer Service desk and relevant product aisle
-4. **Website/social media** — Updated on freshmart.example.com/recalls and social channels
+### お客様への通知プロセス
+1. **売場からの即時撤去** — 回収通知を受領後、4時間以内にすべての店舗から対象商品を撤去します
+2. **お客様へのご連絡** — 対象商品を購入された会員のお客様には、以下の方法でお知らせいたします：
+   - フレッシュマートアプリのプッシュ通知
+   - メールでのご連絡
+   - SMS通知（事前にご登録いただいているお客様のみ）
+3. **店内掲示** — サービスカウンターおよび該当商品の売場に掲示いたします
+4. **ウェブサイト・SNS** — freshmart.example.com/recalls および各種SNSにて情報を公開いたします
 
-### Returning Recalled Products
-- **Full refund** regardless of when the product was purchased
-- **No receipt required** — we can look up purchases via loyalty card
-- Return at any FreshMart location at the Customer Service desk
-- For delivery/pickup orders: contact us and we'll issue a refund without requiring physical return
+### 回収対象商品のご返品について
+- 購入時期にかかわらず**全額返金**いたします
+- **レシート不要** — ポイントカードの購入履歴から確認いたします
+- フレッシュマート全店舗のサービスカウンターにてご返品を承ります
+- 宅配・お取り置きでご購入の場合：カスタマーサービスにご連絡いただければ、商品の返送なしで返金いたします
 
-### If You've Consumed a Recalled Product
-- Stop consuming the product immediately
-- If experiencing symptoms, contact your healthcare provider
-- Report adverse reactions to the FDA at 1-800-FDA-1088
-- Contact FreshMart customer service for support and refund
+### 回収対象商品を食べてしまった場合
+- 直ちに該当商品の飲食を中止してください
+- 体調に異変がある場合は、速やかに医療機関を受診してください
+- 健康被害が発生した場合は、消費者庁の消費者ホットライン **188**（いやや！）にご連絡ください
+- フレッシュマートカスタマーサービスにもご連絡ください。返金対応をいたします
 
-## Food Safety Standards
+## 食品安全基準
 
-### Temperature Monitoring
-- All refrigerated cases maintained at 35°F–38°F
-- Frozen cases maintained at 0°F or below
-- Hot deli items maintained at 140°F or above
-- Temperature checks performed every 4 hours, logged digitally
+### 温度管理
+- 冷蔵ケース：2～3°Cを維持
+- 冷凍ケース：-18°C以下を維持
+- 惣菜・ホットデリ：60°C以上を維持
+- 4時間ごとに温度を測定し、デジタル記録しています
 
-### Freshness Dates
-- **"Best By"** — Product is at peak quality. Safe to consume after this date, but quality may decline.
-- **"Use By"** — Last date recommended for use at peak quality. Perishable items should not be consumed after this date.
-- **"Sell By"** — Store guidance. Products are safe to purchase and consume after this date (typically 3-5 days for dairy, 1-2 days for meat).
+### 期限表示について
+- **「賞味期限」** — おいしく食べられる期限です。この日付を過ぎてもすぐに食べられなくなるわけではありませんが、品質が低下する場合があります。比較的傷みにくい食品に表示されます。
+- **「消費期限」** — 安全に食べられる期限です。お弁当や生菓子など傷みやすい食品に表示されます。この日付を過ぎた食品は食べないでください。
 
-### Allergen Information
-- All store-prepared items include allergen labels
-- Common allergens clearly marked: milk, eggs, fish, shellfish, tree nuts, peanuts, wheat, soy, sesame
-- Allergen-free preparation areas available for custom deli orders (request at counter)
-- Cross-contamination warnings posted where applicable
+### アレルギー表示について
+- 店内調理品にはすべてアレルゲン情報を表示しております
+- **特定原材料（7品目）：** 乳、卵、小麦、そば、落花生、えび、かに — 表示が義務付けられています
+- **特定原材料に準ずるもの（21品目）：** アーモンド、あわび、いか、いくら、オレンジ、カシューナッツ、キウイフルーツ、牛肉、くるみ、ごま、さけ、さば、大豆、鶏肉、バナナ、豚肉、まつたけ、もも、やまいも、りんご、ゼラチン — 表示が推奨されています
+- 惣菜カウンターではアレルゲンフリーの調理エリアをご用意しております（カウンターにてお申し付けください）
+- 交差汚染（コンタミネーション）の可能性がある場合は注意表示をしております
 
-## Reporting a Safety Concern
+## 安全に関するご報告・ご相談
 
-If you believe a FreshMart product has a safety issue:
-1. **Stop using the product** and keep it (including packaging)
-2. **Contact us:** 1-800-FRESHMT, option 5 (Food Safety Line)
-3. **Email:** safety@freshmart.example.com
-4. **In-store:** Speak with the store manager
+フレッシュマートの商品に安全上の問題があると思われる場合：
+1. **商品の使用を中止**し、パッケージを含めて保管してください
+2. **お電話：** 0120-XXX-XXX（食品安全専用ダイヤル）
+3. **メール：** safety@freshmart.example.com
+4. **店頭：** 店長またはサービスカウンターにお申し出ください
 
-We investigate all reports within 24 hours and will follow up with you directly.
+すべてのご報告について24時間以内に調査を開始し、直接ご連絡を差し上げます。

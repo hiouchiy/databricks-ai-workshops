@@ -2,11 +2,15 @@
 Generate synthetic retail grocery data via Databricks SQL API.
 Runs locally — sends SQL statements to a Databricks SQL warehouse.
 
+Japanese localized version: domain data (names, addresses, products, etc.)
+have been translated to Japanese equivalents.
+
 Usage:
     python synthetic_data/run_sql_generation.py --profile DEFAULT --warehouse-id <id>
 """
 
 import argparse
+import hashlib
 import json
 import random
 import subprocess
@@ -56,134 +60,134 @@ def run_sql_check(statement: str, profile: str, warehouse_id: str, label: str = 
 
 # ── Domain data ─────────────────────────────────────────────────────
 FIRST_NAMES = [
-    "James", "Mary", "John", "Patricia", "Robert", "Jennifer", "Michael", "Linda",
-    "William", "Elizabeth", "David", "Barbara", "Richard", "Susan", "Joseph", "Jessica",
-    "Thomas", "Sarah", "Charles", "Karen", "Christopher", "Lisa", "Daniel", "Nancy",
-    "Matthew", "Betty", "Anthony", "Margaret", "Mark", "Sandra", "Donald", "Ashley",
-    "Steven", "Kimberly", "Paul", "Emily", "Andrew", "Donna", "Joshua", "Michelle",
-    "Kenneth", "Carol", "Kevin", "Amanda", "Brian", "Dorothy", "George", "Melissa",
-    "Timothy", "Deborah", "Ronald", "Stephanie", "Edward", "Rebecca", "Jason", "Sharon",
-    "Jeffrey", "Laura", "Ryan", "Cynthia", "Jacob", "Kathleen", "Gary", "Amy",
-    "Nicholas", "Angela", "Eric", "Shirley", "Jonathan", "Anna", "Stephen", "Brenda",
-    "Larry", "Pamela", "Justin", "Emma", "Scott", "Nicole", "Brandon", "Helen",
-    "Benjamin", "Samantha", "Samuel", "Katherine", "Raymond", "Christine", "Gregory", "Debra",
-    "Frank", "Rachel", "Alexander", "Carolyn", "Patrick", "Janet", "Jack", "Catherine",
+    "太郎", "花子", "一郎", "美咲", "健太", "さくら", "大輔", "陽子",
+    "翔太", "真由美", "直樹", "恵子", "雄大", "由美", "拓也", "愛",
+    "和也", "裕子", "達也", "明美", "浩二", "久美子", "誠", "典子",
+    "隆", "智子", "剛", "幸子", "学", "麻衣", "哲也", "香織",
+    "秀樹", "理恵", "正人", "友美", "康介", "恵美", "勇気", "瞳",
+    "修", "奈々", "亮", "彩", "渉", "舞", "悠太", "葵",
+    "圭介", "結衣", "裕介", "美穂", "慎一", "沙織", "俊介", "千尋",
+    "大地", "真理", "光", "美紀", "蓮", "遥", "颯太", "凛",
+    "陸", "杏", "海斗", "楓", "春樹", "莉子", "悠斗", "琴音",
+    "樹", "菜々子", "蒼", "桃花", "陽", "七海", "新", "日菜",
+    "湊", "茜", "朝陽", "小春", "壮太", "美月", "響", "紬",
+    "暖", "柚希", "律", "ひなた", "晴", "芽依", "奏", "澪",
 ]
 
 LAST_NAMES = [
-    "Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis",
-    "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson",
-    "Thomas", "Taylor", "Moore", "Jackson", "Martin", "Lee", "Perez", "Thompson",
-    "White", "Harris", "Sanchez", "Clark", "Ramirez", "Lewis", "Robinson", "Walker",
-    "Young", "Allen", "King", "Wright", "Scott", "Torres", "Nguyen", "Hill", "Flores",
-    "Green", "Adams", "Nelson", "Baker", "Hall", "Rivera", "Campbell", "Mitchell",
-    "Carter", "Roberts",
+    "佐藤", "鈴木", "高橋", "田中", "伊藤", "渡辺", "山本", "中村",
+    "小林", "加藤", "吉田", "山田", "佐々木", "松本", "井上", "木村",
+    "林", "斎藤", "清水", "山口", "池田", "橋本", "阿部", "石川",
+    "前田", "藤田", "小川", "岡田", "後藤", "長谷川", "村上", "近藤",
+    "石井", "坂本", "遠藤", "青木", "藤井", "西村", "福田", "太田",
+    "三浦", "藤原", "岡本", "中島", "松田", "中野", "原田", "小野",
+    "田村", "竹内",
 ]
 
 STREETS = [
-    "Main St", "Oak Ave", "Elm St", "Park Blvd", "Cedar Ln", "Maple Dr", "Pine St",
-    "Washington Ave", "Lake Rd", "Hill St", "Forest Dr", "River Rd", "Church St",
-    "Spring St", "Meadow Ln", "Sunset Blvd", "Valley Rd", "Garden Way", "Market St",
-    "Highland Ave",
+    "中央", "本町", "栄町", "緑町", "桜丘", "若葉台", "松原", "青山",
+    "日の出", "丘の上", "泉", "旭", "花見川", "春日", "梅園", "朝日",
+    "富士見", "光が丘", "新町", "港南",
 ]
 
 CITIES_STATES = [
-    ("Portland", "OR"), ("Seattle", "WA"), ("San Francisco", "CA"), ("Los Angeles", "CA"),
-    ("Denver", "CO"), ("Austin", "TX"), ("Chicago", "IL"), ("Boston", "MA"),
-    ("New York", "NY"), ("Atlanta", "GA"), ("Miami", "FL"), ("Phoenix", "AZ"),
-    ("Minneapolis", "MN"), ("Nashville", "TN"), ("Salt Lake City", "UT"),
+    ("東京都千代田区", "東京都"), ("横浜市西区", "神奈川県"), ("大阪市北区", "大阪府"),
+    ("名古屋市中区", "愛知県"), ("札幌市中央区", "北海道"), ("福岡市博多区", "福岡県"),
+    ("仙台市青葉区", "宮城県"), ("広島市中区", "広島県"), ("京都市中京区", "京都府"),
+    ("神戸市中央区", "兵庫県"), ("さいたま市大宮区", "埼玉県"), ("千葉市中央区", "千葉県"),
+    ("新潟市中央区", "新潟県"), ("静岡市葵区", "静岡県"), ("金沢市", "石川県"),
 ]
 
 MEMBERSHIP_TIERS = ["Bronze", "Silver", "Gold", "Platinum"]
-DIETARY_PREFS = ["vegetarian", "vegan", "gluten-free", "keto", "paleo", "dairy-free", "nut-free", "none"]
-FAVORITE_CATEGORIES = ["Produce", "Dairy", "Bakery", "Meat & Seafood", "Frozen", "Snacks", "Beverages", "Deli", "Organic"]
+DIETARY_PREFS = ["ベジタリアン", "ヴィーガン", "グルテンフリー", "低糖質", "無添加", "乳製品不使用", "ナッツフリー", "なし"]
+FAVORITE_CATEGORIES = ["青果", "乳製品", "ベーカリー", "精肉・鮮魚", "冷凍食品", "お菓子", "飲料", "惣菜", "オーガニック"]
 PAYMENT_METHODS = ["credit_card", "debit_card", "cash", "mobile_pay", "gift_card"]
 
 PRODUCTS_BY_CATEGORY = {
-    "Produce": [
-        ("Organic Bananas", "Dole", 0.79, "bunch"), ("Red Apples", "Honeycrisp", 2.49, "lb"),
-        ("Baby Spinach", "Earthbound", 3.99, "bag"), ("Avocados", "Hass", 1.49, "each"),
-        ("Roma Tomatoes", "Local Farm", 1.99, "lb"), ("Blueberries", "Driscoll''s", 4.99, "pint"),
-        ("Sweet Potatoes", "Local Farm", 1.29, "lb"), ("Broccoli Crowns", "Green Giant", 2.49, "lb"),
-        ("Strawberries", "Driscoll''s", 5.99, "pack"), ("Lemons", "Sunkist", 0.69, "each"),
-        ("Cucumbers", "English", 1.79, "each"), ("Bell Peppers", "Local Farm", 1.49, "each"),
-        ("Carrots", "Bolthouse", 1.99, "bag"), ("Russet Potatoes", "Idaho", 4.99, "5lb bag"),
-        ("Mixed Greens", "Taylor Farms", 4.49, "bag"), ("Grapes Red Seedless", "Chile", 3.49, "lb"),
+    "青果": [
+        ("有機バナナ", "ドール", 198, "房"), ("ふじりんご", "青森産", 298, "個"),
+        ("ベビーリーフ", "サラダクラブ", 198, "袋"), ("アボカド", "メキシコ産", 148, "個"),
+        ("トマト", "熊本産", 298, "パック"), ("ブルーベリー", "チリ産", 498, "パック"),
+        ("さつまいも", "鳴門金時", 198, "本"), ("ブロッコリー", "国産", 248, "株"),
+        ("いちご", "あまおう", 598, "パック"), ("レモン", "広島産", 98, "個"),
+        ("きゅうり", "国産", 98, "本"), ("パプリカ", "韓国産", 168, "個"),
+        ("にんじん", "北海道産", 158, "袋"), ("じゃがいも", "北海道産", 298, "袋"),
+        ("カット野菜ミックス", "サラダクラブ", 198, "袋"), ("巨峰", "長野産", 498, "パック"),
     ],
-    "Dairy": [
-        ("Whole Milk", "Horizon Organic", 5.49, "gallon"), ("2% Milk", "Darigold", 4.29, "gallon"),
-        ("Greek Yogurt Plain", "Chobani", 5.99, "32oz"), ("Cheddar Cheese Block", "Tillamook", 5.99, "8oz"),
-        ("Butter Unsalted", "Kerrygold", 4.99, "8oz"), ("Heavy Cream", "Darigold", 3.99, "pint"),
-        ("Sour Cream", "Daisy", 2.49, "16oz"), ("Cream Cheese", "Philadelphia", 3.29, "8oz"),
-        ("Shredded Mozzarella", "Galbani", 4.49, "8oz"), ("Almond Milk", "Silk", 3.99, "half gallon"),
-        ("Oat Milk", "Oatly", 4.49, "half gallon"), ("Cottage Cheese", "Daisy", 3.99, "16oz"),
-        ("Parmesan Wedge", "BelGioioso", 6.99, "5oz"), ("Egg Dozen Large", "Pete and Gerry''s", 5.49, "dozen"),
+    "乳製品": [
+        ("おいしい牛乳", "明治", 268, "1L"), ("低脂肪乳", "森永", 178, "1L"),
+        ("ギリシャヨーグルト", "パルテノ", 178, "個"), ("とろけるチーズ", "雪印", 298, "袋"),
+        ("北海道バター", "よつ葉", 398, "200g"), ("生クリーム", "タカナシ", 298, "200ml"),
+        ("サワークリーム", "中沢", 298, "180ml"), ("クリームチーズ", "フィラデルフィア", 348, "200g"),
+        ("モッツァレラチーズ", "森永", 398, "100g"), ("アーモンドミルク", "グリコ", 298, "1L"),
+        ("オーツミルク", "マイナーフィギュアズ", 398, "1L"), ("カッテージチーズ", "雪印", 298, "200g"),
+        ("パルメザンチーズ", "クラフト", 498, "80g"), ("たまご", "ヨード卵光", 298, "10個入"),
     ],
-    "Bakery": [
-        ("Sourdough Bread", "Bakery Fresh", 4.99, "loaf"), ("Whole Wheat Bread", "Dave''s Killer", 5.49, "loaf"),
-        ("Croissants", "Bakery Fresh", 3.99, "4 pack"), ("Bagels Everything", "Bakery Fresh", 4.49, "6 pack"),
-        ("Baguette", "Bakery Fresh", 2.99, "each"), ("Cinnamon Rolls", "Bakery Fresh", 5.99, "4 pack"),
-        ("Tortillas Flour", "Mission", 3.49, "10 pack"), ("Hamburger Buns", "Bakery Fresh", 3.99, "8 pack"),
-        ("Multigrain Bread", "Bakery Fresh", 4.49, "loaf"), ("Dinner Rolls", "Bakery Fresh", 3.49, "12 pack"),
+    "ベーカリー": [
+        ("食パン", "超熟", 178, "6枚切"), ("全粒粉食パン", "パスコ", 228, "6枚切"),
+        ("クロワッサン", "店内焼き", 128, "個"), ("ベーグル", "店内焼き", 168, "個"),
+        ("フランスパン", "店内焼き", 248, "本"), ("シナモンロール", "店内焼き", 198, "個"),
+        ("ナン", "デルソーレ", 298, "3枚入"), ("バーガーバンズ", "店内焼き", 198, "4個入"),
+        ("ライ麦パン", "店内焼き", 298, "1斤"), ("ロールパン", "ネオバターロール", 178, "6個入"),
     ],
-    "Meat & Seafood": [
-        ("Chicken Breast Boneless", "Foster Farms", 6.99, "lb"), ("Ground Beef 80/20", "Angus", 5.99, "lb"),
-        ("Atlantic Salmon Fillet", "Fresh Catch", 12.99, "lb"), ("Pork Chops", "Smithfield", 4.99, "lb"),
-        ("Bacon Thick Cut", "Applegate", 7.99, "12oz"), ("Shrimp Large Peeled", "Wild Caught", 11.99, "lb"),
-        ("Turkey Breast Deli", "Boar''s Head", 9.99, "lb"), ("Italian Sausage", "Johnsonville", 5.49, "pack"),
-        ("Ribeye Steak", "USDA Choice", 14.99, "lb"), ("Ground Turkey", "Jennie-O", 5.49, "lb"),
-        ("Tilapia Fillet", "Fresh Catch", 7.99, "lb"), ("Lamb Chops", "New Zealand", 13.99, "lb"),
+    "精肉・鮮魚": [
+        ("鶏むね肉", "国産", 98, "100g"), ("豚ひき肉", "国産", 128, "100g"),
+        ("銀鮭切身", "チリ産", 298, "2切"), ("豚ロース", "国産", 178, "100g"),
+        ("ベーコン", "日本ハム", 298, "4枚入"), ("むきえび", "インドネシア産", 498, "200g"),
+        ("牛切り落とし", "国産", 298, "100g"), ("あらびきウインナー", "シャウエッセン", 398, "2袋入"),
+        ("和牛サーロイン", "A5ランク", 1980, "100g"), ("鶏ひき肉", "国産", 88, "100g"),
+        ("まぐろ刺身", "太平洋産", 498, "柵"), ("ラムチョップ", "NZ産", 598, "100g"),
     ],
-    "Frozen": [
-        ("Frozen Pizza Margherita", "Amy''s", 8.99, "each"), ("Ice Cream Vanilla", "Tillamook", 5.99, "1.5qt"),
-        ("Frozen Vegetables Mixed", "Birds Eye", 2.99, "bag"), ("Frozen Berries Mixed", "Wyman''s", 5.49, "bag"),
-        ("Frozen Waffles", "Eggo", 3.49, "10 pack"), ("Frozen Burritos", "Amy''s", 3.49, "each"),
-        ("Fish Sticks", "Gorton''s", 4.99, "box"), ("Frozen Edamame", "Seapoint Farms", 3.49, "bag"),
-        ("Ice Cream Bars", "Haagen-Dazs", 5.99, "3 pack"), ("Frozen Mac and Cheese", "Stouffer''s", 3.99, "each"),
+    "冷凍食品": [
+        ("冷凍ピザ マルゲリータ", "明治", 498, "枚"), ("バニラアイス", "ハーゲンダッツ", 298, "個"),
+        ("冷凍野菜ミックス", "ニチレイ", 198, "袋"), ("冷凍ミックスベリー", "トロピカルマリア", 398, "袋"),
+        ("冷凍たこ焼き", "ニッスイ", 298, "袋"), ("冷凍餃子", "味の素", 248, "12個入"),
+        ("冷凍コロッケ", "ニチレイ", 198, "4個入"), ("冷凍枝豆", "ニチレイ", 178, "袋"),
+        ("アイスバー", "ガリガリ君", 78, "本"), ("冷凍グラタン", "ニチレイ", 298, "個"),
     ],
-    "Snacks": [
-        ("Potato Chips Sea Salt", "Kettle Brand", 4.49, "bag"), ("Trail Mix", "Kirkland", 8.99, "bag"),
-        ("Granola Bars", "Nature Valley", 3.99, "6 pack"), ("Pretzels Twists", "Snyder''s", 3.49, "bag"),
-        ("Dark Chocolate Bar", "Lindt", 3.99, "bar"), ("Popcorn Butter", "SkinnyPop", 4.49, "bag"),
-        ("Crackers Wheat", "Triscuit", 3.99, "box"), ("Hummus Classic", "Sabra", 4.49, "10oz"),
-        ("Mixed Nuts Roasted", "Planters", 7.99, "can"), ("Rice Cakes", "Lundberg", 3.49, "bag"),
-        ("Tortilla Chips", "Late July", 3.99, "bag"), ("Fruit Snacks", "Annie''s", 4.49, "box"),
+    "お菓子": [
+        ("ポテトチップス うすしお", "カルビー", 148, "袋"), ("ミックスナッツ", "稲葉", 498, "袋"),
+        ("グラノーラバー", "アサヒ", 198, "箱"), ("プリッツ", "グリコ", 128, "箱"),
+        ("チョコレート", "明治", 198, "箱"), ("ポップコーン", "マイクポップコーン", 128, "袋"),
+        ("おせんべい", "亀田製菓", 198, "袋"), ("柿の種", "亀田製菓", 248, "袋"),
+        ("ミックスナッツ 大容量", "稲葉", 898, "缶"), ("おかき", "岩塚製菓", 178, "袋"),
+        ("じゃがりこ", "カルビー", 158, "カップ"), ("果汁グミ", "明治", 128, "袋"),
     ],
-    "Beverages": [
-        ("Orange Juice", "Tropicana", 4.99, "52oz"), ("Sparkling Water Lime", "LaCroix", 5.49, "12 pack"),
-        ("Coffee Ground Medium", "Stumptown", 12.99, "12oz bag"), ("Green Tea Bags", "Tazo", 4.49, "20 bags"),
-        ("Kombucha Ginger", "GT''s", 3.99, "16oz"), ("Apple Juice", "Martinelli''s", 3.49, "1.5L"),
-        ("Cold Brew Coffee", "Stumptown", 4.99, "12oz"), ("Coconut Water", "Vita Coco", 2.99, "16oz"),
-        ("Lemonade", "Simply", 3.49, "52oz"), ("Sports Drink", "Gatorade", 1.49, "32oz"),
+    "飲料": [
+        ("オレンジジュース", "トロピカーナ", 248, "1L"), ("炭酸水 レモン", "ウィルキンソン", 88, "500ml"),
+        ("ドリップコーヒー", "UCC", 498, "袋"), ("緑茶ティーバッグ", "伊藤園", 298, "箱"),
+        ("ほうじ茶", "伊藤園", 148, "500ml"), ("りんごジュース", "青森りんご", 198, "1L"),
+        ("アイスコーヒー", "UCC", 178, "1L"), ("ココナッツウォーター", "Vita Coco", 248, "330ml"),
+        ("カルピスウォーター", "アサヒ", 128, "500ml"), ("スポーツドリンク", "ポカリスエット", 158, "500ml"),
     ],
-    "Pantry": [
-        ("Olive Oil Extra Virgin", "California Olive Ranch", 9.99, "bottle"), ("Pasta Spaghetti", "Barilla", 1.79, "box"),
-        ("Marinara Sauce", "Rao''s", 7.99, "jar"), ("Rice Jasmine", "Mahatma", 4.99, "2lb bag"),
-        ("Black Beans", "Goya", 1.29, "can"), ("Chicken Broth", "Swanson", 2.49, "32oz"),
-        ("Peanut Butter", "Jif", 3.99, "jar"), ("Honey", "Local Harvest", 8.99, "16oz"),
-        ("Canned Tuna", "Wild Planet", 3.49, "can"), ("Coconut Milk", "Thai Kitchen", 2.49, "can"),
-        ("Maple Syrup", "Grade A", 9.99, "12oz"), ("Flour All Purpose", "King Arthur", 4.49, "5lb bag"),
-        ("Sugar Granulated", "C and H", 3.99, "4lb bag"), ("Soy Sauce", "Kikkoman", 3.49, "10oz"),
+    "食品・調味料": [
+        ("エキストラバージンオリーブオイル", "ボスコ", 698, "本"), ("スパゲッティ", "マ・マー", 198, "袋"),
+        ("トマトソース", "カゴメ", 298, "瓶"), ("コシヒカリ", "新潟産", 2180, "5kg"),
+        ("大豆水煮", "いなば", 128, "缶"), ("鶏がらスープの素", "味の素", 198, "瓶"),
+        ("ごはんですよ", "桃屋", 298, "瓶"), ("はちみつ", "サクラ印", 598, "瓶"),
+        ("ツナ缶", "いなば", 128, "缶"), ("ココナッツミルク", "ユウキ食品", 198, "缶"),
+        ("みりん", "タカラ", 298, "500ml"), ("薄力粉", "日清", 198, "1kg"),
+        ("上白糖", "三井製糖", 198, "1kg"), ("醤油", "キッコーマン", 298, "1L"),
     ],
-    "Deli": [
-        ("Roast Turkey Breast", "Boar''s Head", 10.99, "lb"), ("Ham Black Forest", "Boar''s Head", 9.99, "lb"),
-        ("Swiss Cheese Sliced", "Boar''s Head", 8.99, "lb"), ("Chicken Salad", "Deli Fresh", 7.99, "lb"),
-        ("Potato Salad", "Deli Fresh", 4.99, "lb"), ("Rotisserie Chicken", "Store Made", 8.99, "each"),
-        ("Coleslaw", "Deli Fresh", 3.99, "lb"), ("Macaroni Salad", "Deli Fresh", 4.49, "lb"),
+    "惣菜": [
+        ("チキン南蛮", "店内調理", 498, "パック"), ("ハムカツ", "店内調理", 298, "パック"),
+        ("ポテトサラダ", "店内調理", 298, "パック"), ("チキンサラダ", "店内調理", 398, "パック"),
+        ("マカロニサラダ", "店内調理", 248, "パック"), ("ローストチキン", "店内調理", 598, "個"),
+        ("ひじき煮", "店内調理", 198, "パック"), ("きんぴらごぼう", "店内調理", 198, "パック"),
     ],
-    "Household": [
-        ("Paper Towels", "Bounty", 12.99, "6 roll"), ("Dish Soap", "Dawn", 3.99, "bottle"),
-        ("Trash Bags", "Glad", 9.99, "45 count"), ("Laundry Detergent", "Tide", 11.99, "bottle"),
-        ("Aluminum Foil", "Reynolds", 4.49, "roll"), ("Sponges", "Scotch-Brite", 3.49, "3 pack"),
-        ("Ziplock Bags Gallon", "Ziploc", 4.99, "30 count"), ("All Purpose Cleaner", "Method", 4.49, "bottle"),
+    "日用品": [
+        ("キッチンペーパー", "エリエール", 298, "4ロール"), ("食器用洗剤", "キュキュット", 198, "本"),
+        ("ゴミ袋", "ジャパックス", 298, "30枚入"), ("洗濯洗剤", "アタック", 398, "本"),
+        ("アルミホイル", "東洋アルミ", 178, "ロール"), ("スポンジ", "スコッチブライト", 198, "3個入"),
+        ("ジップロック", "旭化成", 298, "15枚入"), ("住居用洗剤", "ウタマロクリーナー", 398, "本"),
     ],
 }
 
 STORE_NAMES = [
-    "FreshMart Downtown", "FreshMart Westside", "FreshMart Pearl District",
-    "FreshMart Hawthorne", "FreshMart Lake Oswego", "FreshMart Beaverton",
-    "FreshMart Sellwood", "FreshMart Alberta", "FreshMart Division",
-    "FreshMart Hillsdale",
+    "フレッシュマート 渋谷店", "フレッシュマート 新宿店", "フレッシュマート 池袋店",
+    "フレッシュマート 横浜店", "フレッシュマート 大阪梅田店", "フレッシュマート 名古屋栄店",
+    "フレッシュマート 札幌店", "フレッシュマート 福岡天神店", "フレッシュマート 仙台店",
+    "フレッシュマート 広島店",
 ]
 
 
@@ -193,14 +197,16 @@ def esc(s):
 
 
 def random_phone():
-    return f"({random.randint(200,999)}) {random.randint(200,999)}-{random.randint(1000,9999)}"
+    area = random.choice(["03", "06", "011", "052", "045", "092", "022", "082", "075", "078"])
+    return f"{area}-{random.randint(1000,9999)}-{random.randint(1000,9999)}"
 
 
 def random_email(first, last):
-    domains = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com"]
+    domains = ["gmail.com", "yahoo.co.jp", "outlook.jp", "icloud.com", "docomo.ne.jp"]
     sep = random.choice([".", "_", ""])
     num = random.choice(["", str(random.randint(1, 99))])
-    return f"{first.lower()}{sep}{last.lower()}{num}@{random.choice(domains)}"
+    name_hash = hashlib.md5(f"{first}{last}".encode()).hexdigest()[:8]
+    return f"user{sep}{name_hash}{num}@{random.choice(domains)}"
 
 
 def batch_insert(table, columns, rows, profile, warehouse_id, batch_size=50):
@@ -246,8 +252,8 @@ def main():
             "favorite_categories": random.sample(FAVORITE_CATEGORIES, k=random.randint(1, 3)),
             "organic_preference": random.choice([True, False]),
         }).replace("'", "''")
-        addr = f"{random.randint(100,9999)} {random.choice(STREETS)}"
-        zipcode = f"{random.randint(10000, 99999)}"
+        addr = f"{random.choice(STREETS)}{random.randint(1,30)}-{random.randint(1,20)}-{random.randint(1,15)}"
+        zipcode = f"{random.randint(100,999)}-{random.randint(1000,9999)}"
         tier = random.choices(MEMBERSHIP_TIERS, weights=[40, 30, 20, 10])[0]
         join_date = (datetime(2020, 1, 1) + timedelta(days=random.randint(0, 1800))).strftime("%Y-%m-%d")
         email = random_email(first, last)
@@ -292,7 +298,7 @@ def main():
     while len(products) < 500:
         cat = random.choice(list(PRODUCTS_BY_CATEGORY.keys()))
         base = random.choice(PRODUCTS_BY_CATEGORY[cat])
-        variation = random.choice(["Organic ", "Family Size ", "Value Pack ", "Premium ", "Lite "])
+        variation = random.choice(["有機 ", "大容量 ", "お徳用 ", "プレミアム ", "ライト "])
         products.append({
             "product_id": f"PROD-{pid:04d}", "name": f"{variation}{base[0]}",
             "category": cat, "brand": base[1],
@@ -327,13 +333,13 @@ def main():
     stores = []
     for i, name in enumerate(STORE_NAMES, 1):
         city, state = CITIES_STATES[i % len(CITIES_STATES)]
-        addr = f"{random.randint(100,9999)} {random.choice(STREETS)}"
-        zipcode = f"{random.randint(10000, 99999)}"
+        addr = f"{random.choice(STREETS)}{random.randint(1,30)}-{random.randint(1,20)}-{random.randint(1,15)}"
+        zipcode = f"{random.randint(100,999)}-{random.randint(1000,9999)}"
         phone = random_phone()
         stores.append({"store_id": f"STORE-{i:02d}", "name": name, "city": city, "state": state})
         rows.append(
             f"('STORE-{i:02d}', '{esc(name)}', '{esc(addr)}', '{esc(city)}', '{state}', "
-            f"'{zipcode}', '7:00 AM - 10:00 PM', '{phone}')"
+            f"'{zipcode}', '9:00～22:00', '{phone}')"
         )
 
     count = batch_insert(f"{FULL_SCHEMA}.stores",
@@ -423,7 +429,7 @@ def main():
         method = random.choice(PAYMENT_METHODS)
         card_last4 = str(random.randint(1000, 9999)) if method in ("credit_card", "debit_card") else "NULL"
         city, state = random.choice(CITIES_STATES)
-        billing = f"{random.randint(100,9999)} {random.choice(STREETS)}, {city}, {state}"
+        billing = f"{random.choice(STREETS)}{random.randint(1,30)}-{random.randint(1,20)}-{random.randint(1,15)}, {city}, {state}"
         created = (datetime(2024, 1, 1) + timedelta(days=random.randint(0, 440))).strftime("%Y-%m-%d")
 
         card_val = f"'{card_last4}'" if card_last4 != "NULL" else "NULL"

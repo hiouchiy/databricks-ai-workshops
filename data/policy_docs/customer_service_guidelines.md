@@ -1,87 +1,97 @@
-# FreshMart Customer Service Guidelines
+# フレッシュマート カスタマーサービスガイドライン
 
-**Effective Date:** January 1, 2025
+**施行日：** 2025年1月1日
 
-## Contact Channels & Hours
+## お問い合わせ窓口・受付時間
 
-| Channel | Hours | Best For |
-|---------|-------|----------|
-| In-Store Service Desk | Store hours (7 AM – 10 PM) | Returns, exchanges, immediate issues |
-| Phone: 1-800-FRESHMT | Mon–Sat 7 AM – 9 PM, Sun 8 AM – 6 PM | Complex issues, account questions |
-| App Chat | 24/7 (AI-assisted, human agents 8 AM – 8 PM) | Quick questions, order status |
-| Email: support@freshmart.example.com | Response within 24 hours | Non-urgent issues, documentation |
-| Social Media (@FreshMart) | Mon–Fri 9 AM – 5 PM | Public feedback, general questions |
+| 窓口 | 受付時間 | 主な用途 |
+|------|----------|----------|
+| 店頭サービスカウンター | 営業時間内（9:00～22:00） | 返品・交換・店舗でのお困りごと |
+| お電話：0120-373-810（フレッシュマート） | 月～土 9:00～21:00、日曜・祝日 9:00～18:00 | 複雑なお問い合わせ・会員情報に関するご質問 |
+| アプリチャット | 24時間対応（AI自動応答、有人対応 9:00～20:00） | 簡単なご質問・注文状況の確認 |
+| メール：support@freshmart.example.co.jp | 24時間以内に返信 | お急ぎでないお問い合わせ・記録が必要な件 |
+| SNS（@FreshMart_JP） | 月～金 9:00～17:00 | ご意見・ご感想・一般的なご質問 |
 
-## Response Time Commitments
+## 対応時間の目安
 
-| Priority | Description | Response Time | Resolution Time |
-|----------|-------------|---------------|-----------------|
-| Urgent | Food safety, allergic reaction, health concern | Immediate (phone/in-store) | Within 1 hour |
-| High | Order not received, wrong items delivered, overcharge | Within 2 hours | Within 24 hours |
-| Medium | Quality complaint, loyalty account issue, price dispute | Within 4 hours | Within 48 hours |
-| Low | General feedback, product suggestions, policy questions | Within 24 hours | Within 5 business days |
+| 優先度 | 内容 | 初回対応 | 解決目標 |
+|--------|------|----------|----------|
+| 緊急 | 食品安全・アレルギー反応・健康被害に関わるもの | 即時対応（お電話・店頭） | 1時間以内 |
+| 高 | 注文未着・誤配送・過大請求 | 2時間以内 | 24時間以内 |
+| 中 | 品質に関するご指摘・ポイント口座の問題・価格の相違 | 4時間以内 | 48時間以内 |
+| 低 | ご意見・商品リクエスト・規定に関するご質問 | 24時間以内 | 5営業日以内 |
 
-## Common Issue Resolution
+## よくあるお問い合わせと対応方法
 
-### Overcharges / Pricing Errors
-- If a shelf price doesn't match the register price, the **shelf price** applies
-- Additional **$1 off** the corrected price as an apology (FreshMart Price Promise)
-- For amounts over $10, a manager can approve up to a 10% additional discount
+### レジ価格と表示価格の相違
 
-### Wrong Items in Delivery/Pickup
-- Full refund for the wrong item — no need to return it
-- Correct item delivered free of charge at the next available window
-- $5 courtesy credit applied to loyalty account
+- 棚札や値札の表示価格とレジ価格が異なる場合、**表示価格**を適用いたします
+- お詫びとして、修正後の価格からさらに**¥100引き**とさせていただきます（フレッシュマート価格保証）
+- ¥1,000を超える差額の場合、マネージャー判断で最大10%の追加割引が可能です
 
-### Missing Items from Delivery/Pickup
-- Full refund for the missing item
-- If the item is still available, free re-delivery within 2 hours
-- $3 courtesy credit applied to loyalty account
+### 配達・お受け取り時の商品間違い
 
-### Quality Complaints (Produce, Meat, Bakery)
-- Full refund or exchange, customer's choice
-- No receipt needed for loyalty members (purchase verified in system)
-- For recurring quality issues, escalate to store manager for investigation
+- 間違いの商品は返品不要で、全額をご返金いたします
+- 正しい商品は最短の配達枠で無料でお届けいたします
+- お詫びとして¥500分のポイントをロイヤルティ口座に付与いたします
 
-### Loyalty Account Issues
-- Points discrepancy: Resolved within 24 hours after transaction verification
-- Missing points from a purchase: Add points manually if receipt/transaction confirmed
-- Tier disputes: Review last 90 days of purchases; adjust tier if qualifying
+### 配達・お受け取り時の商品不足
 
-## Escalation Process
+- 不足分の商品は全額をご返金いたします
+- 在庫がある場合は、2時間以内に無料で再配達いたします
+- お詫びとして¥300分のポイントをロイヤルティ口座に付与いたします
 
-### Level 1: Customer Service Associate
-- Handles routine inquiries, returns, simple refunds
-- Authority: Refunds up to $50, courtesy credits up to $10
+### 品質に関するお申し出（青果・精肉・ベーカリー）
 
-### Level 2: Shift Supervisor
-- Handles complex complaints, repeated issues
-- Authority: Refunds up to $200, courtesy credits up to $25
-- Available during all operating hours
+- お客様のご希望に応じて、全額返金または同等品との交換で対応いたします
+- ロイヤルティ会員のお客様はレシート不要です（システム上で購入履歴を確認いたします）
+- 同様のお申し出が繰り返される場合は、店長へエスカレーションし原因を調査いたします
 
-### Level 3: Store Manager
-- Handles serious complaints, policy exceptions
-- Authority: Refunds up to $500, courtesy credits up to $50
-- Available Mon–Fri 8 AM – 6 PM (appointment recommended)
+### ロイヤルティ会員口座に関するお問い合わせ
 
-### Level 4: Regional Customer Experience Manager
-- Handles unresolved escalations, legal-adjacent issues
-- Contact via 1-800-FRESHMT, option 9
-- Response within 48 hours
+- ポイントの不一致：取引内容を確認のうえ、24時間以内に修正いたします
+- ポイント加算漏れ：レシートまたは取引記録が確認できれば、手動でポイントを付与いたします
+- 会員ランクに関する疑義：過去90日間のお買い上げ実績を確認し、必要に応じてランクを調整いたします
 
-## Customer Satisfaction Guarantee
+## エスカレーション（段階的対応）プロセス
 
-FreshMart's **Double Fresh Guarantee:**
-1. If any produce, meat, or bakery item doesn't meet your expectations, we'll replace it AND give you a full refund
-2. If we're out of an advertised sale item, we'll issue a **rain check** valid for 30 days at the sale price
+### Level 1：カスタマーサービス担当
 
-## Feedback & Complaints
+- 日常的なお問い合わせ・返品・簡易な返金処理を担当いたします
+- 対応権限：¥5,000までの返金、¥1,000までのお詫びポイント付与
 
-We value all feedback:
-- **In-Store:** Feedback forms available at Customer Service desk
-- **App:** Star rating after each delivery/pickup
-- **Survey:** Emailed after in-store purchases (participation earns 25 loyalty points)
-- **Formal Complaint:** Email support@freshmart.example.com with subject line "Formal Complaint"
-  - Acknowledged within 24 hours
-  - Investigated and responded to within 5 business days
-  - Appeals can be directed to the Regional Customer Experience Manager
+### Level 2：シフトリーダー
+
+- 複雑なお申し出・繰り返し発生している問題を担当いたします
+- 対応権限：¥20,000までの返金、¥2,500までのお詫びポイント付与
+- 営業時間中は常時対応可能です
+
+### Level 3：店長
+
+- 重大なお申し出・規定の例外対応を担当いたします
+- 対応権限：¥50,000までの返金、¥5,000までのお詫びポイント付与
+- 対応可能時間：月～金 9:00～18:00（事前のご予約をおすすめいたします）
+
+### Level 4：エリアマネージャー
+
+- 解決に至らなかった案件・法的対応が必要な案件を担当いたします
+- お電話：0120-373-810（音声ガイダンスで「9」を選択）
+- 48時間以内にご連絡いたします
+
+## お客様満足保証
+
+フレッシュマートの**「ダブルフレッシュ保証」：**
+1. 青果・精肉・ベーカリー商品にご満足いただけなかった場合、**同等品への交換**に加え、**全額返金**いたします
+2. チラシ掲載の特売商品が品切れの場合、特売価格でお買い求めいただける**「お取り寄せ券」**（有効期限30日）を発行いたします
+
+## ご意見・ご要望・苦情のお申し出
+
+お客様のお声を大切にしております。
+
+- **店頭：** サービスカウンターにご意見用紙をご用意しております
+- **アプリ：** 配達・お受け取り後に星評価をお願いしております
+- **アンケート：** 店頭でのお買い物後にメールでお送りいたします（ご回答でロイヤルティポイント25pt進呈）
+- **正式な苦情のお申し出：** support@freshmart.example.co.jp 宛てに、件名「正式な苦情申立て」としてお送りください
+  - 24時間以内に受領のご連絡をいたします
+  - 5営業日以内に調査結果をご回答いたします
+  - ご回答にご納得いただけない場合は、エリアマネージャーへの再審査を申し立ていただけます
