@@ -1,14 +1,24 @@
-"""agent.py のバリエーション — Vector Search のみネイティブ実装に差し替え。
+"""フレッシュマート食品スーパー AI エージェント。
 
-agent.py との違い:
-  - Vector Search: MCP → DatabricksVectorSearch + as_retriever() を @tool でラップ
-    → MLflow が RETRIEVER スパンを自動生成（RetrievalSufficiency スコアラー対応）
-  - Genie: MCP のまま（変更なし）
-  - Code Interpreter: MCP のまま（変更なし）
-  - メモリ（Short-term / Long-term）: そのまま（変更なし）
-  - システムプロンプト: そのまま（変更なし）
+LangGraph ベースの会話エージェントで、以下の機能を提供します：
+  - 構造化データクエリ（Genie MCP 経由）— 商品・顧客・取引・店舗情報の検索
+  - ポリシー文書検索（DatabricksVectorSearch ネイティブ）— 返品・会員・配送等のポリシー検索
+  - コード実行（Code Interpreter MCP 経由）— Python による計算・分析
+  - 長期記憶（Lakebase）— ユーザーの好み・タスク履歴・会話サマリーの永続化
+  - 短期記憶（Lakebase AsyncCheckpointSaver）— スレッド内の会話ステートの永続化
 
-この差し替えにより、RetrievalSufficiency スコアラーを使った評価が可能になる。
+Vector Search に DatabricksVectorSearch（ネイティブ実装）を使用している理由：
+  MCP 経由で Vector Search を呼ぶと MLflow のスパンタイプが TOOL になるが、
+  DatabricksVectorSearch + as_retriever() を使うと RETRIEVER スパンが自動生成される。
+  これにより MLflow の RetrievalSufficiency スコアラーによる検索品質の評価が可能になる。
+  Genie と Code Interpreter は RETRIEVER スパンが不要なため MCP のまま。
+
+ツール一覧：
+  - policy_search（async）— DatabricksVectorSearch で店舗ポリシーを検索
+  - get_current_time — 現在日時を取得
+  - memory_tools（7つ）— ユーザーメモリ・タスク・会話サマリーの保存/検索/削除
+  - Genie MCP — 構造化データへの自然言語クエリ
+  - Code Interpreter MCP — Python コード実行
 """
 
 import json
