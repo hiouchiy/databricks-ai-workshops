@@ -23,7 +23,6 @@
     https://docs.databricks.com/aws/en/mlflow3/genai/eval-monitor/build-eval-dataset
 """
 
-import argparse
 import asyncio
 import json
 import logging
@@ -60,6 +59,9 @@ load_dotenv(dotenv_path=".env", override=True)
 _eval_exp_id = os.environ.get("MLFLOW_EVAL_EXPERIMENT_ID")
 if _eval_exp_id:
     os.environ["MLFLOW_EXPERIMENT_ID"] = _eval_exp_id
+
+# 評価時は Delta Table への送信を無効化（テーブルが存在しない場合のエラー回避）
+os.environ.pop("MLFLOW_TRACING_DESTINATION", None)
 
 logging.getLogger("mlflow.utils.autologging_utils").setLevel(logging.ERROR)
 
@@ -346,56 +348,6 @@ def _native_predict(query: str) -> str:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# MCP モード: サーバー経由で agent.py を呼び出す
-# ──────────────────────────────────────────────────────────────────────
-# Lakebase の async pool が evaluate プロセスのイベントループとデッドロックするため、
-# MCP + Lakebase のエージェントは別プロセスのサーバーとして起動し、HTTP 経由で呼ぶ。
-# サーバーは `uv run start-server` で事前に起動しておく必要がある。
-#
-# @mlflow.trace により evaluate プロセス内でトレースが生成されるため、
-# expected_facts の紐付けも正常に動作する。
-
-import json
-import urllib.request
-import urllib.error
-
-AGENT_URL = os.getenv("AGENT_URL", "http://localhost:8000/invocations")
-
-
-@mlflow.trace
-def _mcp_predict(query: str) -> str:
-    """MCP 版エージェントサーバーに HTTP 経由で質問を送る。
-
-    前提: `uv run start-server` で localhost:8000 にサーバーが起動していること。
-    @mlflow.trace により、evaluate プロセス内でトレースが生成される。
-    """
-    payload = json.dumps({
-        "input": [{"role": "user", "content": query}],
-    }).encode("utf-8")
-
-    req = urllib.request.Request(
-        AGENT_URL,
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        return f"エラー: HTTP {e.code}"
-    except Exception as e:
-        return f"エラー: {e}"
-
-    for item in data.get("output", []):
-        if item.get("type") == "message" and item.get("role") == "assistant":
-            for content in item.get("content", []):
-                if content.get("type") == "output_text":
-                    return content.get("text", "")
-    return json.dumps(data, ensure_ascii=False)[:500]
-
-
-# ──────────────────────────────────────────────────────────────────────
 # 評価実行
 # ──────────────────────────────────────────────────────────────────────
 
@@ -404,32 +356,12 @@ _native_agent = None
 
 
 def evaluate():
-    """コマンドライン引数に応じてモードを切り替えて評価を実行する。"""
+    """チャット評価（expected_facts ベース）を実行する。"""
     global _native_agent
 
-    parser = argparse.ArgumentParser(description="RAG ベースのエージェント評価")
-    parser.add_argument(
-        "--mode",
-        choices=["native", "mcp"],
-        default="native",
-        help="評価モード: native（ネイティブ VS、デフォルト）/ mcp（MCP 版、要サーバー起動）",
-    )
-    args = parser.parse_args()
-    mode = args.mode
-
-    # モードに応じた設定
-    if mode == "native":
-        print("モード: native（ネイティブ VectorSearch + MCP Genie、直接呼び出し）")
-        _native_agent = _create_native_agent()
-        predict_fn = _native_predict
-        scorers = [Correctness(), RelevanceToQuery(), RetrievalSufficiency(), Safety(), Fluency()]
-    else:
-        print("モード: mcp（サーバー経由）")
-        print(f"  サーバー URL: {AGENT_URL}")
-        print("  ※ 事前に `uv run start-server` でサーバーを起動してください")
-        predict_fn = _mcp_predict
-        # MCP 版は RETRIEVER スパンがないため RetrievalSufficiency を除外
-        scorers = [Correctness(), RelevanceToQuery(), Safety(), Fluency()]
+    _native_agent = _create_native_agent()
+    predict_fn = _native_predict
+    scorers = [Correctness(), RelevanceToQuery(), RetrievalSufficiency(), Safety(), Fluency()]
 
     # 事前チェック
     print()
@@ -454,7 +386,7 @@ def evaluate():
     # 評価実行
     print()
     print("=" * 60)
-    print(f"RAG ベース評価を開始します（{mode} モード）")
+    print("RAG ベース評価を開始します")
     print(f"  シンプルな質問: {len(simple_questions)} 件")
     print(f"  複雑な質問:     {len(complex_questions)} 件")
     print(f"  スコープ外:     {len(out_of_scope_questions)} 件")
@@ -470,10 +402,10 @@ def evaluate():
 
     # 結果サマリー
     print("\n" + "=" * 60)
-    print(f"評価結果サマリー（{mode} モード）")
+    print("評価結果サマリー")
     print("=" * 60)
     if hasattr(results, "metrics") and results.metrics:
         for metric_name, metric_value in results.metrics.items():
             print(f"  {metric_name}: {metric_value}")
 
-    print(f"\n✅ 評価完了！MLflow Experiments UI で詳細を確認してください。")
+    print("\n✅ 評価完了！MLflow Experiments UI で詳細を確認してください。")

@@ -94,6 +94,7 @@ CREATE SCHEMA IF NOT EXISTS <CATALOG>.<SCHEMA>;
 ## ステップ 2：構造化データの生成
 
 ```bash
+source .venv/bin/activate
 cd ../data
 ```
 
@@ -384,36 +385,10 @@ uv run agent-evaluate-advanced
 ### チャット評価（expected_facts ベース）
 
 ```bash
-uv run agent-evaluate-chat                # ネイティブ版（デフォルト、サーバー不要）
-uv run agent-evaluate-chat --mode mcp     # MCP 版（要サーバー起動）
+uv run agent-evaluate-chat
 ```
 
-9件の固定質問（シンプル3件 + 複雑3件 + スコープ外3件）と模範解答（expected_facts）を使い、Correctness / RelevanceToQuery / RetrievalSufficiency / Safety / Fluency で採点します。`--mode` でネイティブ版と MCP 版を切り替えて比較できます。
-
-> **ネイティブ版とMCP版の違い：**
->
->
-> |                          | ネイティブ版（デフォルト）                       | MCP 版            |
-> | ------------------------ | ----------------------------------- | ---------------- |
-> | Vector Search            | DatabricksVectorSearch（直接呼び出し）      | MCP 経由           |
-> | Genie / Code Interpreter | MCP 経由                              | MCP 経由           |
-> | Lakebase メモリ             | **なし**（評価に不要）                       | **あり**           |
-> | サーバー起動                   | **不要**（直接関数呼び出し）                    | **必要**（別プロセスで起動） |
-> | RETRIEVER スパン            | **生成される**（RetrievalSufficiency 評価可） | 生成されない           |
->
->
-> **MCP 版でサーバーが必要な理由：**
-> Lakebase の非同期接続プールが、評価フレームワーク（`mlflow.genai.evaluate`）のイベントループと競合してデッドロックを起こすため、エージェントを別プロセス（サーバー）として起動し、HTTP 経由で呼び出す必要があります。
->
-> **MCP 版の実行手順：**
->
-> ```bash
-> # ターミナル1: サーバーを起動
-> uv run start-app    # または uv run start-app --no-ui
->
-> # ターミナル2: 評価を実行
-> uv run agent-evaluate-chat --mode mcp
-> ```
+9件の固定質問（シンプル3件 + 複雑3件 + スコープ外3件）と模範解答（expected_facts）を使い、Correctness / RelevanceToQuery / RetrievalSufficiency / Safety / Fluency で採点します。サーバーの起動は不要で、エージェントを直接呼び出して評価します。
 
 結果は MLflow Experiments UI の **freshmart-agent-evaluation** 実験で確認できます。
 

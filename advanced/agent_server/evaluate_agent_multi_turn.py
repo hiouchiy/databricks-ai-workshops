@@ -28,6 +28,9 @@ _eval_exp_id = os.environ.get("MLFLOW_EVAL_EXPERIMENT_ID")
 if _eval_exp_id:
     os.environ["MLFLOW_EXPERIMENT_ID"] = _eval_exp_id
 
+# 評価時は Delta Table への送信を無効化
+os.environ.pop("MLFLOW_TRACING_DESTINATION", None)
+
 logging.getLogger("mlflow.utils.autologging_utils").setLevel(logging.ERROR)
 
 # @invokeデコレータで登録された関数を見つけるために、agentモジュールをインポートする必要がある
