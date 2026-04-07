@@ -116,13 +116,19 @@ cd databricks-ai-workshops
 uv run quickstart
 ```
 
-クイックスタートスクリプトが以下を実行します：
-1. `uv`、`nvm`、Databricks CLI のインストールを確認
-2. Databricks OAuth 認証を設定
-3. MLflow 実験を2つ作成・リンク（モニタリング用 + 評価用）
-4. メモリストレージ用に Lakebase を設定
-5. `.env` ファイルを生成
-6. エージェントサーバーとチャットアプリを起動
+クイックスタートスクリプトが以下を対話式で実行します：
+1. 前提条件チェック（`uv`、`Node.js`、`Databricks CLI`）
+2. Databricks 認証
+3. カタログ名・スキーマ名・SQL ウェアハウス・Vector Search エンドポイントの入力
+4. カタログ・スキーマの作成
+5. 構造化データの生成（6テーブル、日本語）
+6. ポリシー文書のチャンク生成 + CDF 有効化
+7. Vector Search インデックスの作成（READY まで自動待機）
+8. Genie Space の作成
+9. Lakebase のセットアップ（メモリ用）
+10. MLflow 実験を2つ作成（モニタリング用 + 評価用）
+11. `.env` ファイルの生成
+12. Python / Node.js 依存関係のインストール
 
 セットアップ完了後は、いつでも以下で起動できます：
 
