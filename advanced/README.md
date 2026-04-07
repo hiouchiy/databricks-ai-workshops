@@ -37,7 +37,7 @@ Databricks 上で、リアルタイムデータクエリ・ドキュメント検
 ## プロジェクト構成
 
 ```
-workshop-qsic/
+advanced/
 ├── agent_server/                    # Python エージェントバックエンド
 │   ├── agent.py                     # コアエージェントロジック（LangGraph + MCP ツール）
 │   ├── utils_memory.py              # 7つのメモリツール（取得/保存/削除 + タスク/会話）
@@ -130,7 +130,7 @@ uv run quickstart
 uv run start-app
 ```
 
-チャット UI は **http://localhost:3000**、API は **http://localhost:8000** でアクセスできます。
+チャット UI は **http://localhost:3000** 、API は **http://localhost:8000** でアクセスできます。
 
 ### 方法 2：Claude Code を使う
 
@@ -324,7 +324,7 @@ mlflow.tracing.set_experiment_trace_location(
 日本語のテストケースを使った評価スイートを実行します：
 
 ```bash
-# マルチターン評価（会話シミュレータ、3テストケース、9つの定義済みスコアラー）
+# マルチターン評価（会話シミュレータ、3テストケース、10の定義済みスコアラー）
 uv run agent-evaluate
 
 # マルチターン高度な評価（20テストケース、定義済み + カスタムスコアラー）
@@ -335,7 +335,7 @@ uv run agent-evaluate-chat                # ネイティブ版（デフォルト
 uv run agent-evaluate-chat --mode mcp     # MCP 版（要サーバー起動）
 ```
 
-**定義済みスコアラー**：Completeness、ConversationalSafety、ConversationCompleteness、Fluency、KnowledgeRetention、RelevanceToQuery、Safety、ToolCallCorrectness、UserFrustration
+**定義済みスコアラー**：Completeness、ConversationalSafety、ConversationCompleteness、Fluency、KnowledgeRetention、RelevanceToQuery、Safety、ToolCallCorrectness、ToolCallEfficiency、UserFrustration
 
 **カスタムスコアラー**（高度な評価のみ）：tool_routing_accuracy（ツール選択の正確性）、policy_specificity（ポリシー回答の具体性）、retail_tone_appropriateness（接客トーンの適切さ）
 
@@ -552,7 +552,7 @@ A **FreshMart Grocery Shopping Assistant** that can:
 ## Project Structure
 
 ```
-workshop-qsic/
+advanced/
 ├── agent_server/                    # Python agent backend
 │   ├── agent.py                     # Core agent logic (LangGraph + MCP tools)
 │   ├── utils_memory.py              # 7 memory tools (get/save/delete + task/conversation)
@@ -592,7 +592,7 @@ workshop-qsic/
 | **Agent Framework** | LangGraph (stateful multi-tool orchestration) |
 | **Tool Protocol** | MCP (Model Context Protocol) — Genie, Vector Search, Code Interpreter |
 | **Memory Store** | Lakebase (managed PostgreSQL) with semantic embeddings |
-| **Tracing & Eval** | MLflow 3 (autologging, 9 predefined scorers, conversation simulator) |
+| **Tracing & Eval** | MLflow 3 (autologging, 10 predefined scorers, conversation simulator) |
 | **Frontend** | React + TypeScript + Vite + Vercel AI SDK |
 | **Backend API** | FastAPI via MLflow AgentServer (OpenAI Responses API compatible) |
 | **Auth** | Databricks OAuth (U2M) + On-Behalf-Of (OBO) user passthrough |
@@ -804,7 +804,7 @@ The memory system uses Lakebase (PostgreSQL) with semantic embeddings:
 
 ### Module 4: Evaluating the Agent
 
-Run the evaluation suite with 9 MLflow scorers:
+Run the evaluation suite with 10 MLflow scorers:
 
 ```bash
 uv run agent-evaluate
