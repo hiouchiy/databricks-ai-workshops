@@ -94,21 +94,13 @@ CREATE SCHEMA IF NOT EXISTS <CATALOG>.<SCHEMA>;
 ## ステップ 2：構造化データの生成
 
 ```bash
-source .venv/bin/activate
 cd ../data
 ```
 
-`execute_sql.py` を開き、先頭付近の `CATALOG` と `SCHEMA` を自分の値に書き換えます：
-
-```python
-CATALOG = "<CATALOG>"
-SCHEMA = "<SCHEMA>"
-```
-
-実行：
+環境変数でカタログ名・スキーマ名を指定して実行します（ファイルの書き換えは不要）：
 
 ```bash
-python3 execute_sql.py --profile DEFAULT --warehouse-id <WAREHOUSE-ID>
+CATALOG=<CATALOG> SCHEMA=<SCHEMA> python3 execute_sql.py --profile DEFAULT --warehouse-id <WAREHOUSE-ID>
 ```
 
 6 つのテーブルが作成されます：customers（200件）、products（約500件）、stores（10件）、transactions（2,000件）、transaction_items（約10,000件）、payment_history（400件）。
@@ -121,10 +113,10 @@ python3 execute_sql.py --profile DEFAULT --warehouse-id <WAREHOUSE-ID>
 
 ## ステップ 3：ポリシー文書チャンクの生成
 
-`execute_chunking.py` も同様に `CATALOG` と `SCHEMA` を書き換えて実行：
+同様に環境変数でカタログ名・スキーマ名を指定して実行：
 
 ```bash
-python3 execute_chunking.py --profile DEFAULT --warehouse-id <WAREHOUSE-ID>
+CATALOG=<CATALOG> SCHEMA=<SCHEMA> python3 execute_chunking.py --profile DEFAULT --warehouse-id <WAREHOUSE-ID>
 ```
 
 7 つの日本語ポリシー文書（返品・配送・会員プログラム等）がチャンク分割され、`policy_docs_chunked` テーブルに書き込まれます。

@@ -54,21 +54,15 @@ data/
 
 ## TODO：新しいワークスペースで変更が必要な項目
 
-### 必須の変更（全5スクリプト共通）
+### カタログ・スキーマの指定方法
 
-**すべての**スクリプトの先頭にある以下の2つの定数を更新してください：
+環境変数 `CATALOG` と `SCHEMA` で指定します（ファイルの書き換えは不要）：
 
-| 定数 | 現在の値 | 変更先 |
-|------|---------|--------|
-| `CATALOG` | `"qsic_workshop_prep_catalog"` | 使用するUnity Catalog名 |
-| `SCHEMA` | `"retail_agent"` | 対象のスキーマ名 |
+```bash
+CATALOG=my_catalog SCHEMA=retail_agent python execute_sql.py --profile DEFAULT --warehouse-id <ID>
+```
 
-更新が必要なファイル：
-- [ ] `create_structured_data.py` — `CATALOG` と `SCHEMA` の行
-- [ ] `create_chunked_docs.py` — `CATALOG` と `SCHEMA` の行
-- [ ] `execute_sql.py` — `CATALOG` と `SCHEMA` の行
-- [ ] `execute_chunking.py` — `CATALOG` と `SCHEMA` の行
-- [ ] `run_sql_generation.py` — `CATALOG` と `SCHEMA` の行
+環境変数を設定しない場合は、スクリプト内のデフォルト値が使われます。`uv run quickstart` を使った場合はこの設定は自動で行われます。
 
 ### 新しいワークスペースの前提条件
 
@@ -87,11 +81,11 @@ data/
 
 ```bash
 # 構造化データの生成
-python execute_sql.py --profile <PROFILE> --warehouse-id <WAREHOUSE_ID>
-python run_sql_generation.py --profile <PROFILE> --warehouse-id <WAREHOUSE_ID>
+CATALOG=<CATALOG> SCHEMA=<SCHEMA> python execute_sql.py --profile <PROFILE> --warehouse-id <WAREHOUSE_ID>
+CATALOG=<CATALOG> SCHEMA=<SCHEMA> python run_sql_generation.py --profile <PROFILE> --warehouse-id <WAREHOUSE_ID>
 
 # ドキュメントのチャンク分割
-python execute_chunking.py --profile <PROFILE> --warehouse-id <WAREHOUSE_ID>
+CATALOG=<CATALOG> SCHEMA=<SCHEMA> python execute_chunking.py --profile <PROFILE> --warehouse-id <WAREHOUSE_ID>
 ```
 
 ### データ生成後：Genieスペースのセットアップ
