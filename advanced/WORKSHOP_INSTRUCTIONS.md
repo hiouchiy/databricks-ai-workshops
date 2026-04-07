@@ -102,7 +102,7 @@ Databricks UI：**Compute > Vector Search > Create Endpoint**
 **Catalog Explorer** で `<CATALOG>.<SCHEMA>.policy_docs_chunked` に移動：
 
 1. **Create > Vector Search Index** をクリック
-2. 設定：name=`policy_docs_index`、primary key=`chunk_id`、endpoint=ステップ 5 で作成したもの、source column=`content`、model=`databricks-gte-large-en`、sync=Triggered
+2. 設定：name=`policy_docs_index`、primary key=`chunk_id`、endpoint=ステップ 5 で作成したもの、source column=`content`、model=`databricks-qwen3-embedding-0-6b`、sync=Triggered
 3. **Create** をクリック
 
 フルパスを控えておく：`<CATALOG>.<SCHEMA>.policy_docs_index`
@@ -470,7 +470,7 @@ In the Databricks UI: **Compute > Vector Search > Create Endpoint**
 In **Catalog Explorer**, navigate to `<CATALOG>.<SCHEMA>.policy_docs_chunked`:
 
 1. Click **Create > Vector Search Index**
-2. Set: name=`policy_docs_index`, primary key=`chunk_id`, endpoint=from Step 5, source column=`content`, model=`databricks-gte-large-en`, sync=Triggered
+2. Set: name=`policy_docs_index`, primary key=`chunk_id`, endpoint=from Step 5, source column=`content`, model=`databricks-qwen3-embedding-0-6b`, sync=Triggered
 3. Click **Create**
 
 Note the full path: `<CATALOG>.<SCHEMA>.policy_docs_index`

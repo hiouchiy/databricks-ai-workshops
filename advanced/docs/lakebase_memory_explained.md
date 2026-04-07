@@ -30,7 +30,7 @@
 | 保存タイミング | LangGraph が各ステップで自動保存 | エージェントがツール経由で明示的に保存 |
 | 検索方法 | `thread_id` で完全一致 | セマンティック検索（Embedding 類似度） |
 | 用途 | 「さっき聞いた商品の話の続き」 | 「前回のチャットで言ったベジタリアンの好み」 |
-| Embedding | 不要 | `databricks-gte-large-en`（1024次元） |
+| Embedding | 不要 | `databricks-qwen3-embedding-0-6b`（1024次元） |
 
 ---
 
@@ -245,7 +245,7 @@ from databricks_langchain import AsyncDatabricksStore
 async with AsyncDatabricksStore(
     project=LAKEBASE_AUTOSCALING_PROJECT,   # "freshmart-agent-hiroshi"
     branch=LAKEBASE_AUTOSCALING_BRANCH,     # "production"
-    embedding_endpoint=EMBEDDING_ENDPOINT,   # "databricks-gte-large-en"
+    embedding_endpoint=EMBEDDING_ENDPOINT,   # "databricks-qwen3-embedding-0-6b"
     embedding_dims=EMBEDDING_DIMS,           # 1024
 ) as store:
     await store.setup()  # テーブル自動作成
@@ -328,7 +328,7 @@ value = {"preference": "ベジタリアン", "detail": "肉・魚を食べない
 await store.aput(namespace, key, value)
 ```
 
-このとき、`value` のテキスト内容が `databricks-gte-large-en` で**1024次元のベクトルに変換**され、PostgreSQL にベクトルと一緒に保存されます。
+このとき、`value` のテキスト内容が `databricks-qwen3-embedding-0-6b` で**1024次元のベクトルに変換**され、PostgreSQL にベクトルと一緒に保存されます。
 
 #### ステップ 4：エージェントが同様に2つ目の記憶も保存
 
@@ -390,7 +390,7 @@ namespace = ("user_memories", "tanaka-taro")
 results = await store.asearch(namespace, query="おすすめ 好み 食事制限", limit=5)
 ```
 
-1. クエリ「おすすめ 好み 食事制限」が `databricks-gte-large-en` で**ベクトルに変換**される
+1. クエリ「おすすめ 好み 食事制限」が `databricks-qwen3-embedding-0-6b` で**ベクトルに変換**される
 2. Lakebase 内の `("user_memories", "tanaka-taro")` 名前空間のすべてのエントリのベクトルと**コサイン類似度**を計算
 3. 類似度の高い順に最大5件を返す
 

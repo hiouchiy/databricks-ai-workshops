@@ -6,7 +6,7 @@ Configure and use the long-term memory system for persistent user preferences an
 
 The memory system is implemented in `agent_server/utils_memory.py` and uses:
 - **Lakebase (PostgreSQL)** for persistent storage
-- **databricks-gte-large-en** embeddings (1024 dims) for semantic search
+- **databricks-qwen3-embedding-0-6b** embeddings (1024 dims) for semantic search
 - **AsyncDatabricksStore** for async read/write operations
 - Per-user namespacing for data isolation
 
@@ -71,7 +71,7 @@ Without `user_id`, memory tools are disabled and the agent logs a warning.
 
 Edit `agent_server/agent.py`:
 ```python
-EMBEDDING_ENDPOINT = "databricks-gte-large-en"
+EMBEDDING_ENDPOINT = "databricks-qwen3-embedding-0-6b"
 EMBEDDING_DIMS = 1024
 ```
 

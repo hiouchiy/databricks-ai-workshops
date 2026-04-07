@@ -150,7 +150,7 @@ cd ../advanced
    - Primary key: `chunk_id`
    - Endpoint: `<VS-ENDPOINT>`
    - Source column: `content`
-   - Embedding model: `databricks-gte-large-en`
+   - Embedding model: `databricks-qwen3-embedding-0-6b`
    - Sync mode: Triggered
 3. **Create** をクリック
 

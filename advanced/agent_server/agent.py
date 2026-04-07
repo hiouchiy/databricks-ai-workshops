@@ -98,7 +98,7 @@ def get_current_time() -> str:
 ############################################
 LLM_ENDPOINT_NAME = "databricks-claude-sonnet-4-5"
 _LAKEBASE_INSTANCE_NAME_RAW = os.getenv("LAKEBASE_INSTANCE_NAME") or None
-EMBEDDING_ENDPOINT = "databricks-gte-large-en"
+EMBEDDING_ENDPOINT = "databricks-qwen3-embedding-0-6b"
 EMBEDDING_DIMS = 1024
 LAKEBASE_AUTOSCALING_PROJECT = os.getenv("LAKEBASE_AUTOSCALING_PROJECT") or None
 LAKEBASE_AUTOSCALING_BRANCH = os.getenv("LAKEBASE_AUTOSCALING_BRANCH") or None

@@ -88,7 +88,7 @@ END $$;
 ## How Memory Storage Works
 
 - Uses `AsyncDatabricksStore` from `databricks-langchain[memory]`
-- Embeddings generated via `databricks-gte-large-en` (1024 dims)
+- Embeddings generated via `databricks-qwen3-embedding-0-6b` (1024 dims)
 - Memories are namespaced by `user_id` for per-user isolation
 - Semantic search uses cosine similarity on embeddings
 
