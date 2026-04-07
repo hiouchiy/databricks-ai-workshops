@@ -205,167 +205,51 @@ Steps:
 
 ### 方法 3：手動セットアップ
 
-1. **依存関係のインストール**
-
-   ```bash
-   # Python
-   uv sync
-
-   # Node.js（チャット UI 用）
-   nvm use 20
-   cd e2e-chatbot-app-next && npm install && cd ..
-   ```
-
-2. **Databricks への認証**
-
-   ```bash
-   databricks auth login
-   ```
-
-   `.env` にプロファイルを設定：
-   ```
-   DATABRICKS_CONFIG_PROFILE=DEFAULT
-   ```
-
-3. **MLflow 実験の作成**（モニタリング用 + 評価用の2つ）
-
-   ```bash
-   DATABRICKS_USERNAME=$(databricks current-user me | jq -r .userName)
-
-   # モニタリング用（アプリ実行時のトレース記録）
-   databricks experiments create-experiment /Users/$DATABRICKS_USERNAME/freshmart-agent-monitoring
-
-   # 評価用（評価スクリプト実行時）
-   databricks experiments create-experiment /Users/$DATABRICKS_USERNAME/freshmart-agent-evaluation
-   ```
-
-4. **環境変数の設定**
-
-   ```bash
-   cp .env.example .env
-   # .env を編集し、MLFLOW_EXPERIMENT_ID（モニタリング用）・MLFLOW_EVAL_EXPERIMENT_ID（評価用）・
-   # Lakebase インスタンス・Genie スペース ID・Vector Search インデックスを設定
-   ```
-
-5. **アプリケーションの起動**
-
-   ```bash
-   uv run start-app
-   ```
+ステップバイステップの詳細手順は **[ワークショップインストラクション（改訂版）](WORKSHOP_INSTRUCTIONS_revised.md)** を参照してください。データ生成・Vector Search 作成・Lakebase セットアップ・評価・デプロイまで、全手順が記載されています。
 
 ---
 
-## ワークショップモジュール
+## ワークショップの詳細手順
 
-### モジュール 1：エージェントアーキテクチャの理解
+**[WORKSHOP_INSTRUCTIONS_revised.md](WORKSHOP_INSTRUCTIONS_revised.md)** にステップバイステップの実施手順があります：
 
-エージェントの構成を把握します：
-- **`agent_server/agent.py`** — システムプロンプト・MCP ツール初期化・LangGraph オーケストレーションを含むコアエージェント
-- **`agent_server/utils_memory.py`** — ユーザーの好みや会話履歴を永続化する 7 つのメモリツール
-- **`agent_server/utils.py`** — 認証ヘルパー・スレッド管理・ストリーミングユーティリティ
+- ステップ 1〜3：データ生成（構造化データ + ポリシー文書チャンク）
+- ステップ 4〜6：Vector Search・Genie Space・Lakebase の作成
+- ステップ 7〜8：MLflow 実験の作成・環境変数の設定
+- ステップ 9：ローカル実行と動作確認
+- ステップ 10：エージェントの評価（3種類の評価方法）
+- ステップ 11：Databricks Apps へのデプロイ（オプション）
 
-### モジュール 2：MCP ツールの活用
+---
 
-エージェントは 3 つの MCP（Model Context Protocol）サーバーに接続します：
+## 主要コンポーネント
 
-| MCP サーバー | 用途 | エンドポイント |
+### エージェントアーキテクチャ
+
+| コンポーネント | ファイル | 説明 |
 |---|---|---|
-| `system-ai` | Code Interpreter（Python 実行） | `/api/2.0/mcp/functions/system/ai` |
-| `retail-grocery-genie` | 自然言語から SQL へのクエリ | `/api/2.0/mcp/genie/{GENIE_SPACE_ID}` |
-| `retail-policy-docs` | ポリシー文書に対する RAG | `/api/2.0/mcp/vector-search/{INDEX}` |
+| コアエージェント | `agent_server/agent.py` | LangGraph オーケストレーション・MCP ツール・ネイティブ Vector Search |
+| メモリツール | `agent_server/utils_memory.py` | 7つのメモリツール（ユーザー好み・タスク・会話サマリー） |
+| ユーティリティ | `agent_server/utils.py` | 認証・スレッド管理・ストリーミング |
 
-### モジュール 3：Lakebase による長期メモリ
+### ツール構成
 
-メモリシステムはセマンティック Embeddings を備えた Lakebase（PostgreSQL）を使用します：
+| ツール | 接続方式 | 用途 |
+|---|---|---|
+| Genie | MCP | 構造化データへの自然言語クエリ |
+| Code Interpreter | MCP | Python コード実行 |
+| Vector Search | ネイティブ（DatabricksVectorSearch） | ポリシー文書の検索（RETRIEVER スパン対応） |
+| メモリ（7種） | Lakebase | ユーザー好み・タスク・会話の永続化 |
 
-| ツール | 機能 | ユースケース |
-|--------|------|-------------|
-| `get_user_memory` | ユーザーメモリのセマンティック検索 | 「私の食事の好みは？」 |
-| `save_user_memory` | ユーザー情報の永続化 | ユーザーが「私はベジタリアンです」と発言 |
-| `delete_user_memory` | 特定のメモリを削除 | 「住所の情報を忘れて」 |
-| `save_task_summary` | 完了タスクの記録（サイレント） | 商品に関する質問に回答した後 |
-| `search_task_history` | 過去のタスクを検索 | 「前回何を手伝ってくれた？」 |
-| `save_conversation_summary` | 会話終了時の状態を記録（サイレント） | ユーザーが「さようなら」と発言 |
-| `search_past_conversations` | 過去のやり取りを検索 | 「これまで何を話した？」 |
-
-### トレース送信先の切り替え
-
-デフォルトではトレースは MLflow Experiment に記録されます。`.env` で `MLFLOW_TRACING_DESTINATION` を設定すると、Unity Catalog の Delta Table に送信先を切り替えられます。
+### 評価コマンド
 
 ```bash
-# .env に追加（設定しなければ MLflow Experiment に記録）
-MLFLOW_TRACING_DESTINATION=<CATALOG>.<SCHEMA>
+uv run agent-evaluate            # マルチターン評価（3テストケース）
+uv run agent-evaluate-advanced   # マルチターン高度評価（20テストケース + カスタムスコアラー）
+uv run agent-evaluate-chat       # チャット評価（expected_facts ベース）
 ```
 
-| 設定 | 送信先 | 特徴 |
-|------|--------|------|
-| 未設定（デフォルト） | MLflow Experiment | Experiments UI でトレース確認。手軽 |
-| `<CATALOG>.<SCHEMA>` | Unity Catalog Delta Table | SQL クエリ可能。長期保持。UC 権限で管理 |
-
-Delta Table に送信する場合は、初回のみ **Databricks ノートブック上で** トレーステーブルの初期作成が必要です（ローカルからは実行不可）。紐付ける Experiment にはトレースが1件も入っていない必要があるため、必要に応じて新しい空の Experiment を作成してください。
-
-```python
-import os
-os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "<WAREHOUSE-ID>"
-
-import mlflow
-from mlflow.entities import UCSchemaLocation
-
-mlflow.tracing.set_experiment_trace_location(
-    location=UCSchemaLocation(catalog_name="<CATALOG>", schema_name="<SCHEMA>"),
-    experiment_id="<MONITORING-EXPERIMENT-ID>",
-)
-```
-
-詳細は [MLflow トレースを Unity Catalog に送信する](https://docs.databricks.com/aws/en/mlflow3/genai/tracing/trace-unity-catalog) を参照してください。
-
-### モジュール 4：エージェントの評価
-
-日本語のテストケースを使った評価スイートを実行します：
-
-```bash
-# マルチターン評価（会話シミュレータ、3テストケース、10の定義済みスコアラー）
-uv run agent-evaluate
-
-# マルチターン高度な評価（20テストケース、定義済み + カスタムスコアラー）
-uv run agent-evaluate-advanced
-
-# チャット評価（expected_facts ベース、ネイティブ/MCP 切替可能）
-uv run agent-evaluate-chat                # ネイティブ版（デフォルト）
-uv run agent-evaluate-chat --mode mcp     # MCP 版（要サーバー起動）
-```
-
-**定義済みスコアラー**：Completeness、ConversationalSafety、ConversationCompleteness、Fluency、KnowledgeRetention、RelevanceToQuery、Safety、ToolCallCorrectness、ToolCallEfficiency、UserFrustration
-
-**カスタムスコアラー**（高度な評価のみ）：tool_routing_accuracy（ツール選択の正確性）、policy_specificity（ポリシー回答の具体性）、retail_tone_appropriateness（接客トーンの適切さ）
-
-> **チャット評価の `--mode` について：**
->
-> | | ネイティブ版（デフォルト） | MCP 版 |
-> |---|---|---|
-> | Vector Search | DatabricksVectorSearch（直接呼び出し） | MCP 経由 |
-> | Lakebase メモリ | なし（評価に不要） | あり |
-> | サーバー起動 | **不要** | **必要**（別プロセス） |
-> | RETRIEVER スパン | 生成される | 生成されない |
->
-> MCP 版は Lakebase の非同期処理と評価フレームワークのイベントループが競合するため、エージェントを別プロセス（サーバー）で起動して HTTP 経由で呼び出します。MCP 版を実行する際は、別ターミナルで `uv run start-app --no-ui` を起動してから `uv run agent-evaluate-chat --mode mcp` を実行してください。
-
-### モジュール 5：Databricks Apps へのデプロイ
-
-```bash
-# アプリの作成
-databricks apps create retail-grocery-ltm-memory
-
-# ワークスペースにコードを同期
-DATABRICKS_USERNAME=$(databricks current-user me | jq -r .userName)
-databricks sync . "/Users/$DATABRICKS_USERNAME/retail-grocery-ltm-memory"
-
-# デプロイ
-databricks apps deploy retail-grocery-ltm-memory \
-  --source-code-path /Workspace/Users/$DATABRICKS_USERNAME/retail-grocery-ltm-memory
-```
-
-Lakebase のパーミッション設定を含む詳細は[Databricks Apps へのデプロイ](#databricks-apps-へのデプロイ)を参照してください。
+詳細は [WORKSHOP_INSTRUCTIONS_revised.md](WORKSHOP_INSTRUCTIONS_revised.md) のステップ 10 を参照してください。
 
 ---
 
@@ -438,38 +322,7 @@ uv add <パッケージ名>
 
 ## Databricks Apps へのデプロイ
 
-1. **アプリの作成**：
-   ```bash
-   databricks apps create retail-grocery-ltm-memory
-   ```
-
-2. **リソースの追加**（Databricks UI > App > Edit > App Resources）：
-   - MLflow Experiment（CAN_MANAGE）
-   - Genie Space（CAN_RUN）
-   - Lakebase Instance（CAN_CONNECT_AND_CREATE）
-   - Vector Search Index（SELECT）
-
-3. **Lakebase パーミッションの付与**（アプリのサービスプリンシパルに対して）：
-   ```bash
-   uv run python scripts/grant_lakebase_permissions.py
-   ```
-
-4. **同期とデプロイ**：
-   ```bash
-   DATABRICKS_USERNAME=$(databricks current-user me | jq -r .userName)
-   databricks sync . "/Users/$DATABRICKS_USERNAME/retail-grocery-ltm-memory"
-   databricks apps deploy retail-grocery-ltm-memory \
-     --source-code-path /Workspace/Users/$DATABRICKS_USERNAME/retail-grocery-ltm-memory
-   ```
-
-5. **デプロイ済みエージェントへのクエリ**（OAuth トークンが必要）：
-   ```bash
-   databricks auth token  # トークンをコピー
-   curl -X POST <app-url>.databricksapps.com/invocations \
-     -H "Authorization: Bearer <oauth-token>" \
-     -H "Content-Type: application/json" \
-     -d '{"input": [{"role": "user", "content": "こんにちは"}], "stream": true}'
-   ```
+詳細な手順は [WORKSHOP_INSTRUCTIONS_revised.md](WORKSHOP_INSTRUCTIONS_revised.md) のステップ 11 を参照してください。
 
 ---
 
