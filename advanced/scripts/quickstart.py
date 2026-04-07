@@ -1247,7 +1247,7 @@ def run_sql_statement(statement: str, token: str, host: str, warehouse_id: str) 
     payload = json.dumps({
         "warehouse_id": warehouse_id,
         "statement": statement,
-        "wait_timeout": "60s",
+        "wait_timeout": "50s",
     }).encode("utf-8")
     req = urllib.request.Request(
         f"{host}/api/2.0/sql/statements",
