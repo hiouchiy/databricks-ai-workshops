@@ -425,7 +425,7 @@ advanced/
 |---|---|
 | **LLM** | Claude Sonnet 4.5 (via Databricks Foundation Model API) |
 | **Agent Framework** | LangGraph (stateful multi-tool orchestration) |
-| **Tool Protocol** | MCP (Model Context Protocol) — Genie, Vector Search, Code Interpreter |
+| **Tool Protocol** | MCP (Genie, Code Interpreter) + native DatabricksVectorSearch |
 | **Memory Store** | Lakebase (managed PostgreSQL) with semantic embeddings |
 | **Tracing & Eval** | MLflow 3 (autologging, 10 predefined scorers, conversation simulator) |
 | **Frontend** | React + TypeScript + Vite + Vercel AI SDK |
@@ -650,12 +650,18 @@ For detailed deployment instructions, see Step 11 in [WORKSHOP_INSTRUCTIONS.md](
 
 | Issue | Solution |
 |---|---|
-| `Lakebase configuration is required` | Set `LAKEBASE_AUTOSCALING_PROJECT` and `LAKEBASE_AUTOSCALING_BRANCH` (or `LAKEBASE_INSTANCE_NAME` for provisioned) in `.env` |
+| `python3: command not found` | Ensure Python 3.11+ is installed. `python` may also work |
+| `uv sync` PyPI connection error | Check internet. For corporate networks, configure PyPI mirror/proxy |
+| `npm install` crashes in Apps | `package-lock.json` contains corporate proxy URLs. Run `rm -f package-lock.json && npm install` to regenerate with public registry |
+| `delta.enableChangeDataFeed` error | CDF not enabled. Run `ALTER TABLE` in SQL editor |
+| VS index not becoming READY | Check status in Catalog Explorer. Ensure endpoint is ONLINE |
+| `couldn't get a connection after 30 sec` | Lakebase SP permissions missing. Run `grant_lakebase_permissions.py` and restart app |
+| `checkpoint_migrations` duplicate key | Harmless on first startup (concurrent init). Auto-recovered on retry |
+| `tool_use without tool_result` | Corrupted checkpoint. Auto-recovered by deleting checkpoint and retrying |
 | `302 redirect when querying deployed agent` | Use OAuth token, not PAT. Run `databricks auth token` |
-| `Permission denied on Lakebase` | Run `uv run python scripts/grant_lakebase_permissions.py` |
-| `Streaming 200 OK but error in stream` | Expected — 200 confirms stream setup; check the error content |
-| `GENIE_SPACE_ID not set` | Set in `.env` or specify via `uv run quickstart` |
-| `nvm: command not found` | Install nvm: `curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh \| bash` |
+| 502 Bad Gateway after deploy | Frontend npm build takes 3-5 minutes. Wait and retry |
+| `bundle deploy` resource errors | Update Databricks CLI to v0.295+ (`brew upgrade databricks`) |
+| Apps UI shows empty resources | CLI too old. v0.295+ correctly reflects resource bindings |
 
 ---
 
@@ -672,6 +678,18 @@ Use `get_user_workspace_client()` from `agent_server.utils` to authenticate as t
 
 **Q: How do I add custom tracing?**
 MLflow autologging captures LLM calls automatically. Add custom spans with `@mlflow.trace` or the MLflow tracing API. See [MLflow tracing docs](https://docs.databricks.com/aws/en/mlflow3/genai/tracing/app-instrumentation/).
+
+---
+
+## Cleanup
+
+To delete all resources created during the workshop:
+
+```bash
+uv run cleanup
+```
+
+Interactively deletes: Databricks App, MLflow Experiments, Vector Search, Genie Space, Lakebase, schema, workspace bundle files, and local files. See [WORKSHOP_INSTRUCTIONS.md](WORKSHOP_INSTRUCTIONS.md#リソースのクリーンアップ) for details.
 
 ---
 
