@@ -1259,6 +1259,32 @@ def update_databricks_yml_experiment(experiment_id: str) -> None:
     print_success("Updated databricks.yml with experiment ID")
 
 
+def update_databricks_yml_resources(genie_space_id: str, vs_index: str) -> None:
+    """Update databricks.yml: Genie Space ID and Vector Search index full name."""
+    yml_path = Path("databricks.yml")
+    if not yml_path.exists():
+        return
+
+    content = yml_path.read_text()
+
+    # Genie Space ID
+    content = re.sub(
+        r'(space_id: )"[^"]*"',
+        f'\\1"{genie_space_id}"',
+        content,
+    )
+
+    # Vector Search index securable_full_name
+    content = re.sub(
+        r'(securable_full_name: )"[^"]*"',
+        f'\\1"{vs_index}"',
+        content,
+    )
+
+    yml_path.write_text(content)
+    print_success("Updated databricks.yml with Genie Space ID and VS index")
+
+
 # ── New helper functions ──
 
 
@@ -1750,7 +1776,8 @@ def main():
         update_env_file("GENIE_SPACE_ID", genie_space_id)
         update_env_file("VECTOR_SEARCH_INDEX", vs_index)
         update_databricks_yml_experiment(monitoring_id)
-        print_success(".env 更新完了")
+        update_databricks_yml_resources(genie_space_id, vs_index)
+        print_success(".env / databricks.yml 更新完了")
 
         # Delta Table tracing
         print()
