@@ -138,22 +138,15 @@ uv run start-app
 
 チャット UI は **http://localhost:3000** 、API は **http://localhost:8000** でアクセスできます。
 
-### 方法 2：Claude Code を使う
+> **次のステップ：** アプリが動作したら、**[ワークショップインストラクション](WORKSHOP_INSTRUCTIONS.md)** のステップ 10（エージェントの評価）に進んでください。評価・トレース設定・Databricks Apps へのデプロイの手順が記載されています。
+
+### 方法 2：手動セットアップ
+
+ステップバイステップの詳細手順は **[ワークショップインストラクション](WORKSHOP_INSTRUCTIONS.md)** を参照してください。データ生成・Vector Search 作成・Lakebase セットアップ・評価・デプロイまで、全手順が記載されています。
+
+### 方法 3：Claude Code を使う
 
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) がインストール済みであれば、`.claude/skills/` に AI 支援開発用のスキルが同梱されています。
-
-#### 前提条件
-
-Claude Code を使う前に、Databricks ワークスペースで以下のリソースを手動で作成してください：
-
-1. **Databricks CLI プロファイル** — `databricks auth login` で設定
-2. **MLflow 実験** — UI または CLI で作成
-3. **Genie Space** — 作成してスペース ID を控える
-4. **Vector Search インデックス** — 作成してフルネームを控える（`catalog.schema.index_name`）
-5. **Prompt Registry** — システムプロンプトを登録（`catalog.schema.prompt_name`）
-6. **Lakebase オートスケーリングインスタンス** — プロジェクトとブランチを作成
-
-#### ローカル開発
 
 ```bash
 # プロジェクトディレクトリで Claude Code を起動
@@ -164,54 +157,24 @@ claude
 以下のプロンプトを使用します（プレースホルダーを実際の値に置き換えてください）：
 
 ```
-Set up and run the agent app locally. I have already created the following
-resources manually:
+ローカルでエージェントアプリをセットアップして起動してください。
+以下のリソースは手動で作成済みです：
 
-- Databricks CLI profile: <PROFILE_NAME>
-- MLflow Experiment ID: <EXPERIMENT_ID>
+- Databricks CLI プロファイル: <PROFILE_NAME>
+- MLflow モニタリング Experiment ID: <MONITORING_EXPERIMENT_ID>
+- MLflow 評価 Experiment ID: <EVAL_EXPERIMENT_ID>
 - Genie Space ID: <GENIE_SPACE_ID>
-- Vector Search Index: <CATALOG>.<SCHEMA>.<INDEX_NAME>
-- Prompt Registry: <CATALOG>.<SCHEMA>.<PROMPT_NAME>
-- Lakebase Autoscaling Project: <PROJECT_NAME>
-- Lakebase Autoscaling Branch: <BRANCH_NAME>
+- Vector Search Index: <CATALOG>.<SCHEMA>.policy_docs_index
+- Lakebase プロジェクト: <PROJECT_NAME>
+- Lakebase ブランチ: <BRANCH_NAME>
 
-Steps:
-1. Update .env with all the above values (resolve PGHOST from the autoscaling
-   branch endpoint)
-2. Run `uv run start-app` and verify both frontend (port 3000) and backend
-   (port 8000) are healthy
-3. Smoke test the agent with a curl POST to /invocations
+手順：
+1. .env にすべての値を設定（PGHOST は Lakebase ブランチのエンドポイントから取得）
+2. uv run start-app を実行し、フロントエンド（3000）とバックエンド（8000）が起動することを確認
+3. curl で /invocations にリクエストを送って動作確認
 ```
 
-チャット UI は **http://localhost:3000**、API は **http://localhost:8000** でアクセスできます。
-
-#### Databricks Apps へのデプロイ
-
-ローカルでアプリの動作を確認したら、以下のプロンプトでデプロイします：
-
-```
-Deploy the agent app to Databricks Apps. I have the following resources:
-
-- Databricks CLI profile: <PROFILE_NAME>
-- MLflow Experiment ID: <EXPERIMENT_ID>
-- Genie Space ID: <GENIE_SPACE_ID>
-- Vector Search Index: <CATALOG>.<SCHEMA>.<INDEX_NAME>
-- Prompt Registry: <CATALOG>.<SCHEMA>.<PROMPT_NAME>
-- Lakebase Autoscaling Project: <PROJECT_NAME>
-- Lakebase Autoscaling Branch: <BRANCH_NAME>
-
-Steps:
-1. Update databricks.yml with all the above resource IDs (replace all
-   <placeholder> values)
-2. Run `databricks bundle deploy -p <PROFILE_NAME>` to deploy the bundle
-3. Run `databricks apps start retail-grocery-ltm-memory -p <PROFILE_NAME>`
-   to start the app
-4. Verify the app is running and share the app URL
-```
-
-### 方法 3：手動セットアップ
-
-ステップバイステップの詳細手順は **[ワークショップインストラクション](WORKSHOP_INSTRUCTIONS.md)** を参照してください。データ生成・Vector Search 作成・Lakebase セットアップ・評価・デプロイまで、全手順が記載されています。
+> **次のステップ：** アプリが動作したら、**[ワークショップインストラクション](WORKSHOP_INSTRUCTIONS.md)** のステップ 10 以降に進んでください。
 
 ---
 
