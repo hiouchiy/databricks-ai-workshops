@@ -282,17 +282,70 @@ Databricks Apps 環境では、外部からのリクエストは**ポート 8000
 
 ### 認証の流れ
 
+このアプリは「誰がチャットしているか」を知る必要があります（メモリをユーザーごとに分離するため）。
+認証の仕組みはローカル開発と Apps 環境で異なります。
+
+#### Apps 環境の場合（本番）
+
 ```
-ブラウザ → Databricks OAuth → Express（認証済みユーザー情報を取得）
-                                  │
-                                  ├── ローカル開発: SCIM API でユーザー情報取得
-                                  │   （databricks auth login で取得したトークンを使用）
-                                  │
-                                  └── Apps 環境: X-Forwarded-User ヘッダー
-                                      （Databricks Apps が自動付与）
+1. ユーザーがブラウザでアプリの URL にアクセス
+     ↓
+2. Databricks の認証画面が表示される（OAuth）
+     ↓
+3. ユーザーがログイン
+     ↓
+4. Databricks Apps のリバースプロキシが、認証済みのユーザー情報を
+   HTTP ヘッダーに自動付与してリクエストを転送:
+
+   X-Forwarded-User: 8803475336418960
+   X-Forwarded-Email: hiroshi.ouchiyama@databricks.com
+   X-Forwarded-Preferred-Username: hiroshi.ouchiyama@databricks.com
+
+     ↓
+5. Express がこれらのヘッダーを読み取り、ユーザーを識別
 ```
 
-FastAPI（エージェント）側では、Express が付与した `user_id` をリクエストの `context` から読み取り、メモリの名前空間として使用します。
+**X-Forwarded-User とは？**
+リバースプロキシ（Databricks Apps の入口サーバー）が、「この人は認証済みですよ」という情報を HTTP ヘッダーに付けて後ろのサーバーに渡す仕組みです。Express 自身が認証を行うのではなく、Databricks Apps が代わりにやってくれます。
+
+#### ローカル開発の場合
+
+```
+1. Express が起動時に Databricks CLI のトークンを取得
+   （databricks auth login で事前に設定済み）
+     ↓
+2. Express が SCIM API を呼び出してユーザー情報を取得:
+
+   GET https://<workspace>/api/2.0/preview/scim/v2/Me
+   Authorization: Bearer <CLI トークン>
+
+   レスポンス:
+   {
+     "id": "8803475336418960",
+     "userName": "hiroshi.ouchiyama@databricks.com",
+     "displayName": "Hiroshi Ouchiyama"
+   }
+     ↓
+3. Express がこの情報をセッションとして保持
+```
+
+**SCIM API とは？**
+SCIM（System for Cross-domain Identity Management）は、ユーザー情報を管理する標準的な API です。Databricks はこの API を提供しており、「今ログインしているのは誰？」を問い合わせることができます。ローカル開発では Databricks Apps のリバースプロキシがないため、Express が直接 SCIM API を呼んでユーザー情報を取得します。
+
+#### 認証情報がエージェントに届くまで
+
+```
+Express（ユーザー情報を取得済み）
+  ↓ POST /invocations に user_id を付与
+FastAPI（エージェント）
+  ↓ request.context.user_id を読み取り
+メモリツール
+  ↓ ("user_memories", "hiroshi.ouchiyama@databricks.com") の名前空間で検索
+Lakebase
+  ↓ このユーザーの記憶だけを返す
+```
+
+つまり、認証情報は最終的に **メモリの名前空間**（どのユーザーの記憶を読むか）として使われます。
 
 ---
 
