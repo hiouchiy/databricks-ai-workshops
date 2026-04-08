@@ -1793,13 +1793,7 @@ def main():
             # app.yaml にも追加（Apps デプロイ時に必要）
             append_env_to_app_yaml("MLFLOW_TRACING_DESTINATION", tracing_dest)
             append_env_to_app_yaml("MLFLOW_TRACING_SQL_WAREHOUSE_ID", warehouse_id)
-            # Delta Table への書き込みには MODIFY 権限が必要
-            run_sql_statement(
-                f"GRANT MODIFY, SELECT ON SCHEMA `{catalog}`.`{schema}` TO `{username}`",
-                token, host, warehouse_id,
-            )
             print_success(f"トレース送信先: Unity Catalog ({tracing_dest})")
-            print_success(f"MODIFY 権限を {username} に付与しました")
             print_success(f".env と app.yaml の両方に設定を追加しました")
         else:
             print_success("トレース送信先: MLflow Experiment（デフォルト）")
