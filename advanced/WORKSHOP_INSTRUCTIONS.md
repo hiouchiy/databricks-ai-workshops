@@ -280,7 +280,32 @@ PGDATABASE=databricks_postgres
 
 > **注意：** `MLFLOW_EXPERIMENT_ID` はアプリ実行時のトレース記録（モニタリング）に、`MLFLOW_EVAL_EXPERIMENT_ID` は評価スクリプト実行時に使われます。
 
-> **注意：** `PROMPT_REGISTRY_NAME` は設定不要です。日本語のシステムプロンプトは `agent.py` にハードコードされています。
+> **注意：** デフォルトでは `PROMPT_REGISTRY_NAME` の設定は不要です。日本語のシステムプロンプトは `agent.py` にハードコードされています。
+
+### Prompt Registry を使う場合（オプション）
+
+システムプロンプトを Unity Catalog でバージョン管理したい場合は、以下を実行してください。プロンプトのバージョン管理・A/Bテスト・ロールバックが可能になります。
+
+**1. プロンプトの登録**（1回だけ実行）：
+
+```bash
+uv run register-prompt --name <CATALOG>.<SCHEMA>.freshmart_system_prompt
+```
+
+**2. `.env` に追加**：
+
+```bash
+PROMPT_REGISTRY_NAME=<CATALOG>.<SCHEMA>.freshmart_system_prompt
+```
+
+**3. `app.yaml` に追加**（Apps デプロイ時）：
+
+```yaml
+  - name: PROMPT_REGISTRY_NAME
+    value: "<CATALOG>.<SCHEMA>.freshmart_system_prompt"
+```
+
+> 設定すると、`agent.py` はハードコード版ではなく Prompt Registry からプロンプトを読み込みます。Registry に登録されたプロンプトの `@production` エイリアスが使われます。
 
 ### トレース送信先の選択（オプション）
 
