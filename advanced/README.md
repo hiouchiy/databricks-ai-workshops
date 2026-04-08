@@ -98,7 +98,7 @@ advanced/
 - **ローカルツール**：
   - [uv](https://docs.astral.sh/uv/getting-started/installation/)（Python パッケージマネージャー）
   - [nvm](https://github.com/nvm-sh/nvm) + Node.js 20 LTS
-  - [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/install)
+  - [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/install) **v0.295 以上**（Apps デプロイのリソースバインディングに必要）
 - **任意**：[Claude Code](https://docs.anthropic.com/en/docs/claude-code)（AI 支援開発用）
 
 ---

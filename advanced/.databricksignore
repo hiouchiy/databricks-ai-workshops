@@ -1,0 +1,17 @@
+# フロントエンド（カスタマイズ時は同梱する）
+# 注意: package-lock.json は公開レジストリ(registry.npmjs.org)を参照していること
+# 社内プロキシの URL が含まれていると Apps 環境でデプロイ失敗する
+e2e-chatbot-app-next/node_modules/
+
+# ログファイル
+*.log
+
+# ローカル環境
+.venv/
+.env
+
+# ARCHIVE（開発時のバックアップ）
+agent_server/ARCHIVE/
+
+# ドキュメント（デプロイに不要）
+docs/
