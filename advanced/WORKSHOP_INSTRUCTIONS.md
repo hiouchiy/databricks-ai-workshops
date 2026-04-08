@@ -605,6 +605,28 @@ curl -X POST "${APP_URL}/invocations" \
   -d '{"input": [{"role": "user", "content": "返品ポリシーを教えてください"}]}'
 ```
 
+### 11-8. コードや設定を変更した後の再デプロイ
+
+ローカルで `app.yaml`、`agent.py`、フロントエンドなどを編集した後、変更を Apps に反映するには以下を実行します：
+
+```bash
+# 1. バンドルを再同期（ローカル → ワークスペース）
+databricks bundle deploy -t dev --profile DEFAULT
+
+# 2. アプリにソースコードを再デプロイ
+databricks apps deploy <アプリ名> \
+  --source-code-path "/Workspace/Users/<あなたのメールアドレス>/.bundle/retail_grocery_ltm_memory/dev/files" \
+  --profile DEFAULT
+```
+
+> **注意：** 再デプロイ後、npm install/build が走るため **3〜5 分** かかります。ステータスが RUNNING になるまで待ってください。
+>
+> `app.yaml` の `env` セクションを変更した場合は、アプリの再起動も必要です：
+> ```bash
+> databricks apps stop <アプリ名> --profile DEFAULT
+> databricks apps start <アプリ名> --profile DEFAULT
+> ```
+
 ---
 
 ## トラブルシューティング
