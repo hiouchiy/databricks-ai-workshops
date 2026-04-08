@@ -355,8 +355,50 @@ async def stream_handler(
                 ):
                     yield event
     except Exception as e:
-        error_msg = str(e).lower()
-        if any(keyword in error_msg for keyword in ["permission"]):
+        error_msg = str(e)
+        # tool_use/tool_result の順序エラー: チェックポイントに壊れたステートが残っている
+        # → チェックポイントをクリアして新しいスレッドとしてリトライ
+        if "tool_use" in error_msg and "tool_result" in error_msg:
+            logger.warning(f"Corrupted checkpoint detected for thread {thread_id}, retrying with fresh state: {error_msg[:200]}")
+            try:
+                async with AsyncCheckpointSaver(
+                    instance_name=LAKEBASE_INSTANCE_NAME,
+                    project=LAKEBASE_AUTOSCALING_PROJECT,
+                    branch=LAKEBASE_AUTOSCALING_BRANCH,
+                ) as checkpointer:
+                    # 壊れたチェックポイントを削除
+                    try:
+                        await checkpointer.adelete({"configurable": {"thread_id": thread_id}})
+                        logger.info(f"Deleted corrupted checkpoint for thread {thread_id}")
+                    except Exception:
+                        pass  # 削除に失敗しても続行
+
+                    async with AsyncDatabricksStore(
+                        instance_name=LAKEBASE_INSTANCE_NAME,
+                        project=LAKEBASE_AUTOSCALING_PROJECT,
+                        branch=LAKEBASE_AUTOSCALING_BRANCH,
+                        embedding_endpoint=EMBEDDING_ENDPOINT,
+                        embedding_dims=EMBEDDING_DIMS,
+                    ) as store:
+                        await store.setup()
+                        config = {"configurable": {"thread_id": thread_id, "store": store}}
+                        if user_id:
+                            config["configurable"]["user_id"] = user_id
+                        agent = await init_agent(
+                            workspace_client=sp_workspace_client,
+                            store=store,
+                            checkpointer=checkpointer,
+                        )
+                        async for event in process_agent_astream_events(
+                            agent.astream(input_state, config, stream_mode=["updates", "messages"])
+                        ):
+                            yield event
+                        return
+            except Exception as retry_error:
+                logger.error(f"Retry also failed: {retry_error}")
+                raise retry_error from e
+
+        if any(keyword in error_msg.lower() for keyword in ["permission"]):
             logger.error(f"Lakebase access error: {e}")
             lakebase_desc = LAKEBASE_INSTANCE_NAME or f"{LAKEBASE_AUTOSCALING_PROJECT}/{LAKEBASE_AUTOSCALING_BRANCH}"
             raise HTTPException(
