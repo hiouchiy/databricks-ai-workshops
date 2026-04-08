@@ -582,42 +582,53 @@ def create_lakebase_instance(profile_name: str) -> dict:
         print_error("Could not connect to Databricks. Check your CLI profile.")
         sys.exit(1)
 
-    name = input("Enter a name for the new Lakebase autoscaling project: ").strip()
-    if not name:
-        print_error("Instance name is required")
-        sys.exit(1)
+    from databricks.sdk.service.postgres import Branch, BranchSpec, Project, ProjectSpec
 
-    print(f"\nCreating Lakebase autoscaling project '{name}'...")
-    try:
-        from databricks.sdk.service.postgres import Branch, BranchSpec, Project, ProjectSpec
+    while True:
+        name = input("Enter a name for the new Lakebase autoscaling project: ").strip()
+        if not name:
+            print("  名前を入力してください。")
+            continue
 
-        project_op = w.postgres.create_project(
-            project=Project(spec=ProjectSpec(display_name=name)),
-            project_id=name,
-        )
-        project = project_op.wait()
-        project_short = project.name.removeprefix("projects/")
-        print_success(f"Created project: {project_short}")
+        # 使用可能な文字をチェック（英数字、ハイフン、アンダースコアのみ）
+        if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9_-]*$', name):
+            print_error("プロジェクト名には英数字、ハイフン(-)、アンダースコア(_)のみ使用できます。先頭は英数字にしてください。")
+            continue
 
-        # Create a default branch
-        branch_id = f"{name}-branch"
-        branch_op = w.postgres.create_branch(
-            parent=project.name,
-            branch=Branch(spec=BranchSpec(no_expiry=True)),
-            branch_id=branch_id,
-        )
-        branch = branch_op.wait()
-        branch_name = (
-            branch.name.split("/branches/")[-1]
-            if "/branches/" in branch.name
-            else branch_id
-        )
-        print_success(f"Created branch: {branch_name} (id: {branch.uid})")
+        print(f"\nCreating Lakebase autoscaling project '{name}'...")
+        try:
+            project_op = w.postgres.create_project(
+                project=Project(spec=ProjectSpec(display_name=name)),
+                project_id=name,
+            )
+            project = project_op.wait()
+            project_short = project.name.removeprefix("projects/")
+            print_success(f"Created project: {project_short}")
 
-        return {"type": "autoscaling", "project": project_short, "branch": branch_name}
-    except Exception as e:
-        print_error(f"Failed to create Lakebase instance: {e}")
-        sys.exit(1)
+            # Create a default branch
+            branch_id = f"{name}-branch"
+            branch_op = w.postgres.create_branch(
+                parent=project.name,
+                branch=Branch(spec=BranchSpec(no_expiry=True)),
+                branch_id=branch_id,
+            )
+            branch = branch_op.wait()
+            branch_name = (
+                branch.name.split("/branches/")[-1]
+                if "/branches/" in branch.name
+                else branch_id
+            )
+            print_success(f"Created branch: {branch_name} (id: {branch.uid})")
+
+            return {"type": "autoscaling", "project": project_short, "branch": branch_name}
+        except Exception as e:
+            err_msg = str(e)
+            print_error(f"作成に失敗しました: {err_msg[:200]}")
+            if "already exists" in err_msg.lower():
+                print("  この名前は既に使用されています。別の名前を入力してください。")
+            else:
+                print("  名前を変えてもう一度試してください。")
+            continue
 
 
 def select_lakebase_interactive(profile_name: str) -> dict:
@@ -1393,12 +1404,56 @@ def create_catalog_schema(token: str, host: str, warehouse_id: str, catalog: str
         sys.exit(1)
 
 
-def generate_data(profile_name: str, warehouse_id: str, catalog: str, schema: str):
+def check_tables_exist(token: str, host: str, warehouse_id: str, catalog: str, schema: str) -> bool:
+    """全6テーブルと policy_docs_chunked が存在するかチェック。"""
+    required_tables = ["customers", "products", "stores", "transactions", "transaction_items", "payment_history"]
+    for table in required_tables:
+        data = run_sql_statement(
+            f"DESCRIBE TABLE `{catalog}`.`{schema}`.`{table}`", token, host, warehouse_id
+        )
+        if data.get("status", {}).get("state") not in ("SUCCEEDED", "CLOSED"):
+            return False
+    return True
+
+
+def check_chunked_table_exists(token: str, host: str, warehouse_id: str, catalog: str, schema: str) -> bool:
+    """policy_docs_chunked テーブルが存在するかチェック。"""
+    data = run_sql_statement(
+        f"DESCRIBE TABLE `{catalog}`.`{schema}`.policy_docs_chunked", token, host, warehouse_id
+    )
+    return data.get("status", {}).get("state") in ("SUCCEEDED", "CLOSED")
+
+
+def generate_data(profile_name: str, warehouse_id: str, catalog: str, schema: str, token: str = "", host: str = ""):
     """Generate structured data and chunked policy docs."""
     data_dir = Path(__file__).parent.parent.parent / "data"
     env = os.environ.copy()
     env["CATALOG"] = catalog
     env["SCHEMA"] = schema
+
+    # 構造化データのスキップチェック
+    if token and host:
+        print_step("構造化データの確認中...")
+        if check_tables_exist(token, host, warehouse_id, catalog, schema):
+            print_success("構造化データは既に存在します（スキップ）")
+            # チャンクテーブルも確認
+            if check_chunked_table_exists(token, host, warehouse_id, catalog, schema):
+                print_success("ポリシー文書チャンクも既に存在します（スキップ）")
+                return
+            else:
+                # チャンクだけ生成
+                print_step("ポリシー文書のチャンク生成...")
+                result = subprocess.run(
+                    [sys.executable, str(data_dir / "execute_chunking.py"),
+                     "--profile", profile_name, "--warehouse-id", warehouse_id],
+                    capture_output=True, text=True, env=env,
+                )
+                if result.returncode == 0:
+                    print_success("ポリシー文書チャンク生成完了")
+                else:
+                    print_error(f"チャンク生成に失敗: {result.stderr[-300:]}")
+                    sys.exit(1)
+                return
 
     # Structured data
     print_step("構造化データの生成（6テーブル）...")
@@ -1648,8 +1703,8 @@ def main():
         # 4-1: Catalog & Schema
         create_catalog_schema(token, host, warehouse_id, catalog, schema)
 
-        # 4-2 & 4-3: Data generation
-        generate_data(profile_name, warehouse_id, catalog, schema)
+        # 4-2 & 4-3: Data generation (skip if tables already exist)
+        generate_data(profile_name, warehouse_id, catalog, schema, token=token, host=host)
 
         # 4-4: CDF
         enable_cdf(token, host, warehouse_id, catalog, schema)
