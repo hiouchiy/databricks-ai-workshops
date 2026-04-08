@@ -1798,6 +1798,33 @@ def main():
         else:
             print_success("トレース送信先: MLflow Experiment（デフォルト）")
 
+        # Prompt Registry
+        print()
+        print("  Prompt Registry の選択:")
+        print("    デフォルト: ハードコード（agent.py に組み込み済み、設定不要）")
+        print("    オプション: Unity Catalog Prompt Registry（バージョン管理・A/Bテスト・ロールバック）")
+        use_prompt_registry = input("\n  Prompt Registry を使用しますか？ (y/N): ").strip().lower()
+        if use_prompt_registry == "y":
+            prompt_name = f"{catalog}.{schema}.freshmart_system_prompt"
+            print(f"  プロンプト登録中: {prompt_name} ...")
+            try:
+                result = subprocess.run(
+                    ["uv", "run", "register-prompt", "--name", prompt_name],
+                    capture_output=True, text=True,
+                )
+                if result.returncode == 0:
+                    update_env_file("PROMPT_REGISTRY_NAME", prompt_name)
+                    append_env_to_app_yaml("PROMPT_REGISTRY_NAME", prompt_name)
+                    print_success(f"Prompt Registry: {prompt_name}")
+                else:
+                    print_error(f"プロンプト登録に失敗: {result.stderr[-200:]}")
+                    print("  ハードコード版を使用します。")
+            except Exception as e:
+                print_error(f"プロンプト登録に失敗: {e}")
+                print("  ハードコード版を使用します。")
+        else:
+            print_success("Prompt Registry: 使用しない（ハードコード版）")
+
         # ── Phase 6: 依存関係 ──
         print_step("[6/7] 依存関係のインストール")
         install_dependencies()
