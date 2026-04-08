@@ -285,16 +285,48 @@ Databricks Apps 環境では、外部からのリクエストは**ポート 8000
 このアプリは「誰がチャットしているか」を知る必要があります（メモリをユーザーごとに分離するため）。
 認証の仕組みはローカル開発と Apps 環境で異なります。
 
-#### Apps 環境の場合（本番）
+#### アプリの URL の実態
+
+ユーザーがアクセスする `https://freshmart-agent-hiroshi.databricksapps.com` は、あなたのアプリに直接つながっているわけではありません。**Databricks Apps プラットフォーム**（AWS 上のインフラ）が間に入っています。
+
+```
+ユーザーが見ている景色:
+  ブラウザ → https://freshmart-agent-hiroshi.databricksapps.com
+
+実態:
+  ブラウザ
+    ↓ HTTPS
+  Databricks Apps プラットフォーム（AWS 上のインフラ）
+    ├── DNS: freshmart-agent-hiroshi.databricksapps.com のアドレスを解決
+    ├── TLS: HTTPS の暗号化・復号を処理
+    ├── OAuth: 未ログインなら Databricks の認証画面にリダイレクト
+    ├── リバースプロキシ: 認証済みリクエストにユーザー情報ヘッダーを付与
+    ↓ 転送
+  アプリのコンテナ（あなたのコード）
+    ├── Express (localhost:3000) — UI 配信 + API 中継
+    └── FastAPI (localhost:8000) — AI エージェント
+```
+
+ユーザーのリクエストは必ず Databricks Apps プラットフォームを経由してからアプリに届きます。認証（OAuth）はプラットフォームが行い、リバースプロキシは認証結果をヘッダーに付けてアプリに転送するだけです。
+
+| コンポーネント | 役割 | 例えると |
+|---|---|---|
+| **Databricks OAuth** | ログイン画面の表示、パスワード確認、トークン発行 | 身分証明書を発行する窓口 |
+| **リバースプロキシ** | 認証済みか確認し、ヘッダーを付けて転送 | ビルの受付でバッジを確認する人 |
+| **Express** | ヘッダーからユーザー情報を読むだけ | バッジを見て名前を知る人 |
+
+#### Apps 環境の認証フロー（詳細）
 
 ```
 1. ユーザーがブラウザでアプリの URL にアクセス
      ↓
-2. Databricks の認証画面が表示される（OAuth）
+2. Databricks Apps プラットフォームが「未ログイン」を検知
      ↓
-3. ユーザーがログイン
+3. Databricks の OAuth ログイン画面にリダイレクト
      ↓
-4. Databricks Apps のリバースプロキシが、認証済みのユーザー情報を
+4. ユーザーがログイン → Databricks がトークンを発行
+     ↓
+5. リバースプロキシが「この人は認証済み」と判断し、
    HTTP ヘッダーに自動付与してリクエストを転送:
 
    X-Forwarded-User: 8803475336418960
@@ -302,7 +334,7 @@ Databricks Apps 環境では、外部からのリクエストは**ポート 8000
    X-Forwarded-Preferred-Username: hiroshi.ouchiyama@databricks.com
 
      ↓
-5. Express がこれらのヘッダーを読み取り、ユーザーを識別
+6. Express がこれらのヘッダーを読み取り、ユーザーを識別
 ```
 
 **リバースプロキシとは？**
