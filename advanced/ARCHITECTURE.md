@@ -168,6 +168,62 @@ MLflow AgentServer
 
 つまり、開発者（あなた）が書くのは `@invoke()` と `@stream()` の中身だけ。サーバーの設定・起動・ルーティングは MLflow + FastAPI + Uvicorn が全て面倒を見てくれます。
 
+#### FastAPI と Uvicorn はいつもセット？
+
+ほぼ毎回セットです。コードで見ると違いが分かります：
+
+```python
+# ── FastAPI が担当する部分（「何をするか」の定義）──
+
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.post("/invocations")          # ← 「/invocations に POST が来たら」
+async def handle(request):         # ← 「この関数を実行する」
+    answer = await ask_llm(request)
+    return {"output": answer}
+
+# この時点では、まだサーバーは起動していない。
+# 「レシピは書いたが、レストランはまだ開店していない」状態。
+```
+
+```bash
+# ── Uvicorn が担当する部分（「サーバーを起動する」）──
+
+uvicorn main:app --port 8000
+
+# Uvicorn が以下を行う：
+#   1. ポート 8000 でネットワーク接続を待ち受け開始
+#   2. HTTP リクエストが来たら FastAPI に渡す
+#   3. FastAPI の戻り値をクライアントに返す
+#
+# 「レストランを開店して、お客さんを受け入れる」役割。
+```
+
+```python
+# ── このアプリの実際のコード（start_server.py）──
+
+from mlflow.genai.agent_server import AgentServer
+
+agent_server = AgentServer("ResponsesAgent")  # ← MLflow が FastAPI アプリを自動生成
+app = agent_server.app                         # ← FastAPI アプリ（レシピ集）
+
+def main():
+    agent_server.run(app_import_string="agent_server.start_server:app")
+    # ↑ 内部で Uvicorn を起動（レストラン開店）
+```
+
+Uvicorn の代わりに別の ASGI サーバー（Hypercorn、Daphne 等）も使えますが、Uvicorn が最も一般的で高速なため、ほぼデファクトスタンダードです。
+
+Node.js の世界との対比：
+
+| Python | Node.js | 役割 |
+|---|---|---|
+| **Uvicorn** | Node.js ランタイム自体 | ネットワーク接続の管理・起動 |
+| **FastAPI** | Express | URL ごとの処理を定義 |
+
+Node.js は通信基盤とランタイムが一体なので「Express だけで動く」感覚ですが、Python では通信基盤（Uvicorn）とアプリロジック（FastAPI）が分離しています。差し替え可能な設計ですが、実質いつもセットで使います。
+
 ### 4. LangGraph エージェント（agent.py 内）
 
 | 項目 | 内容 |
