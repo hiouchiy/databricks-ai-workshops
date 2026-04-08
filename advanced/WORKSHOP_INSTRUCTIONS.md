@@ -411,18 +411,61 @@ uv run agent-evaluate-advanced
 > cd e2e-chatbot-app-next && rm -f package-lock.json && npm install && cd ..
 > ```
 
-### 11-1. `databricks.yml` と `app.yaml` の確認
+### 11-1. `databricks.yml` の編集
 
-手動セットアップの場合、`databricks.yml` のリソース定義に実際の値を設定してください（`uv run quickstart` を使った場合は自動更新されます）：
+`databricks.yml` を開き、以下の箇所を自分の環境に合わせて編集します（`uv run quickstart` を使った場合は自動更新されます）。
 
-- `experiment_id` — モニタリング用 MLflow Experiment ID
-- `space_id` — Genie Space ID
-- `securable_full_name` — Vector Search インデックスのフルパス
-- `LAKEBASE_AUTOSCALING_PROJECT` / `LAKEBASE_AUTOSCALING_BRANCH` — Lakebase の値（`value` で直接指定）
+**アプリ名**（参加者ごとにユニークにしてください）：
 
-> **注意：** Lakebase のリソースバインディングは CLI v0.295 時点では未対応のため、`value` で直接指定します。Experiment、Genie Space、Vector Search Index は `value_from` でリソースバインディング経由で注入されます。
+```yaml
+      name: "<あなたのアプリ名>"  # 例: freshmart-agent-taro
+```
 
-### 11-2. バンドルデプロイ（アプリ作成 + ソースコード同期）
+> `name:` はファイル内に 2 箇所あります（`dev` と `prod` の両方）。両方とも同じ名前にしてください。
+
+**リソース定義**（ステップ 7〜8 で控えた値を入力）：
+
+```yaml
+      resources:
+        - name: "experiment"
+          experiment:
+            experiment_id: "<MONITORING-EXPERIMENT-ID>"   # ← ステップ 7 の値
+            permission: "CAN_MANAGE"
+        - name: "retail_grocery_genie"
+          genie_space:
+            name: "フレッシュマート 小売データ"
+            space_id: "<GENIE-SPACE-ID>"                  # ← ステップ 5 の値
+            permission: "CAN_RUN"
+        - name: "policy_docs_index"
+          uc_securable:
+            securable_full_name: "<CATALOG>.<SCHEMA>.policy_docs_index"  # ← ステップ 4 の値
+            securable_type: "TABLE"
+            permission: "SELECT"
+```
+
+**Lakebase の環境変数**（リソースバインディング未対応のため `value` で直接指定）：
+
+```yaml
+          - name: LAKEBASE_AUTOSCALING_PROJECT
+            value: "<PROJECT-NAME>"                       # ← ステップ 6 の値
+          - name: LAKEBASE_AUTOSCALING_BRANCH
+            value: "<BRANCH-NAME>"                        # ← ステップ 6 の値
+```
+
+### 11-2. `app.yaml` の編集
+
+`app.yaml` も `databricks.yml` と同様に Lakebase の値を設定します：
+
+```yaml
+  - name: LAKEBASE_AUTOSCALING_PROJECT
+    value: "<PROJECT-NAME>"
+  - name: LAKEBASE_AUTOSCALING_BRANCH
+    value: "<BRANCH-NAME>"
+```
+
+> その他の環境変数（MLFLOW_EXPERIMENT_ID、GENIE_SPACE_ID、VECTOR_SEARCH_INDEX）は `valueFrom` でリソースバインディング経由で自動注入されるため、編集不要です。
+
+### 11-3. バンドルデプロイ
 
 ```bash
 databricks bundle deploy -t dev --profile DEFAULT
@@ -430,7 +473,7 @@ databricks bundle deploy -t dev --profile DEFAULT
 
 初回はアプリの作成が含まれるため数分かかります。
 
-### 11-3. アプリの起動
+### 11-4. アプリの起動
 
 ```bash
 databricks apps start <アプリ名> --profile DEFAULT
@@ -443,7 +486,7 @@ databricks apps get <アプリ名> --profile DEFAULT -o json | jq '.compute_stat
 # "ACTIVE" と表示されるまで待つ
 ```
 
-### 11-4. ソースコードのデプロイ
+### 11-5. ソースコードのデプロイ
 
 ```bash
 databricks apps deploy <アプリ名> \
@@ -456,7 +499,7 @@ databricks apps deploy <アプリ名> \
 > databricks apps get <アプリ名> --profile DEFAULT -o json | jq '.app_status.state'
 > ```
 
-### 11-5. サービスプリンシパルへのパーミッション付与
+### 11-6. サービスプリンシパルへのパーミッション付与
 
 リソースバインディング（Experiment、Genie、VS Index）は自動的に SP に権限が付与されますが、**Unity Catalog スキーマと Lakebase は手動で付与**する必要があります。
 
@@ -490,7 +533,7 @@ databricks apps stop <アプリ名> --profile DEFAULT
 databricks apps start <アプリ名> --profile DEFAULT
 ```
 
-### 11-6. 動作確認
+### 11-7. 動作確認
 
 > **注意：** アプリ起動後、フロントエンドが完全に利用可能になるまで **3〜5 分** かかります。
 
