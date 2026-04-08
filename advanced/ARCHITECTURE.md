@@ -121,7 +121,52 @@ Express サーバー (localhost:3000) が処理するリクエスト:
 | **ソースコード** | `agent_server/agent.py`, `agent_server/start_server.py` |
 | **API** | OpenAI Responses API 互換（`POST /invocations`） |
 
-MLflow の `AgentServer` が FastAPI アプリを生成し、Uvicorn で起動します。`@invoke()` と `@stream()` デコレータで登録されたハンドラが、LLM（Claude）の呼び出し、ツール実行、メモリの読み書きを行います。
+#### FastAPI と Uvicorn の違い（素人向け）
+
+どちらも「Web サーバー」と呼ばれることがありますが、役割が違います。レストランに例えると：
+
+```
+Uvicorn = レストランの建物（お客さんが入ってくるドア、テーブル、配膳の仕組み）
+FastAPI = シェフとレシピ（注文に応じて料理を作るロジック）
+```
+
+| | Uvicorn | FastAPI |
+|---|---|---|
+| **何者？** | ASGI サーバー（通信基盤） | Web フレームワーク（アプリロジック） |
+| **やること** | ネットワーク接続の管理、HTTP リクエストの受信・レスポンスの送信 | URL ごとの処理の定義（`/invocations` が来たら何をするか） |
+| **例えると** | 郵便局（手紙を届ける仕組み） | 手紙を読んで返事を書く人 |
+| **単体で動く？** | 動くが、何を返すか分からない | 動かない（Uvicorn が必要） |
+
+```
+リクエストの流れ:
+
+  HTTP リクエスト ("POST /invocations")
+    ↓
+  Uvicorn が受け取る（ネットワーク処理）
+    ↓
+  FastAPI に渡す（「/invocations のハンドラを呼んで」）
+    ↓
+  FastAPI のハンドラが実行（agent.py の invoke_handler）
+    ↓
+  レスポンスを Uvicorn に返す
+    ↓
+  Uvicorn がブラウザ/クライアントに送信
+```
+
+このアプリでは、さらに **MLflow の AgentServer** が FastAPI アプリを自動生成しています：
+
+```
+MLflow AgentServer
+  └── FastAPI アプリを生成
+        ├── POST /invocations  ← @invoke() で登録したハンドラ
+        ├── POST /invocations (streaming) ← @stream() で登録したハンドラ
+        ├── GET /health
+        └── GET /docs（自動生成 API ドキュメント）
+              ↓
+        Uvicorn で起動（ポート 8000）
+```
+
+つまり、開発者（あなた）が書くのは `@invoke()` と `@stream()` の中身だけ。サーバーの設定・起動・ルーティングは MLflow + FastAPI + Uvicorn が全て面倒を見てくれます。
 
 ### 4. LangGraph エージェント（agent.py 内）
 
