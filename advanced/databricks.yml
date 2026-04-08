@@ -10,32 +10,31 @@ resources:
       config:
         command: ["uv", "run", "start-app"]
         env:
+          # MLflow
           - name: MLFLOW_TRACKING_URI
             value: "databricks"
           - name: MLFLOW_REGISTRY_URI
             value: "databricks-uc"
+          - name: MLFLOW_EXPERIMENT_ID
+            value: "2019445883421300"
+          # App config
           - name: API_PROXY
             value: "http://localhost:8000/invocations"
           - name: CHAT_APP_PORT
             value: "3000"
           - name: CHAT_PROXY_TIMEOUT_SECONDS
             value: "300"
-          - name: MLFLOW_EXPERIMENT_ID
-            value: "1159599290140385"
+          # Lakebase
           - name: LAKEBASE_AUTOSCALING_PROJECT
-            value: "freshmart-agent-hiroshi"
+            value: "hiroshi-fresh-mart-lakebase"
           - name: LAKEBASE_AUTOSCALING_BRANCH
-            value: "production"
+            value: "hiroshi-fresh-mart-lakebase-branch"
+          # Genie
           - name: GENIE_SPACE_ID
-            value: "01f12c1c31cd18a7989885e681afa7fc"
+            value: "01f1329294f010a6815eda19b72a9f1e"
+          # Vector Search
           - name: VECTOR_SEARCH_INDEX
-            value: "hiroshi.agent_demo_2026.policy_docs_index"
-      resources:
-        - name: "retail_grocery_genie"
-          genie_space:
-            name: "フレッシュマート 小売データ"
-            space_id: "01f12c1c31cd18a7989885e681afa7fc"
-            permission: "CAN_RUN"
+            value: "hiroshi.retail_agent.policy_docs_index"
 
 targets:
   dev:
@@ -52,3 +51,4 @@ targets:
       apps:
         retail_grocery_ltm_memory:
           name: freshmart-agent-hiroshi
+          source_code_path: ./
