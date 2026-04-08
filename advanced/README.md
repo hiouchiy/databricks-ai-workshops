@@ -121,14 +121,16 @@ uv run quickstart
 2. Databricks 認証
 3. カタログ名・スキーマ名・SQL ウェアハウス・Vector Search エンドポイントの入力
 4. カタログ・スキーマの作成
-5. 構造化データの生成（6テーブル、日本語）
+5. 構造化データの生成（6テーブル、日本語。既存の場合はスキップ）
 6. ポリシー文書のチャンク生成 + CDF 有効化
 7. Vector Search インデックスの作成（READY まで自動待機）
 8. Genie Space の作成
 9. Lakebase のセットアップ（メモリ用）
 10. MLflow 実験を2つ作成（モニタリング用 + 評価用）
-11. `.env` ファイルの生成
-12. Python / Node.js 依存関係のインストール
+11. `.env` / `databricks.yml` / `app.yaml` の生成・更新
+12. トレース送信先の選択（MLflow Experiment または Unity Catalog Delta Table）
+13. Prompt Registry の選択（オプション：Unity Catalog でプロンプトをバージョン管理）
+14. Python / Node.js 依存関係のインストール
 
 セットアップ完了後は、いつでも以下で起動できます：
 
@@ -470,14 +472,16 @@ The quickstart script will interactively walk you through:
 2. Databricks authentication
 3. Input catalog name, schema name, SQL warehouse, and Vector Search endpoint
 4. Create catalog and schema
-5. Generate structured data (6 tables, Japanese)
+5. Generate structured data (6 tables, Japanese; skipped if already exists)
 6. Generate policy document chunks + enable CDF
 7. Create Vector Search index (auto-waits until READY)
 8. Create Genie Space
 9. Set up Lakebase (for memory)
 10. Create 2 MLflow experiments (monitoring + evaluation)
-11. Generate `.env` file
-12. Install Python / Node.js dependencies
+11. Generate/update `.env` / `databricks.yml` / `app.yaml`
+12. Select trace destination (MLflow Experiment or Unity Catalog Delta Table)
+13. Select Prompt Registry (optional: version-managed prompts in Unity Catalog)
+14. Install Python / Node.js dependencies
 
 After setup, start the app anytime with:
 
