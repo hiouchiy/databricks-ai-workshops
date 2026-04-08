@@ -389,6 +389,14 @@ uv run start-app
 
 バックエンドが `http://localhost:8000`、チャット UI が `http://localhost:3000` で起動します。
 
+> **`--no-ui` モード：** チャット UI なしでバックエンド（API）のみ起動したい場合：
+> ```bash
+> uv run start-app --no-ui
+> ```
+> API テストや評価スクリプト実行時に便利です。`curl` で直接 `http://localhost:8000/invocations` にリクエストを送れます。
+>
+> アーキテクチャの詳細は [ARCHITECTURE.md](ARCHITECTURE.md) を参照してください。
+
 > **うまく起動しない場合：**
 >
 > - `uv sync` が完了していることを確認
