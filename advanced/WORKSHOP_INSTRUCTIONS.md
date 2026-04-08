@@ -504,6 +504,15 @@ uv run agent-evaluate-advanced
 
 > その他の環境変数（MLFLOW_EXPERIMENT_ID、GENIE_SPACE_ID、VECTOR_SEARCH_INDEX）は `valueFrom` でリソースバインディング経由で自動注入されるため、編集不要です。
 
+**Delta Table トレースを使用する場合**は、以下も `app.yaml` に追加してください（`uv run quickstart` を使った場合は自動追加されます）：
+
+```yaml
+  - name: MLFLOW_TRACING_DESTINATION
+    value: "<CATALOG>.<SCHEMA>"
+  - name: MLFLOW_TRACING_SQL_WAREHOUSE_ID
+    value: "<WAREHOUSE-ID>"
+```
+
 ### 11-3. バンドルデプロイ
 
 ```bash

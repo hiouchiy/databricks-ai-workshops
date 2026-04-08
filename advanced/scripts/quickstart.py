@@ -1209,6 +1209,26 @@ def update_app_yaml_lakebase(lakebase_config: dict) -> None:
         print_success("Updated app.yaml with Lakebase config")
 
 
+def append_env_to_app_yaml(name: str, value: str) -> None:
+    """app.yaml の env セクションに環境変数を追加する。既に存在する場合は値を更新。"""
+    app_yaml_path = Path("app.yaml")
+    if not app_yaml_path.exists():
+        return
+
+    content = app_yaml_path.read_text()
+
+    # 既に存在する場合は値を更新
+    pattern = rf'(- name: {re.escape(name)}\n\s+value: )"[^"]*"'
+    if re.search(pattern, content):
+        content = re.sub(pattern, rf'\1"{value}"', content)
+        app_yaml_path.write_text(content)
+        return
+
+    # 存在しない場合は末尾に追加
+    content = content.rstrip() + f'\n  - name: {name}\n    value: "{value}"\n'
+    app_yaml_path.write_text(content)
+
+
 def update_databricks_yml_experiment(experiment_id: str) -> None:
     """Update databricks.yml to set the experiment ID in the app resource."""
     yml_path = Path("databricks.yml")
@@ -1687,7 +1707,12 @@ def main():
         if use_delta == "y":
             tracing_dest = f"{catalog}.{schema}"
             update_env_file("MLFLOW_TRACING_DESTINATION", tracing_dest)
+            update_env_file("MLFLOW_TRACING_SQL_WAREHOUSE_ID", warehouse_id)
+            # app.yaml にも追加（Apps デプロイ時に必要）
+            append_env_to_app_yaml("MLFLOW_TRACING_DESTINATION", tracing_dest)
+            append_env_to_app_yaml("MLFLOW_TRACING_SQL_WAREHOUSE_ID", warehouse_id)
             print_success(f"トレース送信先: Unity Catalog ({tracing_dest})")
+            print_success(f".env と app.yaml の両方に設定を追加しました")
         else:
             print_success("トレース送信先: MLflow Experiment（デフォルト）")
 
