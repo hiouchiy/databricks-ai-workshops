@@ -1,4 +1,6 @@
-command: ["uv", "run", "start-app"]
+# Apps 環境には Node.js がないため、--no-ui でバックエンドのみ起動。
+# フロントエンドは MLflow AgentServer の組み込みチャットプロキシが配信。
+command: ["uv", "run", "start-app", "--no-ui"]
 
 env:
   # Note: Proxy settings are NOT needed in Apps environment

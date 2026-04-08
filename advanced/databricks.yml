@@ -8,7 +8,7 @@ resources:
       description: "Retail grocery conversational agent with Genie, Vector Search, and long-term memory"
       source_code_path: ./
       config:
-        command: ["uv", "run", "start-app"]
+        command: ["uv", "run", "start-app", "--no-ui"]
         env:
           # MLflow
           - name: MLFLOW_TRACKING_URI

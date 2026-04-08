@@ -397,58 +397,83 @@ uv run agent-evaluate-advanced
 ## ステップ 11（オプション）：Databricks Apps へのデプロイ
 
 > **前提条件：**
->
 > - ワークスペースの Apps 枠に空きがあること
-> - Apps 環境から PyPI にアクセスできること（2026年3月現在、社内ネットワーク制限で問題が発生する場合があります）
+> - Apps 環境から PyPI にアクセスできること
+>
+> **注意：** Apps 環境には Node.js がインストールされていないため、アプリはバックエンド（API）のみで動作します。チャット画面は `curl` やツールから API を呼び出して利用します。ローカルでチャット画面を使いたい場合はステップ 9（`uv run start-app`）をご利用ください。
 
-### 11-1. ソースコードの同期
+### 11-1. `app.yaml` の確認
 
-```bash
-databricks sync . "/Users/<あなたのメールアドレス>/<アプリ名>" --profile DEFAULT
-```
+`app.yaml` の環境変数が `.env` の値と一致していることを確認してください。`uv run quickstart` を使った場合は自動更新されますが、手動セットアップの場合は以下の値を `.env` に合わせて更新してください：
 
-### 11-2. アプリの作成と起動
+- `MLFLOW_EXPERIMENT_ID` — モニタリング用 Experiment ID
+- `LAKEBASE_AUTOSCALING_PROJECT` / `LAKEBASE_AUTOSCALING_BRANCH`
+- `GENIE_SPACE_ID`
+- `VECTOR_SEARCH_INDEX`
+
+### 11-2. アプリの作成
 
 ```bash
 # アプリ名は参加者ごとにユニークにしてください
 databricks apps create <アプリ名> --profile DEFAULT
-databricks apps start <アプリ名> --profile DEFAULT
 ```
 
-### 11-3. ソースコードのデプロイ
+> コンピュートが ACTIVE になるまで数分かかります。以下で確認できます：
+> ```bash
+> databricks apps get <アプリ名> --profile DEFAULT -o json | jq '.compute_status.state'
+> ```
+
+### 11-3. ソースコードの同期とデプロイ
 
 ```bash
+# ソースコードをワークスペースに同期
+databricks sync . "/Users/<あなたのメールアドレス>/<アプリ名>" --profile DEFAULT
+
+# アプリにデプロイ
 databricks apps deploy <アプリ名> \
   --source-code-path "/Workspace/Users/<あなたのメールアドレス>/<アプリ名>" \
   --profile DEFAULT
 ```
 
+デプロイが完了するまで 1〜3 分待ちます。
+
 ### 11-4. サービスプリンシパルへのパーミッション付与
 
 ```bash
-# アプリの SP を取得
-SP_CLIENT_ID=$(databricks apps get <アプリ名> --output json | jq -r '.service_principal_client_id')
-
-# Unity Catalog パーミッション
-# SQL エディタで実行：
-# GRANT USE CATALOG ON CATALOG <CATALOG> TO `<SP_CLIENT_ID>`;
-# GRANT USE SCHEMA ON SCHEMA <CATALOG>.<SCHEMA> TO `<SP_CLIENT_ID>`;
-# GRANT SELECT ON SCHEMA <CATALOG>.<SCHEMA> TO `<SP_CLIENT_ID>`;
-
-# Genie Space: UI で SP を Can Run で追加
-# Vector Search: Catalog Explorer で SP に SELECT を付与
+# アプリの SP Client ID を取得
+SP_CLIENT_ID=$(databricks apps get <アプリ名> --output json --profile DEFAULT | jq -r '.service_principal_client_id')
+echo "SP Client ID: $SP_CLIENT_ID"
 ```
+
+**Unity Catalog パーミッション**（SQL エディタで実行）：
+
+```sql
+GRANT USE CATALOG ON CATALOG `<CATALOG>` TO `<SP_CLIENT_ID>`;
+GRANT USE SCHEMA ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `<SP_CLIENT_ID>`;
+GRANT SELECT ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `<SP_CLIENT_ID>`;
+```
+
+**Lakebase パーミッション**：
+
+```bash
+uv run python scripts/grant_lakebase_permissions.py "$SP_CLIENT_ID" \
+  --memory-type langgraph-short-term --project <PROJECT-NAME> --branch <BRANCH-NAME>
+uv run python scripts/grant_lakebase_permissions.py "$SP_CLIENT_ID" \
+  --memory-type langgraph-long-term --project <PROJECT-NAME> --branch <BRANCH-NAME>
+```
+
+**Genie Space**：Databricks UI > Genie > 対象のスペース > Share > SP を **Can Run** で追加
 
 ### 11-5. 動作確認
 
 ```bash
-APP_URL=$(databricks apps get <アプリ名> --output json | jq -r '.url')
-TOKEN=$(databricks auth token -o json | jq -r .access_token)
+APP_URL=$(databricks apps get <アプリ名> --output json --profile DEFAULT | jq -r '.url')
+TOKEN=$(databricks auth token --profile DEFAULT -o json | jq -r .access_token)
 
 curl -X POST "${APP_URL}/invocations" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"input": [{"role": "user", "content": "こんにちは！"}]}'
+  -d '{"input": [{"role": "user", "content": "返品ポリシーを教えてください"}]}'
 ```
 
 ---
