@@ -715,34 +715,122 @@ Lakebase 内のデータ構造（名前空間で整理）:
 
 ---
 
-## トレースとモニタリング
+## トレース・モニタリング・評価
+
+### なぜ実験を2つに分けるのか
+
+このアプリでは、MLflow Experiment を**モニタリング用**と**評価用**の2つに分離しています。
 
 ```
-エージェントの処理
+┌─────────────────────────────┐    ┌─────────────────────────────┐
+│  freshmart-agent-monitoring │    │  freshmart-agent-evaluation  │
+│  （モニタリング用）            │    │  （評価用）                    │
+│                             │    │                             │
+│  ・運用中のアプリのトレース    │    │  ・オフライン評価の結果        │
+│  ・実ユーザーのリクエスト      │    │  ・スコアラーの採点結果        │
+│  ・レイテンシ、エラー率       │    │  ・テストケースの成績          │
+│                             │    │                             │
+│  → Delta Table に送信可能     │    │  → MLflow Experiment のみ    │
+└─────────────────────────────┘    └─────────────────────────────┘
+```
+
+**分離する理由：** モニタリング用の Experiment だけ Unity Catalog の Delta Table に送信します。Delta Table への送信には `set_experiment_trace_location`（ノートブックで1回実行）が必要ですが、これは**トレースが0件の空の Experiment にしか紐付けられません**。もし評価結果と運用トレースを同じ Experiment に混在させると、Delta Table 紐付けが困難になります。
+
+### トレースの送信先
+
+```
+アプリ実行時（ユーザーがチャット）
   │
   ├── mlflow.langchain.autolog() が自動トレース
   │
   ▼
-MLflow Experiment（デフォルト）
-  └── Experiments UI でトレース確認
-
-  または
-
-Unity Catalog Delta Table（オプション）
-  ├── MLFLOW_TRACING_DESTINATION を設定
-  ├── set_experiment_trace_location() で紐付け（ノートブックで1回実行）
-  └── SQL でクエリ可能、長期保持
+MLFLOW_EXPERIMENT_ID（モニタリング用）
+  │
+  ├── デフォルト: MLflow Experiment に記録
+  │     └── Experiments UI でトレース確認
+  │
+  └── MLFLOW_TRACING_DESTINATION 設定時: Delta Table にも送信
+        │
+        ▼
+      Zerobus（サーバーレス取り込みエンジン）
+        │
+        ▼
+      Unity Catalog Delta Table（3テーブル）
+        ├── mlflow_experiment_trace_otel_spans   ← 各処理ステップ
+        ├── mlflow_experiment_trace_otel_logs    ← ログ
+        └── mlflow_experiment_trace_otel_metrics ← メトリクス
 ```
+
+#### Zerobus とは
+
+トレースを Delta Table に送信する裏側では、**Zerobus** という Databricks のサーバーレス取り込みエンジンが動いています。
+
+```
+従来の方式（自前運用が必要）:
+  アプリ → OTEL Collector（自分で構築・運用） → ストレージ
+
+Databricks の方式（Zerobus）:
+  アプリ → Databricks 管理の OTEL エンドポイント → Zerobus → Delta Table
+           ↑                                        ↑
+           gRPC API で送信                    サーバーレスで自動スケール
+                                              運用不要
+```
+
+- **OpenTelemetry（OTEL）標準** に準拠：業界標準のテレメトリ形式でスパン・ログ・メトリクスを送信
+- **gRPC API** でアプリからストリーミング送信
+- **サーバーレス**：Collector のスケーリング、バックプレッシャー処理、耐障害性を Databricks が管理
+- **Unity Catalog のガバナンス**：テーブルレベルの権限管理（誰がトレースを見られるか）
+
+開発者が意識するのは `.env` に `MLFLOW_TRACING_DESTINATION=<catalog>.<schema>` を設定するだけ。Zerobus の存在を知らなくても使えます。
+
+#### Delta Table にトレースを送るメリット
+
+| | MLflow Experiment のみ | Delta Table（Zerobus 経由） |
+|---|---|---|
+| トレース上限 | Experiment ごとに制限あり | **無制限** |
+| 保持期間 | Experiment の保持ポリシーに依存 | **無制限（Delta Table）** |
+| SQL クエリ | 不可 | **可能**（SQL Warehouse で直接分析） |
+| ダッシュボード | Experiments UI のみ | **SQL + AI/BI Dashboard で自由に可視化** |
+| 権限管理 | Experiment ACL | **Unity Catalog のテーブル権限** |
 
 ### 評価
 
-| コマンド | 方式 | サーバー |
-|---|---|---|
-| `uv run agent-evaluate` | ConversationSimulator（マルチターン） | 不要 |
-| `uv run agent-evaluate-advanced` | ConversationSimulator + カスタムスコアラー | 不要 |
-| `uv run agent-evaluate-chat` | expected_facts（固定質問） | 不要 |
+評価スクリプトはモニタリングとは別の **評価用 Experiment** に結果を記録します。
+
+```
+評価スクリプト実行時
+  │
+  ├── MLFLOW_EVAL_EXPERIMENT_ID に自動切り替え
+  ├── MLFLOW_TRACING_DESTINATION を自動無効化（Delta Table エラー回避）
+  ├── mlflow.tracing.reset() で送信先をリセット
+  │
+  ▼
+MLFLOW_EVAL_EXPERIMENT_ID（評価用）
+  └── Experiments UI の Evaluation タブで結果確認
+```
+
+| コマンド | 方式 | テストケース | サーバー |
+|---|---|---|---|
+| `uv run agent-evaluate` | ConversationSimulator（マルチターン） | 3件 | 不要 |
+| `uv run agent-evaluate-advanced` | ConversationSimulator + カスタムスコアラー | 20件 | 不要 |
+| `uv run agent-evaluate-chat` | expected_facts（固定質問） | 9件 | 不要 |
 
 > 評価スクリプトはエージェントを直接関数呼び出しするため、サーバーの起動は不要です。実行前にアプリを停止してください（ポート競合回避）。
+
+#### なぜ評価時に Delta Table 送信を無効化するのか
+
+評価スクリプトが `from agent_server import agent` でエージェントをインポートすると、`agent.py` 内の `set_destination()` が実行されて Delta Table 送信モードになります。しかし、評価結果は Delta Table ではなく MLflow Experiment に記録したいため、評価スクリプトは以下の3段階で送信先をリセットしています：
+
+```python
+# 1. 環境変数を削除（agent.py のインポート前に実行）
+os.environ.pop("MLFLOW_TRACING_DESTINATION", None)
+
+# 2. agent.py をインポート（set_destination が呼ばれる可能性がある）
+from agent_server import agent
+
+# 3. MLflow の内部状態をリセット
+mlflow.tracing.reset()
+```
 
 ---
 
