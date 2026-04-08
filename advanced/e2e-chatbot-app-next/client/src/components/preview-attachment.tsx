@@ -22,12 +22,12 @@ export const PreviewAttachment = ({
       {contentType?.startsWith('image') ? (
         <img
           src={url}
-          alt={name ?? 'An image attachment'}
+          alt={name ?? '添付画像'}
           className="size-full object-cover"
         />
       ) : (
         <div className="flex size-full items-center justify-center text-muted-foreground text-xs">
-          File
+          ファイル
         </div>
       )}
 

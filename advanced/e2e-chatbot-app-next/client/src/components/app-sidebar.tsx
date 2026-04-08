@@ -39,7 +39,7 @@ export function AppSidebar({
               className="flex flex-row items-center gap-3"
             >
               <span className="cursor-pointer rounded-md px-2 font-semibold text-lg hover:bg-muted">
-                Chatbot
+                チャットボット
               </span>
             </Link>
             <Tooltip>
@@ -57,7 +57,7 @@ export function AppSidebar({
                 </Button>
               </TooltipTrigger>
               <TooltipContent align="end" className="hidden md:block">
-                New Chat
+                新しいチャット
               </TooltipContent>
             </Tooltip>
           </div>

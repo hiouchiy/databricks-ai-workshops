@@ -61,7 +61,7 @@ const ApprovalStatusBadge = ({ state, approved }: ApprovalStatusBadgeProps) => {
         data-testid="mcp-approval-status-pending"
       >
         <ShieldAlertIcon className="size-3" />
-        <span>Pending</span>
+        <span>待機中</span>
       </span>
     );
   }
@@ -77,7 +77,7 @@ const ApprovalStatusBadge = ({ state, approved }: ApprovalStatusBadgeProps) => {
         data-testid="mcp-approval-status-allowed"
       >
         <ShieldCheckIcon className="size-3" />
-        <span>Allowed</span>
+        <span>許可済み</span>
       </span>
     );
   }
@@ -93,7 +93,7 @@ const ApprovalStatusBadge = ({ state, approved }: ApprovalStatusBadgeProps) => {
         data-testid="mcp-approval-status-denied"
       >
         <ShieldXIcon className="size-3" />
-        <span>Denied</span>
+        <span>拒否済み</span>
       </span>
     );
   }
@@ -105,7 +105,7 @@ const ApprovalStatusBadge = ({ state, approved }: ApprovalStatusBadgeProps) => {
       data-testid="mcp-approval-status-pending"
     >
       <ShieldAlertIcon className="size-3" />
-      <span>Pending</span>
+      <span>待機中</span>
     </span>
   );
 };
@@ -122,7 +122,7 @@ export const McpToolHeader = ({
     <div className="flex items-center gap-2 border-border border-b px-3 py-1.5 text-xs">
       <ServerIcon className="size-3 text-muted-foreground" />
       <span className="font-medium text-muted-foreground">
-        Tool Call Request
+        ツール呼び出しリクエスト
       </span>
       {serverName && (
         <>
@@ -174,7 +174,7 @@ export const McpApprovalActions = ({
     <div className="flex items-start gap-2">
       <ShieldAlertIcon className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
       <p className="text-amber-800 text-sm dark:text-amber-200">
-        This tool requires your permission to run.
+        このツールの実行には許可が必要です。
       </p>
     </div>
     <div className="flex gap-2">
@@ -187,7 +187,7 @@ export const McpApprovalActions = ({
         data-testid="mcp-approval-allow"
       >
         <ShieldCheckIcon className="mr-1.5 size-4" />
-        {isSubmitting ? 'Submitting...' : 'Allow'}
+        {isSubmitting ? '送信中...' : '許可'}
       </Button>
       <Button
         variant="outline"
@@ -197,7 +197,7 @@ export const McpApprovalActions = ({
         data-testid="mcp-approval-deny"
       >
         <ShieldXIcon className="mr-1.5 size-4" />
-        Deny
+        拒否
       </Button>
     </div>
   </div>
@@ -234,7 +234,7 @@ export const McpApprovalStatus = ({
           : 'text-red-700 dark:text-red-300',
       )}
     >
-      {approved ? 'Allowed' : 'Denied'}
+      {approved ? '許可済み' : '拒否済み'}
     </span>
     {reason && (
       <>

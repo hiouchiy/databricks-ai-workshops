@@ -135,7 +135,7 @@ export function SidebarHistory({ user }: { user?: ClientUser | null }) {
     // );
 
     toast.promise(deletePromise, {
-      loading: 'Deleting chat...',
+      loading: 'チャットを削除中...',
       success: () => {
         mutate((chatHistories) => {
           if (chatHistories) {
@@ -146,9 +146,9 @@ export function SidebarHistory({ user }: { user?: ClientUser | null }) {
           }
         });
 
-        return 'Chat deleted successfully';
+        return 'チャットを削除しました';
       },
-      error: 'Failed to delete chat',
+      error: 'チャットの削除に失敗しました',
     });
 
     setShowDeleteDialog(false);
@@ -169,7 +169,7 @@ export function SidebarHistory({ user }: { user?: ClientUser | null }) {
       <SidebarGroup>
         <SidebarGroupContent>
           <div className="flex w-full flex-row items-center justify-center gap-2 px-2 text-sm text-zinc-500">
-            Login to save and revisit previous chats!
+            ログインして過去のチャットを保存・閲覧しましょう！
           </div>
         </SidebarGroupContent>
       </SidebarGroup>
@@ -180,7 +180,7 @@ export function SidebarHistory({ user }: { user?: ClientUser | null }) {
     return (
       <SidebarGroup>
         <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
-          Today
+          今日
         </div>
         <SidebarGroupContent>
           <div className="flex flex-col">
@@ -211,8 +211,8 @@ export function SidebarHistory({ user }: { user?: ClientUser | null }) {
         <SidebarGroupContent>
           <div className="flex w-full flex-row items-center justify-center gap-2 px-2 text-sm text-zinc-500">
             {chatHistoryEnabled
-              ? 'Your conversations will appear here once you start chatting!'
-              : 'Chat history is disabled - conversations are not saved'}
+              ? 'チャットを始めると、会話がここに表示されます！'
+              : 'チャット履歴が無効です — 会話は保存されません'}
           </div>
         </SidebarGroupContent>
       </SidebarGroup>
@@ -237,7 +237,7 @@ export function SidebarHistory({ user }: { user?: ClientUser | null }) {
                     {groupedChats.today.length > 0 && (
                       <div>
                         <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
-                          Today
+                          今日
                         </div>
                         {groupedChats.today.map((chat) => (
                           <ChatItem
@@ -257,7 +257,7 @@ export function SidebarHistory({ user }: { user?: ClientUser | null }) {
                     {groupedChats.yesterday.length > 0 && (
                       <div>
                         <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
-                          Yesterday
+                          昨日
                         </div>
                         {groupedChats.yesterday.map((chat) => (
                           <ChatItem
@@ -277,7 +277,7 @@ export function SidebarHistory({ user }: { user?: ClientUser | null }) {
                     {groupedChats.lastWeek.length > 0 && (
                       <div>
                         <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
-                          Last 7 days
+                          過去7日間
                         </div>
                         {groupedChats.lastWeek.map((chat) => (
                           <ChatItem
@@ -297,7 +297,7 @@ export function SidebarHistory({ user }: { user?: ClientUser | null }) {
                     {groupedChats.lastMonth.length > 0 && (
                       <div>
                         <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
-                          Last 30 days
+                          過去30日間
                         </div>
                         {groupedChats.lastMonth.map((chat) => (
                           <ChatItem
@@ -317,7 +317,7 @@ export function SidebarHistory({ user }: { user?: ClientUser | null }) {
                     {groupedChats.older.length > 0 && (
                       <div>
                         <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
-                          Older than last month
+                          1ヶ月以上前
                         </div>
                         {groupedChats.older.map((chat) => (
                           <ChatItem
@@ -348,14 +348,14 @@ export function SidebarHistory({ user }: { user?: ClientUser | null }) {
 
           {hasReachedEnd ? (
             <div className="mt-8 flex w-full flex-row items-center justify-center gap-2 px-2 text-sm text-zinc-500">
-              You have reached the end of your chat history.
+              チャット履歴の末尾です。
             </div>
           ) : (
             <div className="mt-8 flex flex-row items-center gap-2 p-2 text-zinc-500 dark:text-zinc-400">
               <div className="animate-spin">
                 <LoaderIcon />
               </div>
-              <div>Loading Chats...</div>
+              <div>チャットを読み込み中...</div>
             </div>
           )}
         </SidebarGroupContent>
@@ -364,16 +364,15 @@ export function SidebarHistory({ user }: { user?: ClientUser | null }) {
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogTitle>本当に削除しますか？</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete your
-              chat and remove it from our servers.
+              この操作は取り消せません。チャットが完全に削除されます。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete}>
-              Continue
+              削除する
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

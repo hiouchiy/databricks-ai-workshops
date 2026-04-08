@@ -32,7 +32,7 @@ export const MessageError = ({ error }: { error: string }) => {
         <div className="text-destructive">
           <TriangleAlert size={14} />
         </div>
-        <span className="font-medium text-destructive text-xs">Error</span>
+        <span className="font-medium text-destructive text-xs">エラー</span>
       </div>
       <div className="rounded-b-lg rounded-tr-lg border border-destructive/20">
         <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-muted p-2.5 font-mono text-foreground text-xs">

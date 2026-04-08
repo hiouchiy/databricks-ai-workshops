@@ -52,7 +52,7 @@ export default function ChatPage() {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="text-center">
-          <h1 className="mb-4 font-bold text-2xl">Error</h1>
+          <h1 className="mb-4 font-bold text-2xl">エラー</h1>
           <p className="text-muted-foreground">{error}</p>
         </div>
       </div>
@@ -63,7 +63,7 @@ export default function ChatPage() {
   if (!chatData || chatData.chat.id !== id) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="text-muted-foreground">Loading chat...</div>
+        <div className="text-muted-foreground">チャットを読み込み中...</div>
       </div>
     );
   }

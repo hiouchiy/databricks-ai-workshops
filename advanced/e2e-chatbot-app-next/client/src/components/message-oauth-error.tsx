@@ -68,20 +68,20 @@ export const MessageOAuthError = ({
           <KeyRound size={14} />
         </div>
         <span className="font-medium text-amber-600 text-xs dark:text-amber-500">
-          Login Required
+          ログインが必要です
         </span>
       </div>
 
       <div className="rounded-b-lg rounded-tr-lg border border-amber-500/20 bg-amber-500/5 p-3">
         <p className="mb-3 text-foreground text-sm">
-          To continue, please login to{' '}
+          続行するには、次のサービスにログインしてください：{' '}
           <span className="font-medium">{connectionName}</span>
         </p>
 
         <div className="mb-2 flex items-center gap-2">
           <Button onClick={handleLogin} size="sm" className="gap-1.5">
             <LogIn size={14} />
-            Login
+            ログイン
           </Button>
           <Button
             onClick={handleRetry}
@@ -90,7 +90,7 @@ export const MessageOAuthError = ({
             className="gap-1.5"
           >
             <RefreshCw size={14} />
-            Retry
+            再試行
           </Button>
         </div>
 
@@ -100,7 +100,7 @@ export const MessageOAuthError = ({
           type="button"
         >
           {showDetails ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-          {showDetails ? 'Hide details' : 'Show details'}
+          {showDetails ? '詳細を非表示' : '詳細を表示'}
         </button>
 
         {showDetails && (

@@ -86,7 +86,7 @@ function PureMessageActions({
         setFeedback(feedbackType);
       } catch (error) {
         console.error('Error submitting feedback:', error);
-        toast.error('Failed to submit feedback. Please try again, or contact the app developer if the error persists.');
+        toast.error('フィードバックの送信に失敗しました。再試行するか、エラーが続く場合はアプリ開発者にお問い合わせください。');
       } finally {
         isSubmittingRef.current = false;
       }
@@ -96,12 +96,12 @@ function PureMessageActions({
 
   const handleCopy = useCallback(async () => {
     if (!textFromParts) {
-      toast.error("There's no text to copy!");
+      toast.error('コピーするテキストがありません');
       return;
     }
 
     await copyToClipboard(textFromParts);
-    toast.success('Copied to clipboard!');
+    toast.success('クリップボードにコピーしました');
   }, [textFromParts, copyToClipboard]);
 
   // Early return AFTER all hooks have been called
@@ -114,7 +114,7 @@ function PureMessageActions({
         <div className="relative">
           {setMode && (
             <Action
-              tooltip="Edit"
+              tooltip="編集"
               onClick={() => setMode('edit')}
               className="-left-10 absolute top-0 opacity-0 transition-opacity group-hover/message:opacity-100"
               data-testid="message-edit-button"
@@ -122,7 +122,7 @@ function PureMessageActions({
               <PencilLineIcon />
             </Action>
           )}
-          <Action tooltip="Copy" onClick={handleCopy}>
+          <Action tooltip="コピー" onClick={handleCopy}>
             <CopyIcon />
           </Action>
         </div>
@@ -133,7 +133,7 @@ function PureMessageActions({
   const feedbackButtons = (
     <>
       <Action
-        tooltip="Thumbs up"
+        tooltip="いいね"
         onClick={() => handleFeedback('thumbs_up')}
         className={feedback === 'thumbs_up' ? 'text-green-600' : ''}
         data-testid="thumbs-up-button"
@@ -141,7 +141,7 @@ function PureMessageActions({
         <ThumbsUp />
       </Action>
       <Action
-        tooltip="Thumbs down"
+        tooltip="よくない"
         onClick={() => handleFeedback('thumbs_down')}
         className={feedback === 'thumbs_down' ? 'text-red-600' : ''}
         data-testid="thumbs-down-button"
@@ -161,14 +161,14 @@ function PureMessageActions({
       {feedbackEnabled && feedbackSupported && feedbackButtons}
       {errorCount > 0 && onToggleErrors && (
         <Action
-          tooltip={showErrors ? 'Hide errors' : 'Show errors'}
+          tooltip={showErrors ? 'エラーを非表示' : 'エラーを表示'}
           onClick={onToggleErrors}
           iconOnly={false}
         >
           <div className="flex items-center gap-1.5">
             {showErrors ? <ChevronUp /> : <ChevronDown />}
             <span className="text-xs">
-              {errorCount} {errorCount === 1 ? 'error' : 'errors'}
+              {errorCount}件のエラー
             </span>
           </div>
         </Action>

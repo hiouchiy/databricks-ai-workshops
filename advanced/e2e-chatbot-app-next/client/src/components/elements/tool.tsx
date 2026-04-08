@@ -31,13 +31,13 @@ type ToolStatusBadgeProps = {
 
 export const ToolStatusBadge = ({ state, className }: ToolStatusBadgeProps) => {
   const labels: Record<ToolState, string> = {
-    'input-streaming': 'Pending',
-    'input-available': 'Running',
-    'output-available': 'Completed',
-    'output-error': 'Error',
-    'output-denied': 'Denied',
-    'approval-requested': 'Approval Requested',
-    'approval-responded': 'Processing',
+    'input-streaming': '待機中',
+    'input-available': '実行中',
+    'output-available': '完了',
+    'output-error': 'エラー',
+    'output-denied': '拒否',
+    'approval-requested': '承認待ち',
+    'approval-responded': '処理中',
   };
 
   const icons: Record<ToolState, ReactNode> = {
@@ -112,7 +112,7 @@ type ToolInputProps = ComponentProps<'div'> & {
 export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
   <div className={cn('space-y-2 overflow-hidden p-3', className)} {...props}>
     <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
-      Parameters
+      パラメータ
     </h4>
     <div className="rounded-md bg-muted/50">
       <CodeBlock code={JSON.stringify(input, null, 2)} language="json" />
@@ -139,7 +139,7 @@ export const ToolOutput = ({
   return (
     <div className={cn('space-y-2 p-3', className)} {...props}>
       <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
-        {errorText ? 'Error' : 'Result'}
+        {errorText ? 'エラー' : '結果'}
       </h4>
       <div
         className={cn(

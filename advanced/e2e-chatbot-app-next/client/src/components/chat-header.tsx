@@ -36,7 +36,7 @@ export function ChatHeader() {
           }}
         >
           <PlusIcon />
-          <span className="md:sr-only">New Chat</span>
+          <span className="md:sr-only">新しいチャット</span>
         </Button>
       )}
 
@@ -52,11 +52,11 @@ export function ChatHeader() {
                   className="flex items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-muted-foreground text-xs hover:text-foreground"
                 >
                   <CloudOffIcon className="h-3 w-3" />
-                  <span className="hidden sm:inline">Ephemeral</span>
+                  <span className="hidden sm:inline">一時保存</span>
                 </a>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Chat history disabled — conversations are not saved. Click to learn more.</p>
+                <p>チャット履歴が無効です — 会話は保存されません。詳しくはクリック。</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -72,11 +72,11 @@ export function ChatHeader() {
                   className="flex items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-muted-foreground text-xs hover:text-foreground"
                 >
                   <MessageSquareOff className="h-3 w-3" />
-                  <span className="hidden sm:inline">Feedback disabled</span>
+                  <span className="hidden sm:inline">フィードバック無効</span>
                 </a>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Feedback submission disabled. Click to learn more.</p>
+                <p>フィードバック送信が無効です。詳しくはクリック。</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

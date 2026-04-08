@@ -434,7 +434,7 @@ export const AwaitingResponseMessage = () => {
 
         <div className="flex w-full flex-col gap-2 md:gap-4">
           <div className="p-0 text-muted-foreground text-sm">
-            <LoadingText>Thinking...</LoadingText>
+            <LoadingText>考え中...</LoadingText>
           </div>
         </div>
       </div>

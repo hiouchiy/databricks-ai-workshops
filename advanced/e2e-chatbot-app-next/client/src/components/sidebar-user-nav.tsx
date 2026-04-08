@@ -47,7 +47,7 @@ export function SidebarUserNav({
                 <div className="flex flex-row gap-2">
                   <div className="size-6 animate-pulse rounded-full bg-zinc-500/30" />
                   <span className="animate-pulse rounded-md bg-zinc-500/30 text-transparent">
-                    Loading auth status
+                    認証状態を確認中
                   </span>
                 </div>
                 <div className="animate-spin text-zinc-500">
@@ -84,7 +84,7 @@ export function SidebarUserNav({
                 setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')
               }
             >
-              {`Toggle ${resolvedTheme === 'light' ? 'dark' : 'light'} mode`}
+              {resolvedTheme === 'light' ? 'ダークモードに切り替え' : 'ライトモードに切り替え'}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
           </DropdownMenuContent>
