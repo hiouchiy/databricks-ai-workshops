@@ -78,15 +78,42 @@ cd e2e-chatbot-app-next && npm install && cd ..
 
 ---
 
+## ステップ 0：セットアップノートブックのインポート（推奨）
+
+このワークショップでは、一部のコマンドを Databricks 上で実行する必要があります。`workshop_setup.py` に全てのコマンドが集約されていますので、ワークスペースにインポートしておくと便利です。
+
+1. Databricks ワークスペースの左メニュー > **Workspace** > 自分のユーザーフォルダ
+2. **Import** > `workshop_setup.py` ファイルをアップロード
+3. ノートブック先頭の「設定」セルでプレースホルダーを自分の値に設定
+
+> 以降のステップで「SQL エディタまたはノートブック」と記載された箇所は、このノートブックの該当セルを実行するだけで OK です。
+
+---
+
 ## ステップ 1：カタログとスキーマの作成
 
-> 講師が事前に作成済みの場合はスキップしてください。
+> 管理者が事前に作成済みの場合はスキップしてください。
 
-Databricks SQL エディタで実行：
+**方法 A：SQL エディタまたはノートブック**（`workshop_setup.py` のステップ 1 セルを実行）
 
 ```sql
 CREATE CATALOG IF NOT EXISTS <CATALOG>;
 CREATE SCHEMA IF NOT EXISTS <CATALOG>.<SCHEMA>;
+```
+
+**方法 B：ローカル CLI**
+
+```bash
+databricks api post /api/2.0/sql/statements --profile DEFAULT --json '{
+  "warehouse_id": "<WAREHOUSE-ID>",
+  "statement": "CREATE CATALOG IF NOT EXISTS `<CATALOG>`",
+  "wait_timeout": "30s"
+}'
+databricks api post /api/2.0/sql/statements --profile DEFAULT --json '{
+  "warehouse_id": "<WAREHOUSE-ID>",
+  "statement": "CREATE SCHEMA IF NOT EXISTS `<CATALOG>`.`<SCHEMA>`",
+  "wait_timeout": "30s"
+}'
 ```
 
 ---
@@ -121,13 +148,23 @@ CATALOG=<CATALOG> SCHEMA=<SCHEMA> python3 execute_chunking.py --profile DEFAULT 
 
 7 つの日本語ポリシー文書（返品・配送・会員プログラム等）がチャンク分割され、`policy_docs_chunked` テーブルに書き込まれます。
 
-> **重要：** 次のステップで Vector Search インデックスを作成するため、テーブルに Change Data Feed を有効化します：
+> **重要：** 次のステップで Vector Search インデックスを作成するため、テーブルに Change Data Feed を有効化します。
 >
-> SQL エディタで実行：
+> **方法 A：ノートブック**（`workshop_setup.py` のステップ 3 セルを実行）
 >
+> **方法 B：SQL エディタ**
 > ```sql
 > ALTER TABLE <CATALOG>.<SCHEMA>.policy_docs_chunked
 >   SET TBLPROPERTIES (delta.enableChangeDataFeed = true);
+> ```
+>
+> **方法 C：ローカル CLI**
+> ```bash
+> databricks api post /api/2.0/sql/statements --profile DEFAULT --json '{
+>   "warehouse_id": "<WAREHOUSE-ID>",
+>   "statement": "ALTER TABLE `<CATALOG>`.`<SCHEMA>`.policy_docs_chunked SET TBLPROPERTIES (delta.enableChangeDataFeed = true)",
+>   "wait_timeout": "30s"
+> }'
 > ```
 
 ```bash
@@ -263,13 +300,15 @@ MLFLOW_TRACING_DESTINATION=<CATALOG>.<SCHEMA>
 
 Delta Table に送信する場合は、以下の事前準備が必要です：
 
-**1. 権限の付与**（SQL エディタで実行）：
+**1. 権限の付与**（SQL エディタ、ノートブック、または CLI）：
 
 ```sql
 GRANT MODIFY, SELECT ON SCHEMA <CATALOG>.<SCHEMA> TO `your.email@company.com`;
 ```
 
-**2. トレーステーブルの初期作成**（**Databricks ノートブック**で実行。ローカルからは実行不可）
+**2. トレーステーブルの初期作成**（`workshop_setup.py` の「トレース送信先の設定」セルを実行）
+
+> **注意：** `set_experiment_trace_location` は Databricks ノートブック上でのみ実行可能です。ローカルからは実行できません。
 
 > **注意：** 紐付ける Experiment にはトレースが1件も入っていない必要があります。既にトレースが入っている場合は、新しい空の Experiment を作成してください：
 >
@@ -509,13 +548,15 @@ SP_CLIENT_ID=$(databricks apps get <アプリ名> --output json --profile DEFAUL
 echo "SP Client ID: $SP_CLIENT_ID"
 ```
 
-**Unity Catalog パーミッション**（SQL エディタで実行）：
+**Unity Catalog パーミッション**（`workshop_setup.py` のステップ 11-6 セル、SQL エディタ、または CLI）：
 
 ```sql
 GRANT USE CATALOG ON CATALOG `<CATALOG>` TO `<SP_CLIENT_ID>`;
 GRANT USE SCHEMA ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `<SP_CLIENT_ID>`;
 GRANT SELECT ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `<SP_CLIENT_ID>`;
 ```
+
+> ノートブックを使う場合は、先頭の設定セルで `SP_CLIENT_ID` を設定してからステップ 11-6 セルを実行してください。
 
 **Lakebase パーミッション**：
 
