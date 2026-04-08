@@ -105,10 +105,12 @@ print(f"    - {CATALOG}.{SCHEMA}.mlflow_experiment_trace_otel_metrics")
 spark.sql(f"GRANT USE CATALOG ON CATALOG `{CATALOG}` TO `{SP_CLIENT_ID}`")
 spark.sql(f"GRANT USE SCHEMA ON SCHEMA `{CATALOG}`.`{SCHEMA}` TO `{SP_CLIENT_ID}`")
 spark.sql(f"GRANT SELECT ON SCHEMA `{CATALOG}`.`{SCHEMA}` TO `{SP_CLIENT_ID}`")
+spark.sql(f"GRANT MODIFY ON SCHEMA `{CATALOG}`.`{SCHEMA}` TO `{SP_CLIENT_ID}`")
 print(f"✓ SP {SP_CLIENT_ID} に以下の権限を付与:")
 print(f"  - USE CATALOG on {CATALOG}")
 print(f"  - USE SCHEMA on {CATALOG}.{SCHEMA}")
 print(f"  - SELECT on {CATALOG}.{SCHEMA}")
+print(f"  - MODIFY on {CATALOG}.{SCHEMA}（Delta Table トレース用）")
 
 # COMMAND ----------
 
