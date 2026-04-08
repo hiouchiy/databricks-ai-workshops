@@ -358,12 +358,12 @@ The workshop consists of two parts (completable in half a day):
 
 ## What You'll Build
 
-A **FreshMart Grocery Shopping Assistant** that can:
+A **FreshMart Grocery Shopping Assistant** with the following capabilities:
 
 | Capability | Powered By | Description |
 |---|---|---|
 | **Structured data queries** | Genie Space (MCP) | Query customer accounts, products, transactions, stores via natural language to SQL |
-| **Policy document lookup** | Vector Search (MCP) | RAG over store policies — returns, memberships, delivery, recalls, privacy |
+| **Policy document lookup** | Vector Search (native DatabricksVectorSearch) | RAG over store policies — returns, memberships, delivery, recalls, privacy |
 | **Long-term user memory** | Lakebase + Embeddings | Remembers user preferences, dietary restrictions, and past interactions across sessions |
 | **Task & conversation history** | Lakebase + Embeddings | Tracks what the agent helped with and summarizes past conversations |
 | **Code execution** | system.ai Code Interpreter | Runs Python for calculations, data analysis, chart generation |
@@ -394,7 +394,8 @@ advanced/
 │   ├── quickstart.py                # Interactive setup wizard
 │   ├── start_app.py                 # Starts both frontend + backend
 │   ├── discover_tools.py            # Discovers available Databricks tools
-│   └── grant_lakebase_permissions.py
+│   ├── grant_lakebase_permissions.py
+│   └── register_prompt.py           # Register Japanese system prompt to Prompt Registry
 │
 ├── .claude/skills/                  # Claude Code skills for AI-assisted development
 ├── databricks.yml                   # Databricks Asset Bundle config
@@ -434,7 +435,7 @@ advanced/
 - **Local tools**:
   - [uv](https://docs.astral.sh/uv/getting-started/installation/) (Python package manager)
   - [nvm](https://github.com/nvm-sh/nvm) + Node.js 20 LTS
-  - [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/install)
+  - [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/install) **v0.295+** (required for resource bindings in Apps deployment)
 - **Optional**: [Claude Code](https://docs.anthropic.com/en/docs/claude-code) for AI-assisted development
 
 ---
@@ -452,13 +453,19 @@ cd databricks-ai-workshops
 uv run quickstart
 ```
 
-The quickstart script will:
-1. Verify `uv`, `nvm`, and Databricks CLI installations
-2. Configure Databricks OAuth authentication
-3. Create and link two MLflow experiments (monitoring + evaluation)
-4. Configure Lakebase for memory storage
-5. Generate your `.env` file
-6. Start the agent server and chat app
+The quickstart script will interactively walk you through:
+1. Prerequisites check (`uv`, `Node.js`, `Databricks CLI`)
+2. Databricks authentication
+3. Input catalog name, schema name, SQL warehouse, and Vector Search endpoint
+4. Create catalog and schema
+5. Generate structured data (6 tables, Japanese)
+6. Generate policy document chunks + enable CDF
+7. Create Vector Search index (auto-waits until READY)
+8. Create Genie Space
+9. Set up Lakebase (for memory)
+10. Create 2 MLflow experiments (monitoring + evaluation)
+11. Generate `.env` file
+12. Install Python / Node.js dependencies
 
 After setup, start the app anytime with:
 
@@ -468,22 +475,15 @@ uv run start-app
 
 The chat UI will be available at **http://localhost:3000** and the API at **http://localhost:8000**.
 
-### Option 2: Using Claude Code
+> **Next step:** Once the app is running, proceed to **[Step 10: Agent Evaluation](WORKSHOP_INSTRUCTIONS.md#ステップ-10オプションエージェントの評価)** for evaluation, trace configuration, and Databricks Apps deployment instructions.
+
+### Option 2: Manual Setup
+
+For step-by-step detailed instructions, see **[Workshop Instructions](WORKSHOP_INSTRUCTIONS.md)**. It covers everything from data generation, Vector Search creation, Lakebase setup, evaluation, to deployment.
+
+### Option 3: Using Claude Code
 
 If you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed, the repository includes built-in skills in `.claude/skills/` for AI-assisted development.
-
-#### Prerequisites
-
-Before using Claude Code, create the following resources manually in your Databricks workspace:
-
-1. **Databricks CLI profile** — Run `databricks auth login` to configure
-2. **MLflow Experiment** — Create via UI or CLI
-3. **Genie Space** — Create and note the Space ID
-4. **Vector Search Index** — Create and note the full name (`catalog.schema.index_name`)
-5. **Prompt Registry** — Register your system prompt (`catalog.schema.prompt_name`)
-6. **Lakebase Autoscaling Instance** — Create a project and branch
-
-#### Local Development
 
 ```bash
 # Start Claude Code in the project directory
@@ -498,158 +498,66 @@ Set up and run the agent app locally. I have already created the following
 resources manually:
 
 - Databricks CLI profile: <PROFILE_NAME>
-- MLflow Experiment ID: <EXPERIMENT_ID>
+- MLflow Monitoring Experiment ID: <MONITORING_EXPERIMENT_ID>
+- MLflow Evaluation Experiment ID: <EVAL_EXPERIMENT_ID>
 - Genie Space ID: <GENIE_SPACE_ID>
-- Vector Search Index: <CATALOG>.<SCHEMA>.<INDEX_NAME>
-- Prompt Registry: <CATALOG>.<SCHEMA>.<PROMPT_NAME>
-- Lakebase Autoscaling Project: <PROJECT_NAME>
-- Lakebase Autoscaling Branch: <BRANCH_NAME>
+- Vector Search Index: <CATALOG>.<SCHEMA>.policy_docs_index
+- Lakebase Project: <PROJECT_NAME>
+- Lakebase Branch: <BRANCH_NAME>
 
 Steps:
-1. Update .env with all the above values (resolve PGHOST from the autoscaling
+1. Update .env with all the above values (resolve PGHOST from the Lakebase
    branch endpoint)
 2. Run `uv run start-app` and verify both frontend (port 3000) and backend
    (port 8000) are healthy
 3. Smoke test the agent with a curl POST to /invocations
 ```
 
-The chat UI will be available at **http://localhost:3000** and the API at **http://localhost:8000**.
-
-#### Deploy to Databricks Apps
-
-Once you've verified the app works locally, use this prompt to deploy:
-
-```
-Deploy the agent app to Databricks Apps. I have the following resources:
-
-- Databricks CLI profile: <PROFILE_NAME>
-- MLflow Experiment ID: <EXPERIMENT_ID>
-- Genie Space ID: <GENIE_SPACE_ID>
-- Vector Search Index: <CATALOG>.<SCHEMA>.<INDEX_NAME>
-- Prompt Registry: <CATALOG>.<SCHEMA>.<PROMPT_NAME>
-- Lakebase Autoscaling Project: <PROJECT_NAME>
-- Lakebase Autoscaling Branch: <BRANCH_NAME>
-
-Steps:
-1. Update databricks.yml with all the above resource IDs (replace all
-   <placeholder> values)
-2. Run `databricks bundle deploy -p <PROFILE_NAME>` to deploy the bundle
-3. Run `databricks apps start retail-grocery-ltm-memory -p <PROFILE_NAME>`
-   to start the app
-4. Verify the app is running and share the app URL
-```
-
-### Option 3: Manual Setup
-
-1. **Install dependencies**
-
-   ```bash
-   # Python
-   uv sync
-
-   # Node.js (for chat UI)
-   nvm use 20
-   cd e2e-chatbot-app-next && npm install && cd ..
-   ```
-
-2. **Authenticate with Databricks**
-
-   ```bash
-   databricks auth login
-   ```
-
-   Set your profile in `.env`:
-   ```
-   DATABRICKS_CONFIG_PROFILE=DEFAULT
-   ```
-
-3. **Create MLflow experiments** (monitoring + evaluation)
-
-   ```bash
-   DATABRICKS_USERNAME=$(databricks current-user me | jq -r .userName)
-
-   # Monitoring (app runtime tracing)
-   databricks experiments create-experiment /Users/$DATABRICKS_USERNAME/freshmart-agent-monitoring
-
-   # Evaluation (evaluation scripts)
-   databricks experiments create-experiment /Users/$DATABRICKS_USERNAME/freshmart-agent-evaluation
-   ```
-
-4. **Configure environment variables**
-
-   ```bash
-   cp .env.example .env
-   # Edit .env with MLFLOW_EXPERIMENT_ID (monitoring), MLFLOW_EVAL_EXPERIMENT_ID (evaluation),
-   # Lakebase instance, Genie space ID, Vector Search index
-   ```
-
-5. **Start the application**
-
-   ```bash
-   uv run start-app
-   ```
+> **Next step:** Once the app is running, proceed to **[Step 10: Agent Evaluation](WORKSHOP_INSTRUCTIONS.md#ステップ-10オプションエージェントの評価)**.
 
 ---
 
-## Workshop Modules
+## Workshop Detailed Steps
 
-### Module 1: Understanding the Agent Architecture
+For step-by-step workshop instructions, see **[WORKSHOP_INSTRUCTIONS.md](WORKSHOP_INSTRUCTIONS.md)**:
 
-Explore how the agent is built:
-- **`agent_server/agent.py`** — The core agent with system prompt, MCP tool initialization, and LangGraph orchestration
-- **`agent_server/utils_memory.py`** — Seven memory tools for persistent user preferences and conversation history
-- **`agent_server/utils.py`** — Authentication helpers, thread management, streaming utilities
+- Steps 1-3: Data generation (structured data + policy document chunks)
+- Steps 4-6: Create Vector Search, Genie Space, and Lakebase
+- Steps 7-8: Create MLflow experiments and configure environment variables
+- Step 9: Local execution and verification
+- Step 10: Agent evaluation (3 types of evaluation)
+- Step 11: Deploy to Databricks Apps (optional)
 
-### Module 2: Working with MCP Tools
+---
 
-The agent connects to three MCP (Model Context Protocol) servers:
+## Key Components
 
-| MCP Server | Purpose | Endpoint |
+### Agent Architecture
+
+| Component | File | Description |
 |---|---|---|
-| `system-ai` | Code Interpreter (Python execution) | `/api/2.0/mcp/functions/system/ai` |
-| `retail-grocery-genie` | Natural language to SQL queries | `/api/2.0/mcp/genie/{GENIE_SPACE_ID}` |
-| `retail-policy-docs` | RAG over policy documents | `/api/2.0/mcp/vector-search/{INDEX}` |
+| Core Agent | `agent_server/agent.py` | LangGraph orchestration, MCP tools, native Vector Search |
+| Memory Tools | `agent_server/utils_memory.py` | 7 memory tools (user preferences, tasks, conversation summaries) |
+| Utilities | `agent_server/utils.py` | Auth, thread management, streaming |
 
-### Module 3: Long-Term Memory with Lakebase
+### Tool Configuration
 
-The memory system uses Lakebase (PostgreSQL) with semantic embeddings:
-
-| Tool | Function | Use Case |
+| Tool | Connection | Purpose |
 |---|---|---|
-| `get_user_memory` | Semantic search on user memories | "What are my dietary preferences?" |
-| `save_user_memory` | Persist user info | User says "I'm vegetarian" |
-| `delete_user_memory` | Remove specific memories | "Forget my address" |
-| `save_task_summary` | Record completed tasks (silent) | After answering a product question |
-| `search_task_history` | Query past tasks | "What did you help me with last time?" |
-| `save_conversation_summary` | Record conversation end-state (silent) | When user says goodbye |
-| `search_past_conversations` | Find previous interactions | "What have we talked about?" |
+| Genie | MCP | Natural language queries on structured data |
+| Code Interpreter | MCP | Python code execution |
+| Vector Search | Native (DatabricksVectorSearch) | Policy document retrieval (RETRIEVER span support) |
+| Memory (7 types) | Lakebase | Persist user preferences, tasks, and conversations |
 
-### Module 4: Evaluating the Agent
-
-Run the evaluation suite with 10 MLflow scorers:
+### Evaluation Commands
 
 ```bash
-uv run agent-evaluate
+uv run agent-evaluate            # Multi-turn evaluation (3 test cases)
+uv run agent-evaluate-advanced   # Advanced multi-turn evaluation (20 test cases + custom scorers)
+uv run agent-evaluate-chat       # Chat evaluation (expected_facts based)
 ```
 
-**Scorers**: Completeness, ConversationalSafety, ConversationCompleteness, Fluency, KnowledgeRetention, RelevanceToQuery, Safety, ToolCallCorrectness, UserFrustration
-
-### Module 5: Deploying to Databricks Apps
-
-```bash
-# Create the app
-databricks apps create retail-grocery-ltm-memory
-
-# Sync code to workspace
-DATABRICKS_USERNAME=$(databricks current-user me | jq -r .userName)
-databricks sync . "/Users/$DATABRICKS_USERNAME/retail-grocery-ltm-memory"
-
-# Deploy
-databricks apps deploy retail-grocery-ltm-memory \
-  --source-code-path /Workspace/Users/$DATABRICKS_USERNAME/retail-grocery-ltm-memory
-```
-
-See [Deploying to Databricks Apps](#deploying-to-databricks-apps-1) for full instructions including Lakebase permissions.
+For details, see Step 10 in [WORKSHOP_INSTRUCTIONS.md](WORKSHOP_INSTRUCTIONS.md).
 
 ---
 
@@ -686,14 +594,14 @@ curl -X POST http://localhost:8000/invocations \
 
 ---
 
-## Modifying Your Agent
+## Customization
 
 ### Change the LLM
 
 Edit `LLM_ENDPOINT_NAME` in `agent_server/agent.py`:
 
 ```python
-LLM_ENDPOINT_NAME = "databricks-claude-sonnet-4-5"  # or any Foundation Model API endpoint
+LLM_ENDPOINT_NAME = "databricks-claude-sonnet-4-5"  # Any Foundation Model API endpoint
 ```
 
 ### Add New MCP Tools
@@ -722,38 +630,7 @@ uv add <package_name>
 
 ## Deploying to Databricks Apps
 
-1. **Create the app**:
-   ```bash
-   databricks apps create retail-grocery-ltm-memory
-   ```
-
-2. **Add resources** via the Databricks UI (App > Edit > App Resources):
-   - MLflow Experiment (CAN_MANAGE)
-   - Genie Space (CAN_RUN)
-   - Lakebase Instance (CAN_CONNECT_AND_CREATE)
-   - Vector Search Index (SELECT)
-
-3. **Grant Lakebase permissions** to the app's service principal:
-   ```bash
-   uv run python scripts/grant_lakebase_permissions.py
-   ```
-
-4. **Sync and deploy**:
-   ```bash
-   DATABRICKS_USERNAME=$(databricks current-user me | jq -r .userName)
-   databricks sync . "/Users/$DATABRICKS_USERNAME/retail-grocery-ltm-memory"
-   databricks apps deploy retail-grocery-ltm-memory \
-     --source-code-path /Workspace/Users/$DATABRICKS_USERNAME/retail-grocery-ltm-memory
-   ```
-
-5. **Query the deployed agent** (requires OAuth token):
-   ```bash
-   databricks auth token  # copy the token
-   curl -X POST <app-url>.databricksapps.com/invocations \
-     -H "Authorization: Bearer <oauth-token>" \
-     -H "Content-Type: application/json" \
-     -d '{"input": [{"role": "user", "content": "hi"}], "stream": true}'
-   ```
+For detailed deployment instructions, see Step 11 in [WORKSHOP_INSTRUCTIONS.md](WORKSHOP_INSTRUCTIONS.md).
 
 ---
 
@@ -761,11 +638,11 @@ uv add <package_name>
 
 | Issue | Solution |
 |---|---|
-| `Lakebase configuration is required` | Set `LAKEBASE_AUTOSCALING_PROJECT` + `LAKEBASE_AUTOSCALING_BRANCH` (or `LAKEBASE_INSTANCE_NAME` for provisioned) in `.env` |
+| `Lakebase configuration is required` | Set `LAKEBASE_AUTOSCALING_PROJECT` and `LAKEBASE_AUTOSCALING_BRANCH` (or `LAKEBASE_INSTANCE_NAME` for provisioned) in `.env` |
 | `302 redirect when querying deployed agent` | Use OAuth token, not PAT. Run `databricks auth token` |
 | `Permission denied on Lakebase` | Run `uv run python scripts/grant_lakebase_permissions.py` |
 | `Streaming 200 OK but error in stream` | Expected — 200 confirms stream setup; check the error content |
-| `GENIE_SPACE_ID not set` | Set in `.env` or pass via `uv run quickstart` |
+| `GENIE_SPACE_ID not set` | Set in `.env` or specify via `uv run quickstart` |
 | `nvm: command not found` | Install nvm: `curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh \| bash` |
 
 ---
