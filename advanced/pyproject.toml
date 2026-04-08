@@ -42,4 +42,4 @@ agent-evaluate-advanced = "agent_server.evaluate_agent_multi_turn_advanced:evalu
 agent-evaluate-chat = "agent_server.evaluate_agent_chat:evaluate"
 discover-tools = "scripts.discover_tools:main"
 register-prompt = "scripts.register_prompt:main"
-ja-register-prompt = "scripts.register_prompt:main"
+cleanup = "scripts.cleanup:main"
