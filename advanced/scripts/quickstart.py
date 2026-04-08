@@ -1725,7 +1725,8 @@ def main():
             else:
                 summary += f"\n\n✓ Lakebase: {lakebase_config['project']} (branch: {lakebase_config['branch']})"
 
-        summary += "\n\n次のステップ: uv run start-app\n"
+        if not tracing_dest:
+            summary += "\n\n次のステップ: uv run start-app\n"
         print(summary)
 
         # Delta Table の手順表示（選択した場合のみ）
