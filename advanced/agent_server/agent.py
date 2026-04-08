@@ -340,7 +340,16 @@ async def stream_handler(
                 embedding_endpoint=EMBEDDING_ENDPOINT,
                 embedding_dims=EMBEDDING_DIMS,
             ) as store:
-                await store.setup()
+                # setup() は初回にマイグレーションテーブルを作成するが、
+                # 並行リクエストで重複キーエラーが出ることがある（無害なので無視）
+                try:
+                    await store.setup()
+                except Exception as setup_err:
+                    if "UniqueViolation" in type(setup_err).__name__ or "unique constraint" in str(setup_err).lower():
+                        logger.info("Store setup: migration already exists (concurrent init), continuing")
+                    else:
+                        raise
+
                 config: dict[str, Any] = {"configurable": {"thread_id": thread_id, "store": store}}
                 if user_id:
                     config["configurable"]["user_id"] = user_id
@@ -356,6 +365,47 @@ async def stream_handler(
                     yield event
     except Exception as e:
         error_msg = str(e)
+
+        # checkpoint_migrations の重複キーエラー（初回並行リクエスト時に発生、無害）
+        # → リトライすれば成功する
+        if "checkpoint_migrations" in error_msg and ("unique constraint" in error_msg.lower() or "UniqueViolation" in error_msg):
+            logger.info("Checkpoint migration conflict (concurrent init), retrying...")
+            import asyncio
+            await asyncio.sleep(1)
+            try:
+                async with AsyncCheckpointSaver(
+                    instance_name=LAKEBASE_INSTANCE_NAME,
+                    project=LAKEBASE_AUTOSCALING_PROJECT,
+                    branch=LAKEBASE_AUTOSCALING_BRANCH,
+                ) as checkpointer:
+                    async with AsyncDatabricksStore(
+                        instance_name=LAKEBASE_INSTANCE_NAME,
+                        project=LAKEBASE_AUTOSCALING_PROJECT,
+                        branch=LAKEBASE_AUTOSCALING_BRANCH,
+                        embedding_endpoint=EMBEDDING_ENDPOINT,
+                        embedding_dims=EMBEDDING_DIMS,
+                    ) as store:
+                        try:
+                            await store.setup()
+                        except Exception:
+                            pass  # 既にセットアップ済み
+                        config = {"configurable": {"thread_id": thread_id, "store": store}}
+                        if user_id:
+                            config["configurable"]["user_id"] = user_id
+                        agent = await init_agent(
+                            workspace_client=sp_workspace_client,
+                            store=store,
+                            checkpointer=checkpointer,
+                        )
+                        async for event in process_agent_astream_events(
+                            agent.astream(input_state, config, stream_mode=["updates", "messages"])
+                        ):
+                            yield event
+                        return
+            except Exception as retry_err:
+                logger.error(f"Retry after migration conflict failed: {retry_err}")
+                raise retry_err from e
+
         # tool_use/tool_result の順序エラー: チェックポイントに壊れたステートが残っている
         # → チェックポイントをクリアして新しいスレッドとしてリトライ
         if "tool_use" in error_msg and "tool_result" in error_msg:
