@@ -163,13 +163,21 @@ mlflow.tracing.set_experiment_trace_location(
 
 #### チームでハンズオンを実施する場合
 
-代表者がクイックスタートでリソースを作成した後、チームメンバーにリソースを共有して使わせたい場合は、以下を行ってください：
+代表者がクイックスタートでリソースを作成した後、チームメンバーにリソースを共有して使わせたい場合は、ローカルから以下を実行してください：
 
-1. `workshop_setup.py` を Databricks ワークスペースにインポート
-2. 先頭の設定セルの `TEAM_MEMBERS` にメンバーのメールアドレスを追加
-3. 「チームメンバーへの権限付与」セルを実行
+```bash
+uv run grant-team-access member1@company.com member2@company.com
+```
 
-これにより、Unity Catalog、MLflow Experiment、Genie Space、Lakebase、SQL Warehouse への権限が一括で付与されます。メンバーはクイックスタートの MLflow Experiment 設定で「既存の ID を入力」を選択し、代表者から共有された情報を入力すれば、ステップ 9（ローカル実行）からすぐに始められます。
+Unity Catalog、MLflow Experiment、Genie Space、Lakebase、SQL Warehouse への権限が一括で付与されます。後からメンバーを追加する場合も同じコマンドを再実行するだけで OK です（べき等）。
+
+実行後、メンバーに以下の情報を共有してください（コマンド実行後にまとめて表示されます）：
+- カタログ名・スキーマ名
+- Genie Space ID
+- Lakebase プロジェクト名・ブランチ名
+- MLflow Experiment ID（モニタリング + 評価）
+
+メンバーはクイックスタートを実行し、MLflow Experiment の設定で「既存の ID を入力」を選択すれば、すぐにステップ 9（ローカル実行）から始められます。
 
 詳細は [WORKSHOP_INSTRUCTIONS.md](WORKSHOP_INSTRUCTIONS.md) の「チーム利用時の権限共有」を参照してください。
 
@@ -530,12 +538,13 @@ If you chose to send traces to a Unity Catalog Delta Table, the quickstart will 
 
 #### Team workshop setup
 
-If running the workshop as a team, the representative should:
-1. Import `workshop_setup.py` into the Databricks workspace
-2. Add team member email addresses to `TEAM_MEMBERS` in the settings cell
-3. Run the "Team member permissions" cell to grant access to all shared resources
+If running the workshop as a team, the representative should run:
 
-Team members can then run quickstart, select "use existing Experiment ID", and start from Step 9.
+```bash
+uv run grant-team-access member1@company.com member2@company.com
+```
+
+This grants access to Unity Catalog, MLflow Experiments, Genie Space, Lakebase, and SQL Warehouse. Members can be added later by re-running the same command (idempotent). Team members then run quickstart, select "use existing Experiment ID", and start from Step 9.
 
 ### Option 2: Manual Setup
 
