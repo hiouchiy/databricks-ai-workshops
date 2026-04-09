@@ -206,12 +206,27 @@ else:
     if not LAKEBASE_PROJECT or LAKEBASE_PROJECT.startswith("<"):
         print("  → LAKEBASE_PROJECT 未設定（スキップ）")
     else:
+        # 4a. プロジェクト ACL（CAN_USE）を REST API で付与
+        # CAN_USE がないと、メンバーが自分のアプリ SP に grant_lakebase_permissions.py を実行できない
+        print("  プロジェクト ACL (CAN_USE) を付与中...")
+        acl = [{"user_name": m, "permission_level": "CAN_USE"} for m in TEAM_MEMBERS]
+        resp = requests.patch(
+            f"{_host}/api/2.0/permissions/postgres/projects/{LAKEBASE_PROJECT}",
+            headers=_headers,
+            json={"access_control_list": acl},
+        )
+        if resp.status_code == 200:
+            print(f"  ✓ プロジェクト CAN_USE: {len(TEAM_MEMBERS)} 名に付与")
+        else:
+            print(f"  ⚠ プロジェクト ACL 付与失敗（手動で UI から追加してください）: {resp.text[:200]}")
+
+        # 4b. データベース権限（スキーマ + ロール）を LakebaseClient で付与
+        print("  データベース権限を付与中...")
         try:
-            from databricks_ai_bridge.lakebase import LakebaseClient, SchemaPrivilege, TablePrivilege
+            from databricks_ai_bridge.lakebase import LakebaseClient, SchemaPrivilege
 
             lakebase_client = LakebaseClient(project=LAKEBASE_PROJECT, branch=LAKEBASE_BRANCH)
             schema_privs = [SchemaPrivilege.USAGE, SchemaPrivilege.CREATE]
-            table_privs = [TablePrivilege.SELECT, TablePrivilege.INSERT, TablePrivilege.UPDATE, TablePrivilege.DELETE]
 
             for member in TEAM_MEMBERS:
                 # ロール作成
@@ -228,13 +243,11 @@ else:
                     except Exception:
                         pass  # スキーマが未作成の場合は無視
 
-            print(f"  ✓ {len(TEAM_MEMBERS)} 名に Lakebase 権限を付与")
+            print(f"  ✓ {len(TEAM_MEMBERS)} 名に Lakebase DB 権限を付与")
         except ImportError:
-            print("  ✗ databricks_ai_bridge が利用できません。Lakebase 権限は手動で付与してください。")
-            print("    UI > Lakebase > プロジェクト > Permissions > CAN_USE で追加")
+            print("  ⚠ databricks_ai_bridge が利用できません。DB 権限は初回アクセス時に自動付与されます。")
         except Exception as e:
-            print(f"  ✗ Lakebase 権限付与失敗: {str(e)[:200]}")
-            print("    UI > Lakebase > プロジェクト > Permissions > CAN_USE で追加")
+            print(f"  ⚠ Lakebase DB 権限付与: {str(e)[:200]}（初回アクセス時に自動付与される場合があります）")
 
     # ── サマリー ──
     print(f"\n{'='*50}")
