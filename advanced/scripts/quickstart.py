@@ -1917,6 +1917,8 @@ def main():
                 '"<MONITORING-EXPERIMENT-ID>"': f'"{monitoring_id}"',
                 '"<EVAL-EXPERIMENT-ID>"': f'"{eval_id}"',
                 '"<GENIE-SPACE-ID>"': f'"{genie_space_id}"',
+                '"<LAKEBASE-PROJECT>"': f'"{lakebase_config["project"]}"' if lakebase_config else '"<LAKEBASE-PROJECT>"',
+                '"<LAKEBASE-BRANCH>"': f'"{lakebase_config["branch"]}"' if lakebase_config else '"<LAKEBASE-BRANCH>"',
             }
             for old, new in replacements.items():
                 content = content.replace(old, new)

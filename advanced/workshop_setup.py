@@ -27,6 +27,8 @@ WAREHOUSE_ID = "<WAREHOUSE-ID>"            # 例: "4b9b953939869799"
 MONITORING_EXPERIMENT_ID = "<MONITORING-EXPERIMENT-ID>"  # 例: "2019445883421300"
 EVAL_EXPERIMENT_ID = "<EVAL-EXPERIMENT-ID>"              # 例: "2019445883421301"
 GENIE_SPACE_ID = "<GENIE-SPACE-ID>"                      # 例: "01f132..."
+LAKEBASE_PROJECT = "<LAKEBASE-PROJECT>"                  # 例: "my-fresh-mart"
+LAKEBASE_BRANCH = "<LAKEBASE-BRANCH>"                    # 例: "my-fresh-mart-branch"
 SP_CLIENT_ID = "<SP_CLIENT_ID>"            # 例: "9bf3f616-..." （ステップ 11 で使用）
 
 # チームメンバーのメールアドレス（チーム利用時のみ。末尾の「チームメンバーへの権限付与」で使用）
@@ -199,10 +201,44 @@ else:
             print(f"  ✗ Genie Space の自動権限付与に失敗。UI から手動で共有してください。")
             print(f"    Genie > 対象のスペース > Share > メンバーを Can Run で追加")
 
+    # ── 4. Lakebase 権限 ──
+    print("\n=== 4. Lakebase 権限 ===")
+    if not LAKEBASE_PROJECT or LAKEBASE_PROJECT.startswith("<"):
+        print("  → LAKEBASE_PROJECT 未設定（スキップ）")
+    else:
+        try:
+            from databricks_ai_bridge.lakebase import LakebaseClient, SchemaPrivilege, TablePrivilege
+
+            lakebase_client = LakebaseClient(project=LAKEBASE_PROJECT, branch=LAKEBASE_BRANCH)
+            schema_privs = [SchemaPrivilege.USAGE, SchemaPrivilege.CREATE]
+            table_privs = [TablePrivilege.SELECT, TablePrivilege.INSERT, TablePrivilege.UPDATE, TablePrivilege.DELETE]
+
+            for member in TEAM_MEMBERS:
+                # ロール作成
+                try:
+                    lakebase_client.create_role(member, "USER")
+                except Exception as e:
+                    if "already exists" not in str(e).lower():
+                        print(f"  ⚠ {member} のロール作成: {str(e)[:100]}")
+
+                # スキーマ権限
+                for schema_name in ["public", "ai_chatbot", "drizzle"]:
+                    try:
+                        lakebase_client.grant_schema(grantee=member, schemas=[schema_name], privileges=schema_privs)
+                    except Exception:
+                        pass  # スキーマが未作成の場合は無視
+
+            print(f"  ✓ {len(TEAM_MEMBERS)} 名に Lakebase 権限を付与")
+        except ImportError:
+            print("  ✗ databricks_ai_bridge が利用できません。Lakebase 権限は手動で付与してください。")
+            print("    UI > Lakebase > プロジェクト > Permissions > CAN_USE で追加")
+        except Exception as e:
+            print(f"  ✗ Lakebase 権限付与失敗: {str(e)[:200]}")
+            print("    UI > Lakebase > プロジェクト > Permissions > CAN_USE で追加")
+
     # ── サマリー ──
     print(f"\n{'='*50}")
     print(f"✓ {len(TEAM_MEMBERS)} 名のメンバーに権限を付与しました")
     print(f"{'='*50}")
     print("\n手動で共有が必要なもの：")
-    print("  - Lakebase プロジェクト: UI > Lakebase > プロジェクト > Permissions > CAN_USE で追加")
     print("  - アプリの SP 権限: 各メンバーが自分のアプリをデプロイ後にステップ 11-6 を各自で実行")

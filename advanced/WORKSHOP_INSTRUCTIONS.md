@@ -45,7 +45,7 @@ GRANT MODIFY ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `member@company.com`;
 |---|---|
 | **Genie Space** | Genie > 対象のスペース > Share > メンバーを **Can Run** で追加 |
 | **MLflow Experiment** | Experiments > 対象の実験 > Permissions > メンバーを **Can Manage** で追加 |
-| **Lakebase プロジェクト** | Databricks UI > Lakebase > プロジェクト > Permissions > メンバーを **CAN_USE** で追加 |
+| **Lakebase** | `workshop_setup.py` のチームメンバーセルで自動付与（`LakebaseClient` 使用） |
 | **Vector Search エンドポイント** | 共有エンドポイントを使っていれば追加不要 |
 
 > **アプリの SP 権限について：** 各メンバーが自分のアプリをデプロイした後に、ステップ 11-6 を各自で実行してください。代表者が事前に設定することはできません（SP はアプリ作成時に生成されるため）。
