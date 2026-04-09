@@ -176,25 +176,47 @@ def main():
     if not lakebase_project:
         print_warn("LAKEBASE_AUTOSCALING_PROJECT 未設定（スキップ）")
     else:
-        # DB 権限（LakebaseClient でロール作成 + スキーマ権限付与）
+        # DB 権限（LakebaseClient でロール作成 + スキーマ・テーブル権限付与）
+        # ロール作成は OAuth 認証に必須。スキーマ権限だけではテーブルにアクセスできない。
         try:
-            from databricks_ai_bridge.lakebase import LakebaseClient, SchemaPrivilege
+            from databricks_ai_bridge.lakebase import LakebaseClient, SchemaPrivilege, TablePrivilege
             client = LakebaseClient(project=lakebase_project, branch=lakebase_branch)
+            schema_privs = [SchemaPrivilege.USAGE, SchemaPrivilege.CREATE]
+            table_privs = [TablePrivilege.SELECT, TablePrivilege.INSERT, TablePrivilege.UPDATE, TablePrivilege.DELETE]
+
+            # スキーマ→テーブルの定義（grant_lakebase_permissions.py と同じ構成）
+            schema_tables = {
+                "public": [
+                    "checkpoint_migrations", "checkpoint_writes", "checkpoints", "checkpoint_blobs",
+                    "store_migrations", "store", "store_vectors", "vector_migrations",
+                ],
+                "ai_chatbot": ["Chat", "Message", "User", "Vote"],
+                "drizzle": ["__drizzle_migrations"],
+            }
+
             for member in members:
+                # ロール作成（OAuth 認証に必須）
                 try:
                     client.create_role(member, "USER")
                 except Exception as e:
                     if "already exists" not in str(e).lower():
                         print_warn(f"{member} ロール: {str(e)[:100]}")
-                for s in ["public", "ai_chatbot", "drizzle"]:
+
+                # スキーマ + テーブル権限
+                for schema_name, tables in schema_tables.items():
                     try:
-                        client.grant_schema(grantee=member, schemas=[s],
-                                            privileges=[SchemaPrivilege.USAGE, SchemaPrivilege.CREATE])
+                        client.grant_schema(grantee=member, schemas=[schema_name], privileges=schema_privs)
                     except Exception:
                         pass
-            print_success("Lakebase DB 権限付与")
+                    qualified_tables = [f"{schema_name}.{t}" for t in tables]
+                    try:
+                        client.grant_table(grantee=member, tables=qualified_tables, privileges=table_privs)
+                    except Exception:
+                        pass  # テーブルが未作成の場合は無視（初回起動後に再実行で付与される）
+
+            print_success("Lakebase DB 権限付与（ロール + スキーマ + テーブル）")
         except ImportError:
-            print_warn("databricks_ai_bridge 未インストール。DB 権限は初回アクセス時に付与されます。")
+            print_warn("databricks_ai_bridge 未インストール。uv sync を実行してください。")
         except Exception as e:
             print_warn(f"Lakebase DB: {str(e)[:200]}")
 
