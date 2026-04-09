@@ -164,34 +164,19 @@ def main():
         print_warn("GENIE_SPACE_ID 未設定（スキップ）")
     else:
         acl = [{"user_name": m, "permission_level": "CAN_RUN"} for m in members]
-        ok = False
-        for path in [f"/api/2.0/permissions/dashboards/{genie_space_id}",
-                     f"/api/2.0/permissions/genie-spaces/{genie_space_id}"]:
-            result = api_patch(path, token, host, {"access_control_list": acl})
-            if "error" not in result:
-                print_success(f"Genie Space ({genie_space_id}): CAN_RUN 付与")
-                ok = True
-                break
-        if not ok:
-            print_error("Genie Space 権限付与失敗。UI から手動で共有してください。")
+        result = api_patch(f"/api/2.0/permissions/sql/genie/{genie_space_id}", token, host, {"access_control_list": acl})
+        if "error" not in result:
+            print_success(f"Genie Space ({genie_space_id}): CAN_RUN 付与")
+        else:
+            print_error(f"Genie Space 権限付与失敗: {result['error'][:200]}")
+            print("  UI から手動で共有してください: Genie > 対象のスペース > Share > Can Run")
 
     # ── 4. Lakebase 権限 ──
     print("\n=== 4. Lakebase 権限 ===")
     if not lakebase_project:
         print_warn("LAKEBASE_AUTOSCALING_PROJECT 未設定（スキップ）")
     else:
-        # プロジェクト ACL
-        acl = [{"user_name": m, "permission_level": "CAN_USE"} for m in members]
-        result = api_patch(
-            f"/api/2.0/permissions/postgres/projects/{lakebase_project}",
-            token, host, {"access_control_list": acl},
-        )
-        if "error" not in result:
-            print_success(f"プロジェクト CAN_USE 付与")
-        else:
-            print_warn(f"プロジェクト ACL: {result['error'][:200]}")
-
-        # DB 権限
+        # DB 権限（LakebaseClient でロール作成 + スキーマ権限付与）
         try:
             from databricks_ai_bridge.lakebase import LakebaseClient, SchemaPrivilege
             client = LakebaseClient(project=lakebase_project, branch=lakebase_branch)
