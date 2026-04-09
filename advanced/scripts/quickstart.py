@@ -2053,6 +2053,29 @@ def main():
             print("テーブル作成後に 'uv run start-app' を実行してください。")
             print("=" * 60)
 
+        # チームメンバーへの共有情報
+        print()
+        print("=" * 60)
+        print("📋 チームメンバーに共有する情報")
+        print("=" * 60)
+        print()
+        print("チームでハンズオンを実施する場合、以下の情報をメンバーに共有してください。")
+        print("メンバーはクイックスタート実行時にこれらの値を入力します。")
+        print()
+        print(f"  カタログ名:            {catalog}")
+        print(f"  スキーマ名:            {schema}")
+        print(f"  VS エンドポイント名:   {vs_endpoint}")
+        print(f"  Genie Space ID:        {genie_space_id}")
+        if lakebase_config:
+            print(f"  Lakebase プロジェクト:  {lakebase_config['project']}")
+            print(f"  Lakebase ブランチ:      {lakebase_config['branch']}")
+        print(f"  モニタリング Exp ID:   {monitoring_id}")
+        print(f"  評価 Exp ID:           {eval_id}")
+        print()
+        print("メンバーの権限付与は以下で実行できます：")
+        print(f"  uv run grant-team-access member1@company.com member2@company.com")
+        print("=" * 60)
+
     except KeyboardInterrupt:
         print("\n\nセットアップが中断されました。")
         sys.exit(1)
