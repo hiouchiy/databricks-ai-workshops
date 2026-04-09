@@ -16,6 +16,7 @@
 # MAGIC ## 設定（最初に実行）
 # MAGIC
 # MAGIC 以下のプレースホルダーを自分の環境に合わせて設定してください。
+# MAGIC `uv run quickstart` を実行済みの場合は自動的に値が入っています。
 
 # COMMAND ----------
 
@@ -26,37 +27,11 @@ WAREHOUSE_ID = "<WAREHOUSE-ID>"            # 例: "4b9b953939869799"
 MONITORING_EXPERIMENT_ID = "<MONITORING-EXPERIMENT-ID>"  # 例: "2019445883421300"
 SP_CLIENT_ID = "<SP_CLIENT_ID>"            # 例: "9bf3f616-..." （ステップ 11 で使用）
 
-# チームメンバーのメールアドレス（権限共有時に使用）
+# チームメンバーのメールアドレス（チーム利用時のみ。末尾の「チームメンバーへの権限付与」で使用）
 TEAM_MEMBERS = [
     # "member1@company.com",
     # "member2@company.com",
 ]
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ---
-# MAGIC ## チームメンバーへの権限付与（チーム利用時のみ）
-# MAGIC
-# MAGIC 代表者がリソースを作成した後、他のメンバーがアクセスできるように権限を付与します。
-# MAGIC 上の設定セルで `TEAM_MEMBERS` にメンバーのメールアドレスを追加してから実行してください。
-# MAGIC
-# MAGIC **注意：** Genie Space と MLflow Experiment の共有は UI から手動で行ってください。
-
-# COMMAND ----------
-
-if not TEAM_MEMBERS:
-    print("⚠ TEAM_MEMBERS が空です。上の設定セルにメンバーのメールアドレスを追加してください。")
-else:
-    for member in TEAM_MEMBERS:
-        spark.sql(f"GRANT USE CATALOG ON CATALOG `{CATALOG}` TO `{member}`")
-        spark.sql(f"GRANT USE SCHEMA ON SCHEMA `{CATALOG}`.`{SCHEMA}` TO `{member}`")
-        spark.sql(f"GRANT SELECT ON SCHEMA `{CATALOG}`.`{SCHEMA}` TO `{member}`")
-        print(f"✓ {member} に USE CATALOG, USE SCHEMA, SELECT を付与")
-    print(f"\n✓ {len(TEAM_MEMBERS)} 名のメンバーに権限を付与しました")
-    print("\n以下は UI から手動で共有してください：")
-    print("  - Genie Space: Genie > 対象のスペース > Share > Can Run で追加")
-    print("  - MLflow Experiment: Experiments > Permissions > Can Manage で追加")
 
 # COMMAND ----------
 
@@ -148,11 +123,26 @@ print(f"  - MODIFY on {CATALOG}.{SCHEMA}（Delta Table トレース用）")
 
 # MAGIC %md
 # MAGIC ---
-# MAGIC ## トレース送信先の権限付与（オプション）
+# MAGIC ## チームメンバーへの権限付与（チーム利用時のみ）
 # MAGIC
-# MAGIC Delta Table トレースを使用する場合のみ実行してください。
+# MAGIC 代表者がリソースを作成した後、他のメンバーがアクセスできるように権限を付与します。
+# MAGIC 先頭の設定セルで `TEAM_MEMBERS` にメンバーのメールアドレスを追加してから実行してください。
+# MAGIC
+# MAGIC **前提：** ステップ 1（カタログ・スキーマ作成）が完了していること。
+# MAGIC
+# MAGIC **注意：** Genie Space と MLflow Experiment の共有は UI から手動で行ってください。
 
 # COMMAND ----------
 
-spark.sql(f"GRANT MODIFY, SELECT ON SCHEMA `{CATALOG}`.`{SCHEMA}` TO `{SP_CLIENT_ID}`")
-print(f"✓ SP {SP_CLIENT_ID} に MODIFY, SELECT on {CATALOG}.{SCHEMA} を付与")
+if not TEAM_MEMBERS:
+    print("⚠ TEAM_MEMBERS が空です。先頭の設定セルにメンバーのメールアドレスを追加してください。")
+else:
+    for member in TEAM_MEMBERS:
+        spark.sql(f"GRANT USE CATALOG ON CATALOG `{CATALOG}` TO `{member}`")
+        spark.sql(f"GRANT USE SCHEMA ON SCHEMA `{CATALOG}`.`{SCHEMA}` TO `{member}`")
+        spark.sql(f"GRANT SELECT ON SCHEMA `{CATALOG}`.`{SCHEMA}` TO `{member}`")
+        print(f"✓ {member} に USE CATALOG, USE SCHEMA, SELECT を付与")
+    print(f"\n✓ {len(TEAM_MEMBERS)} 名のメンバーに権限を付与しました")
+    print("\n以下は UI から手動で共有してください：")
+    print("  - Genie Space: Genie > 対象のスペース > Share > Can Run で追加")
+    print("  - MLflow Experiment: Experiments > Permissions > Can Manage で追加")
