@@ -1817,6 +1817,21 @@ def main():
         else:
             print_success("Prompt Registry: 使用しない（ハードコード版）")
 
+        # workshop_setup.py のプレースホルダーを更新
+        setup_notebook = Path("workshop_setup.py")
+        if setup_notebook.exists():
+            content = setup_notebook.read_text()
+            replacements = {
+                '"<CATALOG>"': f'"{catalog}"',
+                '"<SCHEMA>"': f'"{schema}"',
+                '"<WAREHOUSE-ID>"': f'"{warehouse_id}"',
+                '"<MONITORING-EXPERIMENT-ID>"': f'"{monitoring_id}"',
+            }
+            for old, new in replacements.items():
+                content = content.replace(old, new)
+            setup_notebook.write_text(content)
+            print_success("workshop_setup.py のプレースホルダーを更新しました")
+
         # ── Phase 6: 依存関係 ──
         print_step("[6/7] 依存関係のインストール")
         install_dependencies()
