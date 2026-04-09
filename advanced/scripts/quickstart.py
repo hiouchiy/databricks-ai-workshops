@@ -1640,29 +1640,20 @@ def _get_table_columns(token: str, host: str, warehouse_id: str, full_table_name
     return columns
 
 
-def _build_serialized_space(catalog: str, schema: str, tables: list[str],
-                            table_columns: dict[str, list[dict]]) -> str:
-    """serialized_space の JSON 文字列を生成。"""
-    data_sources_tables = []
-    for table in sorted(tables):
-        full_name = f"{catalog}.{schema}.{table}"
-        cols = table_columns.get(table, [])
-        col_configs = [{"display_name": c["name"], "name": c["name"]} for c in sorted(cols, key=lambda x: x["name"])]
-        data_sources_tables.append({
-            "identifier": full_name,
-            "column_configs": col_configs,
-        })
+def _build_serialized_space(catalog: str, schema: str, tables: list[str]) -> str:
+    """serialized_space の JSON 文字列を生成。
+
+    version "1" のシンプルな形式を使用。テーブルは identifier でアルファベット順ソート必須。
+    """
+    data_sources_tables = [
+        {"identifier": f"{catalog}.{schema}.{t}"}
+        for t in sorted(tables)
+    ]
 
     space_config = {
-        "version": "2",
-        "config": {"sample_questions": []},
+        "version": "1",
+        "config": {},
         "data_sources": {"tables": data_sources_tables},
-        "instructions": {
-            "text_instructions": [
-                "日本語で回答してください。",
-                "金額は日本円（¥）で表示してください。",
-            ],
-        },
     }
     return json.dumps(space_config, ensure_ascii=False)
 
@@ -1698,18 +1689,7 @@ def create_genie_space(token: str, host: str, warehouse_id: str, catalog: str, s
 
     # 新規作成
     tables = ["customers", "products", "stores", "transactions", "transaction_items", "payment_history"]
-    print("  テーブルのカラム情報を取得中...")
-    table_columns = {}
-    for table in tables:
-        full_name = f"{catalog}.{schema}.{table}"
-        cols = _get_table_columns(token, host, warehouse_id, full_name)
-        table_columns[table] = cols
-        if cols:
-            print(f"    {table}: {len(cols)} カラム")
-        else:
-            print(f"    {table}: カラム情報取得失敗（テーブルが存在しない可能性）")
-
-    serialized = _build_serialized_space(catalog, schema, tables, table_columns)
+    serialized = _build_serialized_space(catalog, schema, tables)
 
     print("  Genie Space を作成中...")
     body = {
