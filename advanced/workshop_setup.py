@@ -249,6 +249,22 @@ else:
         except Exception as e:
             print(f"  ⚠ Lakebase DB 権限付与: {str(e)[:200]}（初回アクセス時に自動付与される場合があります）")
 
+    # ── 5. SQL Warehouse 権限（Delta Table トレースに必要）──
+    print("\n=== 5. SQL Warehouse 権限 ===")
+    if not WAREHOUSE_ID or WAREHOUSE_ID.startswith("<"):
+        print("  → WAREHOUSE_ID 未設定（スキップ）")
+    else:
+        acl = [{"user_name": m, "permission_level": "CAN_USE"} for m in TEAM_MEMBERS]
+        resp = requests.patch(
+            f"{_host}/api/2.0/permissions/sql/warehouses/{WAREHOUSE_ID}",
+            headers=_headers,
+            json={"access_control_list": acl},
+        )
+        if resp.status_code == 200:
+            print(f"  ✓ SQL Warehouse ({WAREHOUSE_ID}): CAN_USE 付与")
+        else:
+            print(f"  ⚠ SQL Warehouse 権限付与失敗（共有ウェアハウスなら既に全員アクセス可能な場合があります）")
+
     # ── サマリー ──
     print(f"\n{'='*50}")
     print(f"✓ {len(TEAM_MEMBERS)} 名のメンバーに権限を付与しました")

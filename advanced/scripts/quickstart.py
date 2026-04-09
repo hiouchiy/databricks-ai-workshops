@@ -516,12 +516,64 @@ def _create_single_experiment(profile_name: str, base_name: str) -> tuple[str, s
         sys.exit(1)
 
 
+def _verify_experiment(profile_name: str, exp_id: str) -> tuple[str, str]:
+    """既存の Experiment ID を検証し、(name, id) を返す。見つからなければ ("", "")。"""
+    result = run_command(
+        ["databricks", "experiments", "get-experiment", exp_id, "-p", profile_name, "-o", "json"],
+        check=False,
+    )
+    if result.returncode == 0:
+        data = json.loads(result.stdout)
+        exp = data.get("experiment", data)
+        return exp.get("name", "?"), exp_id
+    return "", ""
+
+
 def create_mlflow_experiment(
     profile_name: str, username: str
 ) -> tuple[str, str, str, str]:
-    """Create two MLflow experiments (monitoring + evaluation) and return
+    """Create or reuse MLflow experiments. Returns
     (monitoring_name, monitoring_id, eval_name, eval_id)."""
-    print_step("Creating MLflow experiments (monitoring + evaluation)...")
+    print_step("MLflow Experiment の設定")
+    print()
+    print("  1) 新規作成（デフォルト）")
+    print("  2) 既存の Experiment ID を入力（チームメンバー向け）")
+
+    choice = input("\n  選択 [1]: ").strip() or "1"
+
+    if choice == "2":
+        # 既存 ID の入力
+        monitoring_name, monitoring_id = "", ""
+        eval_name, eval_id = "", ""
+
+        while not monitoring_id:
+            mid = input("  モニタリング Experiment ID: ").strip()
+            if not mid:
+                print("  ID を入力してください。")
+                continue
+            name, eid = _verify_experiment(profile_name, mid)
+            if name:
+                monitoring_name, monitoring_id = name, eid
+                print_success(f"モニタリング Experiment 確認OK: {name} ({eid})")
+            else:
+                print_error(f"Experiment ID '{mid}' が見つかりません。もう一度入力してください。")
+
+        while not eval_id:
+            eid_input = input("  評価 Experiment ID: ").strip()
+            if not eid_input:
+                print("  ID を入力してください。")
+                continue
+            name, eid = _verify_experiment(profile_name, eid_input)
+            if name:
+                eval_name, eval_id = name, eid
+                print_success(f"評価 Experiment 確認OK: {name} ({eid})")
+            else:
+                print_error(f"Experiment ID '{eid_input}' が見つかりません。もう一度入力してください。")
+
+        return monitoring_name, monitoring_id, eval_name, eval_id
+
+    # 新規作成
+    print_step("MLflow Experiment を新規作成中...")
 
     monitoring_name, monitoring_id = _create_single_experiment(
         profile_name, f"/Users/{username}/freshmart-agent-monitoring"
