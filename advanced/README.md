@@ -142,6 +142,37 @@ uv run start-app
 
 > **次のステップ：** アプリが動作したら、**[ステップ 10：エージェントの評価](WORKSHOP_INSTRUCTIONS.md#ステップ-10オプションエージェントの評価)** に進んでください。評価・トレース設定・Databricks Apps へのデプロイの手順が記載されています。
 
+#### Delta Table トレースを選択した場合
+
+クイックスタートで「Unity Catalog Delta Table にトレースを送信する」を選択した場合、最後にトレーステーブルの初期作成手順が表示されます。**Databricks ノートブック上でのみ実行可能**なため、`workshop_setup.py` をワークスペースにインポートし、「トレース送信先の設定」セルを実行してください：
+
+```python
+import os
+os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "<WAREHOUSE-ID>"
+
+import mlflow
+from mlflow.entities import UCSchemaLocation
+
+mlflow.tracing.set_experiment_trace_location(
+    location=UCSchemaLocation(catalog_name="<CATALOG>", schema_name="<SCHEMA>"),
+    experiment_id="<MONITORING-EXPERIMENT-ID>",
+)
+```
+
+> `uv run quickstart` を実行済みであれば、`workshop_setup.py` のプレースホルダーは自動入力されているため、そのまま実行するだけで OK です。
+
+#### チームでハンズオンを実施する場合
+
+代表者がクイックスタートでリソースを作成した後、チームメンバーにリソースを共有して使わせたい場合は、以下を行ってください：
+
+1. `workshop_setup.py` を Databricks ワークスペースにインポート
+2. 先頭の設定セルの `TEAM_MEMBERS` にメンバーのメールアドレスを追加
+3. 「チームメンバーへの権限付与」セルを実行
+
+これにより、Unity Catalog、MLflow Experiment、Genie Space、Lakebase、SQL Warehouse への権限が一括で付与されます。メンバーはクイックスタートの MLflow Experiment 設定で「既存の ID を入力」を選択し、代表者から共有された情報を入力すれば、ステップ 9（ローカル実行）からすぐに始められます。
+
+詳細は [WORKSHOP_INSTRUCTIONS.md](WORKSHOP_INSTRUCTIONS.md) の「チーム利用時の権限共有」を参照してください。
+
 ### 方法 2：手動セットアップ
 
 ステップバイステップの詳細手順は **[ワークショップインストラクション](WORKSHOP_INSTRUCTIONS.md)** を参照してください。データ生成・Vector Search 作成・Lakebase セットアップ・評価・デプロイまで、全手順が記載されています。
@@ -492,6 +523,19 @@ uv run start-app
 The chat UI will be available at **http://localhost:3000** and the API at **http://localhost:8000**.
 
 > **Next step:** Once the app is running, proceed to **[Step 10: Agent Evaluation](WORKSHOP_INSTRUCTIONS.md#ステップ-10オプションエージェントの評価)** for evaluation, trace configuration, and Databricks Apps deployment instructions.
+
+#### If you selected Delta Table tracing
+
+If you chose to send traces to a Unity Catalog Delta Table, the quickstart will display setup instructions at the end. Import `workshop_setup.py` into your Databricks workspace and run the "Trace destination setup" cell (placeholders are auto-filled by quickstart).
+
+#### Team workshop setup
+
+If running the workshop as a team, the representative should:
+1. Import `workshop_setup.py` into the Databricks workspace
+2. Add team member email addresses to `TEAM_MEMBERS` in the settings cell
+3. Run the "Team member permissions" cell to grant access to all shared resources
+
+Team members can then run quickstart, select "use existing Experiment ID", and start from Step 9.
 
 ### Option 2: Manual Setup
 
