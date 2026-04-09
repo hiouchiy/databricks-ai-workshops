@@ -1920,7 +1920,8 @@ def main():
         tracing_dest = ""
         use_delta = input("\n  Unity Catalog Delta Table に送信しますか？ (y/N): ").strip().lower()
         if use_delta == "y":
-            tracing_dest = f"{catalog}.{schema}"
+            default_dest = f"{catalog}.{schema}"
+            tracing_dest = input(f"  送信先スキーマ [{default_dest}]: ").strip() or default_dest
             update_env_file("MLFLOW_TRACING_DESTINATION", tracing_dest)
             update_env_file("MLFLOW_TRACING_SQL_WAREHOUSE_ID", warehouse_id)
             # app.yaml にも追加（Apps デプロイ時に必要）
