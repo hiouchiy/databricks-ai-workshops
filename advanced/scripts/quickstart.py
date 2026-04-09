@@ -1893,24 +1893,49 @@ def main():
         print_success(".env / databricks.yml 更新完了")
 
         # Delta Table tracing
-        print()
-        print("  トレース送信先の選択:")
-        print("    デフォルト: MLflow Experiment（すぐに使える）")
-        print("    オプション: Unity Catalog Delta Table（SQL クエリ可能、長期保持）")
+        # 既存 Experiment に UC テーブル紐付けがあるか確認
         tracing_dest = ""
-        use_delta = input("\n  Unity Catalog Delta Table に送信しますか？ (y/N): ").strip().lower()
-        if use_delta == "y":
-            default_dest = f"{catalog}.{schema}"
-            tracing_dest = input(f"  送信先スキーマ [{default_dest}]: ").strip() or default_dest
+        _existing_dest = ""
+        try:
+            exp_result = run_command(
+                ["databricks", "experiments", "get-experiment", monitoring_id, "-p", profile_name, "-o", "json"],
+                check=False,
+            )
+            if exp_result.returncode == 0:
+                exp_data = json.loads(exp_result.stdout)
+                exp_tags = exp_data.get("experiment", exp_data).get("tags", [])
+                for tag in exp_tags:
+                    if tag.get("key") == "mlflow.experiment.databricksTraceDestinationPath":
+                        _existing_dest = tag.get("value", "")
+                        break
+        except Exception:
+            pass
+
+        if _existing_dest:
+            # 既存 Experiment に Delta Table 紐付けが既にある
+            tracing_dest = _existing_dest
             update_env_file("MLFLOW_TRACING_DESTINATION", tracing_dest)
             update_env_file("MLFLOW_TRACING_SQL_WAREHOUSE_ID", warehouse_id)
-            # app.yaml にも追加（Apps デプロイ時に必要）
             append_env_to_app_yaml("MLFLOW_TRACING_DESTINATION", tracing_dest)
             append_env_to_app_yaml("MLFLOW_TRACING_SQL_WAREHOUSE_ID", warehouse_id)
-            print_success(f"トレース送信先: Unity Catalog ({tracing_dest})")
-            print_success(f".env と app.yaml の両方に設定を追加しました")
+            print_success(f"トレース送信先: Unity Catalog ({tracing_dest})（既存 Experiment から検出）")
         else:
-            print_success("トレース送信先: MLflow Experiment（デフォルト）")
+            print()
+            print("  トレース送信先の選択:")
+            print("    デフォルト: MLflow Experiment（すぐに使える）")
+            print("    オプション: Unity Catalog Delta Table（SQL クエリ可能、長期保持）")
+            use_delta = input("\n  Unity Catalog Delta Table に送信しますか？ (y/N): ").strip().lower()
+            if use_delta == "y":
+                default_dest = f"{catalog}.{schema}"
+                tracing_dest = input(f"  送信先スキーマ [{default_dest}]: ").strip() or default_dest
+                update_env_file("MLFLOW_TRACING_DESTINATION", tracing_dest)
+                update_env_file("MLFLOW_TRACING_SQL_WAREHOUSE_ID", warehouse_id)
+                append_env_to_app_yaml("MLFLOW_TRACING_DESTINATION", tracing_dest)
+                append_env_to_app_yaml("MLFLOW_TRACING_SQL_WAREHOUSE_ID", warehouse_id)
+                print_success(f"トレース送信先: Unity Catalog ({tracing_dest})")
+                print_success(f".env と app.yaml の両方に設定を追加しました")
+            else:
+                print_success("トレース送信先: MLflow Experiment（デフォルト）")
 
         # Prompt Registry
         print()
