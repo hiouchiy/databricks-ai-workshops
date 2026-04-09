@@ -513,6 +513,20 @@ uv run agent-evaluate-advanced
 > cd e2e-chatbot-app-next && rm -f package-lock.json && npm install && cd ..
 > ```
 
+### 最初に変数を設定
+
+以降のコマンドで繰り返し使う値を変数に設定しておくと便利です：
+
+```bash
+# 参加者ごとにユニークなアプリ名（例: freshmart-agent-taro）
+export APP_NAME="<あなたのアプリ名>"
+
+# あなたの Databricks メールアドレス
+export MY_EMAIL=$(databricks current-user me --profile DEFAULT -o json | jq -r .userName)
+echo "APP_NAME: $APP_NAME"
+echo "MY_EMAIL: $MY_EMAIL"
+```
+
 ### 11-1. `databricks.yml` の編集
 
 `databricks.yml` を開き、以下の箇所を自分の環境に合わせて編集します（`uv run quickstart` を使った場合は自動更新されます）。
@@ -587,27 +601,27 @@ databricks bundle deploy -t dev --profile DEFAULT
 ### 11-4. アプリの起動
 
 ```bash
-databricks apps start <アプリ名> --profile DEFAULT
+databricks apps start $APP_NAME --profile DEFAULT
 ```
 
 コンピュートが ACTIVE になるまで待機：
 
 ```bash
-databricks apps get <アプリ名> --profile DEFAULT -o json | jq '.compute_status.state'
+databricks apps get $APP_NAME --profile DEFAULT -o json | jq '.compute_status.state'
 # "ACTIVE" と表示されるまで待つ
 ```
 
 ### 11-5. ソースコードのデプロイ
 
 ```bash
-databricks apps deploy <アプリ名> \
-  --source-code-path "/Workspace/Users/<あなたのメールアドレス>/.bundle/retail_grocery_ltm_memory/dev/files" \
+databricks apps deploy $APP_NAME \
+  --source-code-path "/Workspace/Users/$MY_EMAIL/.bundle/retail_grocery_ltm_memory/dev/files" \
   --profile DEFAULT
 ```
 
 > **注意：** デプロイ後、npm install → npm build → アプリ起動に **3〜5 分** かかります。ステータスが RUNNING になるまで待ってから動作確認してください：
 > ```bash
-> databricks apps get <アプリ名> --profile DEFAULT -o json | jq '.app_status.state'
+> databricks apps get $APP_NAME --profile DEFAULT -o json | jq '.app_status.state'
 > ```
 
 ### 11-6. サービスプリンシパルへのパーミッション付与
@@ -616,7 +630,7 @@ databricks apps deploy <アプリ名> \
 
 ```bash
 # SP Client ID を取得
-SP_CLIENT_ID=$(databricks apps get <アプリ名> --output json --profile DEFAULT | jq -r '.service_principal_client_id')
+SP_CLIENT_ID=$(databricks apps get $APP_NAME --output json --profile DEFAULT | jq -r '.service_principal_client_id')
 echo "SP Client ID: $SP_CLIENT_ID"
 ```
 
@@ -644,8 +658,8 @@ uv run python scripts/grant_lakebase_permissions.py "$SP_CLIENT_ID" \
 パーミッション付与後、アプリを再起動してください：
 
 ```bash
-databricks apps stop <アプリ名> --profile DEFAULT
-databricks apps start <アプリ名> --profile DEFAULT
+databricks apps stop $APP_NAME --profile DEFAULT
+databricks apps start $APP_NAME --profile DEFAULT
 ```
 
 ### 11-7. 動作確認
@@ -655,13 +669,13 @@ databricks apps start <アプリ名> --profile DEFAULT
 **ブラウザ**：アプリの URL にアクセスしてチャット画面が表示されることを確認
 
 ```bash
-databricks apps get <アプリ名> --profile DEFAULT -o json | jq -r '.url'
+databricks apps get $APP_NAME --profile DEFAULT -o json | jq -r '.url'
 ```
 
 **API テスト**：
 
 ```bash
-APP_URL=$(databricks apps get <アプリ名> --output json --profile DEFAULT | jq -r '.url')
+APP_URL=$(databricks apps get $APP_NAME --output json --profile DEFAULT | jq -r '.url')
 TOKEN=$(databricks auth token --profile DEFAULT -o json | jq -r .access_token)
 
 curl -X POST "${APP_URL}/invocations" \
@@ -679,8 +693,8 @@ curl -X POST "${APP_URL}/invocations" \
 databricks bundle deploy -t dev --profile DEFAULT
 
 # 2. アプリにソースコードを再デプロイ
-databricks apps deploy <アプリ名> \
-  --source-code-path "/Workspace/Users/<あなたのメールアドレス>/.bundle/retail_grocery_ltm_memory/dev/files" \
+databricks apps deploy $APP_NAME \
+  --source-code-path "/Workspace/Users/$MY_EMAIL/.bundle/retail_grocery_ltm_memory/dev/files" \
   --profile DEFAULT
 ```
 
@@ -688,8 +702,8 @@ databricks apps deploy <アプリ名> \
 >
 > `app.yaml` の `env` セクションを変更した場合は、アプリの再起動も必要です：
 > ```bash
-> databricks apps stop <アプリ名> --profile DEFAULT
-> databricks apps start <アプリ名> --profile DEFAULT
+> databricks apps stop $APP_NAME --profile DEFAULT
+> databricks apps start $APP_NAME --profile DEFAULT
 > ```
 
 ---
