@@ -2,11 +2,15 @@
 # MAGIC %md
 # MAGIC # フレッシュマート AI エージェント ワークショップ — セットアップノートブック
 # MAGIC
-# MAGIC このノートブックには、ワークショップのインストラクション（WORKSHOP_INSTRUCTIONS.md）で
-# MAGIC Databricks 上での実行が必要なコマンドが集約されています。
+# MAGIC このノートブックには、ローカル（`uv run quickstart`）では実行できない
+# MAGIC Databricks 上専用のコマンドと、代表者がチームメンバーに権限を付与するセルが含まれています。
 # MAGIC
-# MAGIC **使い方：** 各セルの `<CATALOG>` 等のプレースホルダーを自分の値に置き換えてから、
-# MAGIC 該当するステップのセルを実行してください。すべてのセルを順番に実行する必要はありません。
+# MAGIC **セル一覧：**
+# MAGIC 1. **トレース送信先の設定** — Delta Table にトレースを送信する場合のみ（全員）
+# MAGIC 2. **アプリの SP 権限付与** — Databricks Apps にデプロイする場合のみ（各自）
+# MAGIC 3. **チームメンバーへの権限付与** — チーム利用時のみ（代表者）
+# MAGIC
+# MAGIC `uv run quickstart` を実行済みの場合、プレースホルダーは自動入力されています。
 # MAGIC
 # MAGIC ---
 
@@ -14,13 +18,10 @@
 
 # MAGIC %md
 # MAGIC ## 設定（最初に実行）
-# MAGIC
-# MAGIC 以下のプレースホルダーを自分の環境に合わせて設定してください。
-# MAGIC `uv run quickstart` を実行済みの場合は自動的に値が入っています。
 
 # COMMAND ----------
 
-# ── プレースホルダー（ここを自分の値に書き換えてください）──
+# ── プレースホルダー（quickstart 実行済みなら自動入力されています）──
 CATALOG = "<CATALOG>"                      # 例: "hiroshi"
 SCHEMA = "<SCHEMA>"                        # 例: "retail_agent"
 WAREHOUSE_ID = "<WAREHOUSE-ID>"            # 例: "4b9b953939869799"
@@ -29,9 +30,9 @@ EVAL_EXPERIMENT_ID = "<EVAL-EXPERIMENT-ID>"              # 例: "201944588342130
 GENIE_SPACE_ID = "<GENIE-SPACE-ID>"                      # 例: "01f132..."
 LAKEBASE_PROJECT = "<LAKEBASE-PROJECT>"                  # 例: "my-fresh-mart"
 LAKEBASE_BRANCH = "<LAKEBASE-BRANCH>"                    # 例: "my-fresh-mart-branch"
-SP_CLIENT_ID = "<SP_CLIENT_ID>"            # 例: "9bf3f616-..." （ステップ 11 で使用）
+SP_CLIENT_ID = "<SP_CLIENT_ID>"            # 例: "9bf3f616-..." （Apps デプロイ後に取得）
 
-# チームメンバーのメールアドレス（チーム利用時のみ。末尾の「チームメンバーへの権限付与」で使用）
+# チームメンバーのメールアドレス（代表者のみ使用）
 TEAM_MEMBERS = [
     # "member1@company.com",
     # "member2@company.com",
@@ -41,44 +42,14 @@ TEAM_MEMBERS = [
 
 # MAGIC %md
 # MAGIC ---
-# MAGIC ## ステップ 1：カタログとスキーマの作成
-# MAGIC
-# MAGIC > 管理者が事前に作成済みの場合はスキップしてください。
-
-# COMMAND ----------
-
-spark.sql(f"CREATE CATALOG IF NOT EXISTS `{CATALOG}`")
-spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{CATALOG}`.`{SCHEMA}`")
-print(f"✓ カタログ: {CATALOG}")
-print(f"✓ スキーマ: {CATALOG}.{SCHEMA}")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ---
-# MAGIC ## ステップ 3：Change Data Feed の有効化
-# MAGIC
-# MAGIC ポリシー文書チャンクテーブルに CDF を有効化します（Vector Search インデックス作成に必要）。
-
-# COMMAND ----------
-
-spark.sql(f"""
-    ALTER TABLE `{CATALOG}`.`{SCHEMA}`.policy_docs_chunked
-    SET TBLPROPERTIES (delta.enableChangeDataFeed = true)
-""")
-print(f"✓ CDF 有効化完了: {CATALOG}.{SCHEMA}.policy_docs_chunked")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ---
-# MAGIC ## トレース送信先の設定（オプション）
+# MAGIC ## 1. トレース送信先の設定（全員・オプション）
 # MAGIC
 # MAGIC Unity Catalog の Delta Table にトレースを送信する場合のみ実行してください。
 # MAGIC
 # MAGIC **注意：**
-# MAGIC - 紐付ける Experiment にはトレースが1件も入っていない必要があります
-# MAGIC - `set_experiment_trace_location` はこのノートブック上でのみ実行可能です（ローカル不可）
+# MAGIC - 紐付ける Experiment にはトレースが **1件も入っていない** 必要があります
+# MAGIC - `set_experiment_trace_location` は **このノートブック上でのみ** 実行可能です（ローカル不可）
+# MAGIC - チームメンバーが代表者と同じ Experiment を共有する場合、代表者が1回実行すれば OK
 
 # COMMAND ----------
 
@@ -103,9 +74,10 @@ print(f"    - {CATALOG}.{SCHEMA}.mlflow_experiment_trace_otel_metrics")
 
 # MAGIC %md
 # MAGIC ---
-# MAGIC ## ステップ 11-6：サービスプリンシパルへの Unity Catalog パーミッション付与
+# MAGIC ## 2. アプリの SP 権限付与（各自・Apps デプロイ時のみ）
 # MAGIC
-# MAGIC Databricks Apps にデプロイする場合のみ実行してください。
+# MAGIC Databricks Apps にデプロイした後、自分のアプリの SP に権限を付与してください。
+# MAGIC
 # MAGIC `SP_CLIENT_ID` は以下のコマンドで取得できます：
 # MAGIC ```
 # MAGIC databricks apps get <アプリ名> --output json --profile DEFAULT | jq -r '.service_principal_client_id'
@@ -127,21 +99,22 @@ print(f"  - MODIFY on {CATALOG}.{SCHEMA}（Delta Table トレース用）")
 
 # MAGIC %md
 # MAGIC ---
-# MAGIC ## チームメンバーへの権限付与（チーム利用時のみ）
+# MAGIC ## 3. チームメンバーへの権限付与（代表者のみ）
 # MAGIC
 # MAGIC 代表者がリソースを作成した後、他のメンバーがアクセスできるように権限を付与します。
 # MAGIC 先頭の設定セルで `TEAM_MEMBERS` にメンバーのメールアドレスを追加してから実行してください。
 # MAGIC
-# MAGIC **前提：** ステップ 1（カタログ・スキーマ作成）が完了していること。
+# MAGIC **前提：** クイックスタートが完了していること（カタログ・スキーマ・各リソースが作成済み）。
 # MAGIC
 # MAGIC **自動付与される権限：**
 # MAGIC - Unity Catalog: USE CATALOG, USE SCHEMA, SELECT, MODIFY
 # MAGIC - MLflow Experiment: CAN_MANAGE（モニタリング + 評価）
 # MAGIC - Genie Space: CAN_RUN
+# MAGIC - Lakebase: プロジェクト CAN_USE + DB スキーマ権限
+# MAGIC - SQL Warehouse: CAN_USE
 # MAGIC
 # MAGIC **手動で共有が必要：**
-# MAGIC - Lakebase プロジェクト: UI > Lakebase > プロジェクト > Permissions > CAN_USE
-# MAGIC - アプリの SP 権限: 各メンバーがデプロイ後にステップ 11-6 を各自で実行
+# MAGIC - アプリの SP 権限: 各メンバーがデプロイ後にセル 2 を各自で実行
 
 # COMMAND ----------
 
@@ -188,7 +161,6 @@ else:
         print("  → GENIE_SPACE_ID 未設定（スキップ）")
     else:
         acl = [{"user_name": m, "permission_level": "CAN_RUN"} for m in TEAM_MEMBERS]
-        # Genie Space の Permissions API パスを試行
         _genie_ok = False
         for api_path in [f"/api/2.0/permissions/dashboards/{GENIE_SPACE_ID}",
                          f"/api/2.0/permissions/genie-spaces/{GENIE_SPACE_ID}"]:
@@ -206,9 +178,7 @@ else:
     if not LAKEBASE_PROJECT or LAKEBASE_PROJECT.startswith("<"):
         print("  → LAKEBASE_PROJECT 未設定（スキップ）")
     else:
-        # 4a. プロジェクト ACL（CAN_USE）を REST API で付与
-        # CAN_USE がないと、メンバーが自分のアプリ SP に grant_lakebase_permissions.py を実行できない
-        print("  プロジェクト ACL (CAN_USE) を付与中...")
+        # プロジェクト ACL（CAN_USE）
         acl = [{"user_name": m, "permission_level": "CAN_USE"} for m in TEAM_MEMBERS]
         resp = requests.patch(
             f"{_host}/api/2.0/permissions/postgres/projects/{LAKEBASE_PROJECT}",
@@ -216,40 +186,31 @@ else:
             json={"access_control_list": acl},
         )
         if resp.status_code == 200:
-            print(f"  ✓ プロジェクト CAN_USE: {len(TEAM_MEMBERS)} 名に付与")
+            print(f"  ✓ プロジェクト CAN_USE 付与")
         else:
-            print(f"  ⚠ プロジェクト ACL 付与失敗（手動で UI から追加してください）: {resp.text[:200]}")
+            print(f"  ⚠ プロジェクト ACL 付与失敗: {resp.text[:200]}")
 
-        # 4b. データベース権限（スキーマ + ロール）を LakebaseClient で付与
-        print("  データベース権限を付与中...")
+        # DB 権限（LakebaseClient）
         try:
             from databricks_ai_bridge.lakebase import LakebaseClient, SchemaPrivilege
-
             lakebase_client = LakebaseClient(project=LAKEBASE_PROJECT, branch=LAKEBASE_BRANCH)
-            schema_privs = [SchemaPrivilege.USAGE, SchemaPrivilege.CREATE]
-
             for member in TEAM_MEMBERS:
-                # ロール作成
                 try:
                     lakebase_client.create_role(member, "USER")
                 except Exception as e:
                     if "already exists" not in str(e).lower():
                         print(f"  ⚠ {member} のロール作成: {str(e)[:100]}")
-
-                # スキーマ権限
                 for schema_name in ["public", "ai_chatbot", "drizzle"]:
                     try:
-                        lakebase_client.grant_schema(grantee=member, schemas=[schema_name], privileges=schema_privs)
+                        lakebase_client.grant_schema(grantee=member, schemas=[schema_name],
+                                                     privileges=[SchemaPrivilege.USAGE, SchemaPrivilege.CREATE])
                     except Exception:
-                        pass  # スキーマが未作成の場合は無視
-
-            print(f"  ✓ {len(TEAM_MEMBERS)} 名に Lakebase DB 権限を付与")
-        except ImportError:
-            print("  ⚠ databricks_ai_bridge が利用できません。DB 権限は初回アクセス時に自動付与されます。")
+                        pass
+            print(f"  ✓ Lakebase DB 権限付与")
         except Exception as e:
-            print(f"  ⚠ Lakebase DB 権限付与: {str(e)[:200]}（初回アクセス時に自動付与される場合があります）")
+            print(f"  ⚠ Lakebase DB 権限: {str(e)[:200]}")
 
-    # ── 5. SQL Warehouse 権限（Delta Table トレースに必要）──
+    # ── 5. SQL Warehouse 権限 ──
     print("\n=== 5. SQL Warehouse 権限 ===")
     if not WAREHOUSE_ID or WAREHOUSE_ID.startswith("<"):
         print("  → WAREHOUSE_ID 未設定（スキップ）")
@@ -261,13 +222,13 @@ else:
             json={"access_control_list": acl},
         )
         if resp.status_code == 200:
-            print(f"  ✓ SQL Warehouse ({WAREHOUSE_ID}): CAN_USE 付与")
+            print(f"  ✓ SQL Warehouse CAN_USE 付与")
         else:
-            print(f"  ⚠ SQL Warehouse 権限付与失敗（共有ウェアハウスなら既に全員アクセス可能な場合があります）")
+            print(f"  ⚠ SQL Warehouse 権限付与失敗（共有ウェアハウスなら既にアクセス可能な場合があります）")
 
     # ── サマリー ──
     print(f"\n{'='*50}")
     print(f"✓ {len(TEAM_MEMBERS)} 名のメンバーに権限を付与しました")
     print(f"{'='*50}")
     print("\n手動で共有が必要なもの：")
-    print("  - アプリの SP 権限: 各メンバーが自分のアプリをデプロイ後にステップ 11-6 を各自で実行")
+    print("  - アプリの SP 権限: 各メンバーがデプロイ後にセル 2 を各自で実行")
