@@ -1576,31 +1576,120 @@ def create_vector_search_index(token: str, host: str, catalog: str, schema: str,
     return index_name
 
 
-def create_genie_space(host: str, catalog: str, schema: str) -> str:
-    """Genie Space の作成を案内し、Space ID の入力を求める。
+def _get_table_columns(token: str, host: str, warehouse_id: str, full_table_name: str) -> list[dict]:
+    """テーブルのカラム情報を DESCRIBE TABLE で取得。"""
+    data = run_sql_statement(f"DESCRIBE TABLE `{full_table_name.replace('.', '`.`')}`", token, host, warehouse_id)
+    if data.get("status", {}).get("state") not in ("SUCCEEDED", "CLOSED"):
+        return []
+    columns = []
+    for row in data.get("result", {}).get("data_array", []):
+        if row and row[0] and not row[0].startswith("#"):
+            columns.append({"name": row[0], "type": row[1] if len(row) > 1 else "string"})
+    return columns
 
-    Genie Space の作成 API は serialized_space フィールドの構造が複雑なため、
-    UI での手動作成を案内する。
-    """
-    print_step("Genie Space の作成")
+
+def _build_serialized_space(catalog: str, schema: str, tables: list[str],
+                            table_columns: dict[str, list[dict]]) -> str:
+    """serialized_space の JSON 文字列を生成。"""
+    data_sources_tables = []
+    for table in sorted(tables):
+        full_name = f"{catalog}.{schema}.{table}"
+        cols = table_columns.get(table, [])
+        col_configs = [{"display_name": c["name"], "name": c["name"]} for c in sorted(cols, key=lambda x: x["name"])]
+        data_sources_tables.append({
+            "identifier": full_name,
+            "column_configs": col_configs,
+        })
+
+    space_config = {
+        "version": "2",
+        "config": {"sample_questions": []},
+        "data_sources": {"tables": data_sources_tables},
+        "instructions": {
+            "text_instructions": [
+                "日本語で回答してください。",
+                "金額は日本円（¥）で表示してください。",
+            ],
+        },
+    }
+    return json.dumps(space_config, ensure_ascii=False)
+
+
+def create_genie_space(token: str, host: str, warehouse_id: str, catalog: str, schema: str) -> str:
+    """Genie Space を新規作成または既存の ID を入力。"""
+    print_step("Genie Space の設定")
     print()
-    print("  Genie Space は Databricks UI から作成してください：")
-    print(f"  1. {host} を開く")
-    print(f"  2. 左メニュー Genie > New Genie Space")
-    print(f"  3. 名前: フレッシュマート 小売データ")
-    print(f"  4. スキーマ {catalog}.{schema} のテーブルを全て追加")
-    print(f"     （customers, products, stores, transactions, transaction_items, payment_history）")
-    print(f"  5. SQL ウェアハウスを選択して Create")
-    print(f"  6. URL から Space ID をコピー（URL の最後の部分）")
-    print()
-    print("  既に作成済みの Genie Space がある場合は、その ID を入力してください。")
+    print("  1) 新規作成（API で自動作成）")
+    print("  2) 既存の Genie Space ID を入力")
 
     while True:
-        space_id = input("\n  Genie Space ID を入力してください: ").strip()
-        if space_id:
-            print_success(f"Genie Space ID: {space_id}")
-            return space_id
-        print("  Space ID を入力してください。")
+        choice = input("\n  選択 [1]: ").strip() or "1"
+        if choice in ("1", "2"):
+            break
+        print("  1 または 2 を入力してください。")
+
+    if choice == "2":
+        # 既存 ID の入力
+        while True:
+            space_id = input("  Genie Space ID を入力してください: ").strip()
+            if not space_id:
+                print("  ID を入力してください。")
+                continue
+            # 存在チェック
+            result = api_get(f"/api/2.0/genie/spaces/{space_id}", token, host)
+            if "error" not in result and result.get("space_id"):
+                title = result.get("title", "?")
+                print_success(f"Genie Space 確認OK: {title} ({space_id})")
+                return space_id
+            else:
+                print_error(f"Space ID '{space_id}' が見つかりません。もう一度入力してください。")
+
+    # 新規作成
+    tables = ["customers", "products", "stores", "transactions", "transaction_items", "payment_history"]
+    print("  テーブルのカラム情報を取得中...")
+    table_columns = {}
+    for table in tables:
+        full_name = f"{catalog}.{schema}.{table}"
+        cols = _get_table_columns(token, host, warehouse_id, full_name)
+        table_columns[table] = cols
+        if cols:
+            print(f"    {table}: {len(cols)} カラム")
+        else:
+            print(f"    {table}: カラム情報取得失敗（テーブルが存在しない可能性）")
+
+    serialized = _build_serialized_space(catalog, schema, tables, table_columns)
+
+    print("  Genie Space を作成中...")
+    body = {
+        "title": "フレッシュマート 小売データ",
+        "description": "フレッシュマートの小売データに対する自然言語クエリ。顧客、商品、店舗、取引、支払い履歴を検索できます。",
+        "warehouse_id": warehouse_id,
+        "serialized_space": serialized,
+    }
+    result = api_post("/api/2.0/genie/spaces", token, host, body)
+
+    space_id = result.get("space_id", "")
+    if space_id:
+        print_success(f"Genie Space 作成完了 (ID: {space_id})")
+        return space_id
+
+    # API 失敗時はフォールバック
+    if "error" in result:
+        print_error(f"自動作成に失敗: {result['error'][:200]}")
+        print("  Databricks UI から手動で作成してください：")
+        print(f"  1. {host} を開く")
+        print(f"  2. 左メニュー Genie > New Genie Space")
+        print(f"  3. 名前: フレッシュマート 小売データ")
+        print(f"  4. スキーマ {catalog}.{schema} のテーブルを全て追加")
+        print(f"  5. SQL ウェアハウスを選択して Create")
+        print(f"  6. URL から Space ID をコピー")
+        while True:
+            space_id = input("\n  Genie Space ID を入力してください: ").strip()
+            if space_id:
+                return space_id
+            print("  ID を入力してください。")
+
+    return space_id
 
 
 def install_dependencies():
@@ -1736,7 +1825,7 @@ def main():
             print("  ⚠ VS エンドポイント未指定。インデックスは手動で作成してください。")
 
         # 4-6: Genie Space
-        genie_space_id = create_genie_space(host, catalog, schema)
+        genie_space_id = create_genie_space(token, host, warehouse_id, catalog, schema)
 
         # 4-7: Lakebase
         lakebase_config = None
