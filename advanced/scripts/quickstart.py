@@ -2022,7 +2022,8 @@ def main():
         print(summary)
 
         # Delta Table の手順表示（選択した場合のみ）
-        if tracing_dest and "." in tracing_dest:
+        if tracing_dest and "." in tracing_dest and not _existing_dest:
+            # 新規設定の場合のみ表示（既存 Experiment から検出した場合は既に設定済みなのでスキップ）
             _cat, _sch = tracing_dest.split(".", 1)
             print("=" * 60)
             print("⚠ Unity Catalog トレーステーブルの初期作成が必要です")
