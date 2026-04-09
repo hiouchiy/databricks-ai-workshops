@@ -1915,6 +1915,8 @@ def main():
                 '"<SCHEMA>"': f'"{schema}"',
                 '"<WAREHOUSE-ID>"': f'"{warehouse_id}"',
                 '"<MONITORING-EXPERIMENT-ID>"': f'"{monitoring_id}"',
+                '"<EVAL-EXPERIMENT-ID>"': f'"{eval_id}"',
+                '"<GENIE-SPACE-ID>"': f'"{genie_space_id}"',
             }
             for old, new in replacements.items():
                 content = content.replace(old, new)

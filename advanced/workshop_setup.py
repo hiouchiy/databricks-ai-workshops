@@ -25,6 +25,8 @@ CATALOG = "<CATALOG>"                      # 例: "hiroshi"
 SCHEMA = "<SCHEMA>"                        # 例: "retail_agent"
 WAREHOUSE_ID = "<WAREHOUSE-ID>"            # 例: "4b9b953939869799"
 MONITORING_EXPERIMENT_ID = "<MONITORING-EXPERIMENT-ID>"  # 例: "2019445883421300"
+EVAL_EXPERIMENT_ID = "<EVAL-EXPERIMENT-ID>"              # 例: "2019445883421301"
+GENIE_SPACE_ID = "<GENIE-SPACE-ID>"                      # 例: "01f132..."
 SP_CLIENT_ID = "<SP_CLIENT_ID>"            # 例: "9bf3f616-..." （ステップ 11 で使用）
 
 # チームメンバーのメールアドレス（チーム利用時のみ。末尾の「チームメンバーへの権限付与」で使用）
@@ -130,30 +132,77 @@ print(f"  - MODIFY on {CATALOG}.{SCHEMA}（Delta Table トレース用）")
 # MAGIC
 # MAGIC **前提：** ステップ 1（カタログ・スキーマ作成）が完了していること。
 # MAGIC
-# MAGIC **注意：** Genie Space、MLflow Experiment、Lakebase プロジェクトの共有は UI/CLI から手動で行ってください。
+# MAGIC **自動付与される権限：**
+# MAGIC - Unity Catalog: USE CATALOG, USE SCHEMA, SELECT, MODIFY
+# MAGIC - MLflow Experiment: CAN_MANAGE（モニタリング + 評価）
+# MAGIC - Genie Space: CAN_RUN
 # MAGIC
-# MAGIC アプリの SP 権限は各メンバーが自分のアプリをデプロイした後に、各自でステップ 11-6 を実行してください。
+# MAGIC **手動で共有が必要：**
+# MAGIC - Lakebase プロジェクト: UI > Lakebase > プロジェクト > Permissions > CAN_USE
+# MAGIC - アプリの SP 権限: 各メンバーがデプロイ後にステップ 11-6 を各自で実行
 
 # COMMAND ----------
+
+import requests
 
 if not TEAM_MEMBERS:
     print("⚠ TEAM_MEMBERS が空です。先頭の設定セルにメンバーのメールアドレスを追加してください。")
 else:
-    # Unity Catalog 権限
+    # API 認証情報の取得
+    _ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+    _host = _ctx.apiUrl().getOrElse(None)
+    _token = _ctx.apiToken().getOrElse(None)
+    _headers = {"Authorization": f"Bearer {_token}", "Content-Type": "application/json"}
+
+    # ── 1. Unity Catalog 権限（SQL）──
+    print("=== 1. Unity Catalog 権限 ===")
     for member in TEAM_MEMBERS:
         spark.sql(f"GRANT USE CATALOG ON CATALOG `{CATALOG}` TO `{member}`")
         spark.sql(f"GRANT USE SCHEMA ON SCHEMA `{CATALOG}`.`{SCHEMA}` TO `{member}`")
         spark.sql(f"GRANT SELECT ON SCHEMA `{CATALOG}`.`{SCHEMA}` TO `{member}`")
-        print(f"✓ {member} に USE CATALOG, USE SCHEMA, SELECT を付与")
+        spark.sql(f"GRANT MODIFY ON SCHEMA `{CATALOG}`.`{SCHEMA}` TO `{member}`")
+        print(f"  ✓ {member}: USE CATALOG, USE SCHEMA, SELECT, MODIFY")
 
-    print(f"\n✓ {len(TEAM_MEMBERS)} 名のメンバーに UC 権限を付与しました")
-    print("\n以下は UI/CLI から手動で共有してください：")
-    print("  - Genie Space: Genie > 対象のスペース > Share > メンバーを Can Run で追加")
-    print("  - MLflow Experiment: Experiments > 対象の実験 > Permissions > メンバーを Can Manage で追加")
-    print("  - Lakebase プロジェクト: databricks api patch /api/2.0/postgres/projects/<PROJECT>/permissions ...")
-    print("    または Databricks UI > Lakebase > プロジェクト > Permissions > メンバーを CAN_USE で追加")
-    print("  - Delta Table トレースを使う場合: 上記の SELECT に加えて MODIFY も付与してください")
-    print("    → 以下を SQL エディタで実行:")
-    for member in TEAM_MEMBERS:
-        print(f"    GRANT MODIFY ON SCHEMA `{CATALOG}`.`{SCHEMA}` TO `{member}`;")
-    print("\n  - アプリの SP 権限: 各メンバーが自分のアプリをデプロイ後にステップ 11-6 を各自で実行")
+    # ── 2. MLflow Experiment 権限（REST API）──
+    print("\n=== 2. MLflow Experiment 権限 ===")
+    for exp_id, exp_label in [(MONITORING_EXPERIMENT_ID, "モニタリング"), (EVAL_EXPERIMENT_ID, "評価")]:
+        if not exp_id or exp_id.startswith("<"):
+            print(f"  → {exp_label}: ID 未設定（スキップ）")
+            continue
+        acl = [{"user_name": m, "permission_level": "CAN_MANAGE"} for m in TEAM_MEMBERS]
+        resp = requests.patch(
+            f"{_host}/api/2.0/permissions/experiments/{exp_id}",
+            headers=_headers,
+            json={"access_control_list": acl},
+        )
+        if resp.status_code == 200:
+            print(f"  ✓ {exp_label} Experiment ({exp_id}): CAN_MANAGE 付与")
+        else:
+            print(f"  ✗ {exp_label} Experiment 権限付与失敗: {resp.text[:200]}")
+
+    # ── 3. Genie Space 権限（REST API）──
+    print("\n=== 3. Genie Space 権限 ===")
+    if not GENIE_SPACE_ID or GENIE_SPACE_ID.startswith("<"):
+        print("  → GENIE_SPACE_ID 未設定（スキップ）")
+    else:
+        acl = [{"user_name": m, "permission_level": "CAN_RUN"} for m in TEAM_MEMBERS]
+        # Genie Space の Permissions API パスを試行
+        _genie_ok = False
+        for api_path in [f"/api/2.0/permissions/dashboards/{GENIE_SPACE_ID}",
+                         f"/api/2.0/permissions/genie-spaces/{GENIE_SPACE_ID}"]:
+            resp = requests.patch(f"{_host}{api_path}", headers=_headers, json={"access_control_list": acl})
+            if resp.status_code == 200:
+                print(f"  ✓ Genie Space ({GENIE_SPACE_ID}): CAN_RUN 付与")
+                _genie_ok = True
+                break
+        if not _genie_ok:
+            print(f"  ✗ Genie Space の自動権限付与に失敗。UI から手動で共有してください。")
+            print(f"    Genie > 対象のスペース > Share > メンバーを Can Run で追加")
+
+    # ── サマリー ──
+    print(f"\n{'='*50}")
+    print(f"✓ {len(TEAM_MEMBERS)} 名のメンバーに権限を付与しました")
+    print(f"{'='*50}")
+    print("\n手動で共有が必要なもの：")
+    print("  - Lakebase プロジェクト: UI > Lakebase > プロジェクト > Permissions > CAN_USE で追加")
+    print("  - アプリの SP 権限: 各メンバーが自分のアプリをデプロイ後にステップ 11-6 を各自で実行")
