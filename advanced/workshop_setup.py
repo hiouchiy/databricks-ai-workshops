@@ -130,19 +130,30 @@ print(f"  - MODIFY on {CATALOG}.{SCHEMA}（Delta Table トレース用）")
 # MAGIC
 # MAGIC **前提：** ステップ 1（カタログ・スキーマ作成）が完了していること。
 # MAGIC
-# MAGIC **注意：** Genie Space と MLflow Experiment の共有は UI から手動で行ってください。
+# MAGIC **注意：** Genie Space、MLflow Experiment、Lakebase プロジェクトの共有は UI/CLI から手動で行ってください。
+# MAGIC
+# MAGIC アプリの SP 権限は各メンバーが自分のアプリをデプロイした後に、各自でステップ 11-6 を実行してください。
 
 # COMMAND ----------
 
 if not TEAM_MEMBERS:
     print("⚠ TEAM_MEMBERS が空です。先頭の設定セルにメンバーのメールアドレスを追加してください。")
 else:
+    # Unity Catalog 権限
     for member in TEAM_MEMBERS:
         spark.sql(f"GRANT USE CATALOG ON CATALOG `{CATALOG}` TO `{member}`")
         spark.sql(f"GRANT USE SCHEMA ON SCHEMA `{CATALOG}`.`{SCHEMA}` TO `{member}`")
         spark.sql(f"GRANT SELECT ON SCHEMA `{CATALOG}`.`{SCHEMA}` TO `{member}`")
         print(f"✓ {member} に USE CATALOG, USE SCHEMA, SELECT を付与")
-    print(f"\n✓ {len(TEAM_MEMBERS)} 名のメンバーに権限を付与しました")
-    print("\n以下は UI から手動で共有してください：")
-    print("  - Genie Space: Genie > 対象のスペース > Share > Can Run で追加")
-    print("  - MLflow Experiment: Experiments > Permissions > Can Manage で追加")
+
+    print(f"\n✓ {len(TEAM_MEMBERS)} 名のメンバーに UC 権限を付与しました")
+    print("\n以下は UI/CLI から手動で共有してください：")
+    print("  - Genie Space: Genie > 対象のスペース > Share > メンバーを Can Run で追加")
+    print("  - MLflow Experiment: Experiments > 対象の実験 > Permissions > メンバーを Can Manage で追加")
+    print("  - Lakebase プロジェクト: databricks api patch /api/2.0/postgres/projects/<PROJECT>/permissions ...")
+    print("    または Databricks UI > Lakebase > プロジェクト > Permissions > メンバーを CAN_USE で追加")
+    print("  - Delta Table トレースを使う場合: 上記の SELECT に加えて MODIFY も付与してください")
+    print("    → 以下を SQL エディタで実行:")
+    for member in TEAM_MEMBERS:
+        print(f"    GRANT MODIFY ON SCHEMA `{CATALOG}`.`{SCHEMA}` TO `{member}`;")
+    print("\n  - アプリの SP 権限: 各メンバーが自分のアプリをデプロイ後にステップ 11-6 を各自で実行")

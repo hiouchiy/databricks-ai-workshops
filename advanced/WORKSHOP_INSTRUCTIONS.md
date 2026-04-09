@@ -33,14 +33,22 @@ GRANT USE SCHEMA ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `member@company.com`;
 GRANT SELECT ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `member@company.com`;
 ```
 
-また、以下のリソースは UI から手動で共有してください：
+Delta Table トレースを使う場合は MODIFY も付与してください：
+
+```sql
+GRANT MODIFY ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `member@company.com`;
+```
+
+また、以下のリソースは UI/CLI から手動で共有してください：
 
 | リソース | 共有方法 |
 |---|---|
 | **Genie Space** | Genie > 対象のスペース > Share > メンバーを **Can Run** で追加 |
 | **MLflow Experiment** | Experiments > 対象の実験 > Permissions > メンバーを **Can Manage** で追加 |
+| **Lakebase プロジェクト** | Databricks UI > Lakebase > プロジェクト > Permissions > メンバーを **CAN_USE** で追加 |
 | **Vector Search エンドポイント** | 共有エンドポイントを使っていれば追加不要 |
-| **Lakebase** | オートスケーリング Lakebase は Databricks ユーザーが OAuth で自動認証されるため追加不要 |
+
+> **アプリの SP 権限について：** 各メンバーが自分のアプリをデプロイした後に、ステップ 11-6 を各自で実行してください。代表者が事前に設定することはできません（SP はアプリ作成時に生成されるため）。
 
 メンバーは、代表者から以下の情報を受け取ってクイックスタートを実行するか、`.env` を手動設定してください：
 - カタログ名・スキーマ名
