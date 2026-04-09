@@ -1576,39 +1576,31 @@ def create_vector_search_index(token: str, host: str, catalog: str, schema: str,
     return index_name
 
 
-def create_genie_space(token: str, host: str, warehouse_id: str, catalog: str, schema: str) -> str:
-    """Create Genie Space with all retail tables."""
-    print_step("Genie Space の作成...")
-    tables = ["customers", "products", "stores", "transactions", "transaction_items", "payment_history"]
-    table_ids = [f"{catalog}.{schema}.{t}" for t in tables]
+def create_genie_space(host: str, catalog: str, schema: str) -> str:
+    """Genie Space の作成を案内し、Space ID の入力を求める。
 
-    body = {
-        "title": "フレッシュマート 小売データ",
-        "description": "フレッシュマートの小売データに対する自然言語クエリ。顧客、商品、店舗、取引、支払い履歴を検索できます。",
-        "warehouse_id": warehouse_id,
-        "table_identifiers": table_ids,
-    }
-    result = api_post("/api/2.0/genie/spaces", token, host, body)
+    Genie Space の作成 API は serialized_space フィールドの構造が複雑なため、
+    UI での手動作成を案内する。
+    """
+    print_step("Genie Space の作成")
+    print()
+    print("  Genie Space は Databricks UI から作成してください：")
+    print(f"  1. {host} を開く")
+    print(f"  2. 左メニュー Genie > New Genie Space")
+    print(f"  3. 名前: フレッシュマート 小売データ")
+    print(f"  4. スキーマ {catalog}.{schema} のテーブルを全て追加")
+    print(f"     （customers, products, stores, transactions, transaction_items, payment_history）")
+    print(f"  5. SQL ウェアハウスを選択して Create")
+    print(f"  6. URL から Space ID をコピー（URL の最後の部分）")
+    print()
+    print("  既に作成済みの Genie Space がある場合は、その ID を入力してください。")
 
-    space_id = result.get("space_id", "")
-    if space_id:
-        print_success(f"Genie Space 作成完了 (ID: {space_id})")
-        return space_id
-
-    # API may return error - Genie Space creation can be complex
-    if "error" in result:
-        print_error(f"Genie Space の自動作成に失敗: {result['error'][:200]}")
-        print("  Databricks UI から手動で作成してください:")
-        print(f"  1. {host} を開く")
-        print(f"  2. 左メニュー Genie > New Genie Space")
-        print(f"  3. 名前: フレッシュマート 小売データ")
-        print(f"  4. スキーマ {catalog}.{schema} のテーブルを全て追加")
-        print(f"  5. SQL ウェアハウスを選択して Create")
-        print(f"  6. URL から Space ID をコピー（URL の最後の部分）")
+    while True:
         space_id = input("\n  Genie Space ID を入力してください: ").strip()
-        return space_id
-
-    return space_id
+        if space_id:
+            print_success(f"Genie Space ID: {space_id}")
+            return space_id
+        print("  Space ID を入力してください。")
 
 
 def install_dependencies():
@@ -1744,7 +1736,7 @@ def main():
             print("  ⚠ VS エンドポイント未指定。インデックスは手動で作成してください。")
 
         # 4-6: Genie Space
-        genie_space_id = create_genie_space(token, host, warehouse_id, catalog, schema)
+        genie_space_id = create_genie_space(host, catalog, schema)
 
         # 4-7: Lakebase
         lakebase_config = None
