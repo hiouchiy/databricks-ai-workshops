@@ -1951,6 +1951,21 @@ def main():
             if use_delta == "y":
                 default_dest = f"{catalog}.{schema}"
                 tracing_dest = input(f"  送信先スキーマ [{default_dest}]: ").strip() or default_dest
+
+                # カタログ・スキーマの存在確認、なければ作成
+                if "." in tracing_dest:
+                    _t_cat, _t_sch = tracing_dest.split(".", 1)
+                    verify = run_sql_statement(f"DESCRIBE SCHEMA `{_t_cat}`.`{_t_sch}`", token, host, warehouse_id)
+                    if verify.get("status", {}).get("state") not in ("SUCCEEDED", "CLOSED"):
+                        print(f"  スキーマ {tracing_dest} が存在しません。作成します...")
+                        run_sql_statement(f"CREATE CATALOG IF NOT EXISTS `{_t_cat}`", token, host, warehouse_id)
+                        run_sql_statement(f"CREATE SCHEMA IF NOT EXISTS `{_t_cat}`.`{_t_sch}`", token, host, warehouse_id)
+                        verify2 = run_sql_statement(f"DESCRIBE SCHEMA `{_t_cat}`.`{_t_sch}`", token, host, warehouse_id)
+                        if verify2.get("status", {}).get("state") in ("SUCCEEDED", "CLOSED"):
+                            print_success(f"スキーマ作成完了: {tracing_dest}")
+                        else:
+                            print_error(f"スキーマ {tracing_dest} の作成に失敗しました。権限を確認してください。")
+
                 update_env_file("MLFLOW_TRACING_DESTINATION", tracing_dest)
                 update_env_file("MLFLOW_TRACING_SQL_WAREHOUSE_ID", warehouse_id)
                 append_env_to_app_yaml("MLFLOW_TRACING_DESTINATION", tracing_dest)
