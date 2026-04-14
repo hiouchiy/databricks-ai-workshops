@@ -634,17 +634,30 @@ SP_CLIENT_ID=$(databricks apps get $APP_NAME --output json --profile DEFAULT | j
 echo "SP Client ID: $SP_CLIENT_ID"
 ```
 
-**Unity Catalog パーミッション**（`workshop_setup.py` のステップ 11-6 セル、SQL エディタ、または CLI）：
+**Unity Catalog パーミッション**（`workshop_setup.py` の SP 権限セル、SQL エディタ、または CLI）：
+
+エージェントがアクセスする**データスキーマ**（Genie、Vector Search）への権限：
 
 ```sql
+-- データスキーマ（テーブル・VS インデックスがあるスキーマ）
 GRANT USE CATALOG ON CATALOG `<CATALOG>` TO `<SP_CLIENT_ID>`;
 GRANT USE SCHEMA ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `<SP_CLIENT_ID>`;
 GRANT SELECT ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `<SP_CLIENT_ID>`;
--- Delta Table トレースを使用する場合は MODIFY も必要
-GRANT MODIFY ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `<SP_CLIENT_ID>`;
 ```
 
-> ノートブックを使う場合は、先頭の設定セルで `SP_CLIENT_ID` を設定してからステップ 11-6 セルを実行してください。
+Delta Table トレースを使用する場合は、**トレーススキーマ**への権限も必要です。データスキーマと同じ場合は上記に MODIFY を追加するだけで OK です。**別のスキーマを指定した場合は、そちらにも権限を付与**してください：
+
+```sql
+-- トレーススキーマ（データスキーマと同じ場合）
+GRANT MODIFY ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `<SP_CLIENT_ID>`;
+
+-- トレーススキーマが別の場合（例: hiroshi.my_traces）
+-- GRANT USE CATALOG ON CATALOG `<TRACE_CATALOG>` TO `<SP_CLIENT_ID>`;
+-- GRANT USE SCHEMA ON SCHEMA `<TRACE_CATALOG>`.`<TRACE_SCHEMA>` TO `<SP_CLIENT_ID>`;
+-- GRANT SELECT, MODIFY ON SCHEMA `<TRACE_CATALOG>`.`<TRACE_SCHEMA>` TO `<SP_CLIENT_ID>`;
+```
+
+> `.env` の `MLFLOW_TRACING_DESTINATION` を確認して、データスキーマと異なる場合は両方に権限を付与してください。
 
 **Lakebase パーミッション**：
 

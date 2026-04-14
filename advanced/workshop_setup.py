@@ -30,6 +30,10 @@ WAREHOUSE_ID = "<WAREHOUSE-ID>"            # 例: "4b9b953939869799"
 MONITORING_EXPERIMENT_ID = "<MONITORING-EXPERIMENT-ID>"  # 例: "2019445883421300"
 SP_CLIENT_ID = "<SP_CLIENT_ID>"            # 例: "9bf3f616-..." （Apps デプロイ後に取得）
 
+# トレーススキーマ（データスキーマと異なる場合のみ設定。同じなら空のまま）
+TRACE_CATALOG = ""                         # 例: "hiroshi"（データスキーマと異なる場合）
+TRACE_SCHEMA = ""                          # 例: "my_traces"（データスキーマと異なる場合）
+
 # COMMAND ----------
 
 # MAGIC %md
@@ -77,12 +81,24 @@ print(f"    - {CATALOG}.{SCHEMA}.mlflow_experiment_trace_otel_metrics")
 
 # COMMAND ----------
 
+# データスキーマへの権限（Genie、Vector Search 経由のクエリに必要）
 spark.sql(f"GRANT USE CATALOG ON CATALOG `{CATALOG}` TO `{SP_CLIENT_ID}`")
 spark.sql(f"GRANT USE SCHEMA ON SCHEMA `{CATALOG}`.`{SCHEMA}` TO `{SP_CLIENT_ID}`")
 spark.sql(f"GRANT SELECT ON SCHEMA `{CATALOG}`.`{SCHEMA}` TO `{SP_CLIENT_ID}`")
-spark.sql(f"GRANT MODIFY ON SCHEMA `{CATALOG}`.`{SCHEMA}` TO `{SP_CLIENT_ID}`")
-print(f"✓ SP {SP_CLIENT_ID} に以下の権限を付与:")
+print(f"✓ データスキーマ権限:")
 print(f"  - USE CATALOG on {CATALOG}")
 print(f"  - USE SCHEMA on {CATALOG}.{SCHEMA}")
 print(f"  - SELECT on {CATALOG}.{SCHEMA}")
-print(f"  - MODIFY on {CATALOG}.{SCHEMA}（Delta Table トレース用）")
+
+# トレーススキーマへの権限（Delta Table トレースに必要）
+_tc = TRACE_CATALOG or CATALOG
+_ts = TRACE_SCHEMA or SCHEMA
+spark.sql(f"GRANT USE CATALOG ON CATALOG `{_tc}` TO `{SP_CLIENT_ID}`")
+spark.sql(f"GRANT USE SCHEMA ON SCHEMA `{_tc}`.`{_ts}` TO `{SP_CLIENT_ID}`")
+spark.sql(f"GRANT SELECT ON SCHEMA `{_tc}`.`{_ts}` TO `{SP_CLIENT_ID}`")
+spark.sql(f"GRANT MODIFY ON SCHEMA `{_tc}`.`{_ts}` TO `{SP_CLIENT_ID}`")
+if _tc == CATALOG and _ts == SCHEMA:
+    print(f"  - MODIFY on {_tc}.{_ts}（Delta Table トレース用、同一スキーマ）")
+else:
+    print(f"✓ トレーススキーマ権限（{_tc}.{_ts}）:")
+    print(f"  - USE CATALOG, USE SCHEMA, SELECT, MODIFY")
