@@ -110,7 +110,7 @@ advanced/
 ```bash
 # リポジトリをクローン
 git clone https://github.com/hiouchiy/databricks-ai-workshops.git
-cd databricks-ai-workshops
+cd databricks-ai-workshops/advanced
 
 # 対話式セットアップウィザードを実行
 uv run quickstart
@@ -500,7 +500,7 @@ advanced/
 ```bash
 # Clone the repository
 git clone https://github.com/hiouchiy/databricks-ai-workshops.git
-cd databricks-ai-workshops
+cd databricks-ai-workshops/advanced
 
 # Run the interactive setup wizard
 uv run quickstart
