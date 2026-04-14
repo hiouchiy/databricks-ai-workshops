@@ -851,18 +851,41 @@ def validate_lakebase_autoscaling(profile_name: str, project: str, branch: str) 
     if result.returncode != 0:
         error_msg = result.stderr.lower() if result.stderr else ""
         if "not found" in error_msg or "404" in error_msg:
-            print_error(
-                f"Lakebase autoscaling branch '{branch}' not found in project '{project}'. Please check the branch name."
-            )
+            print(f"  ブランチ '{branch}' がプロジェクト '{project}' に存在しません。")
+            create_branch = input(f"  新規作成しますか？ (Y/n): ").strip().lower()
+            if create_branch != "n":
+                print(f"  ブランチ '{branch}' を作成中...")
+                try:
+                    w = get_workspace_client(profile_name)
+                    from databricks.sdk.service.postgres import Branch, BranchSpec
+                    branch_op = w.postgres.create_branch(
+                        parent=f"projects/{project}",
+                        branch=Branch(spec=BranchSpec(no_expiry=True)),
+                        branch_id=branch,
+                    )
+                    created = branch_op.wait()
+                    branch = (
+                        created.name.split("/branches/")[-1]
+                        if "/branches/" in created.name
+                        else branch
+                    )
+                    print_success(f"ブランチ作成完了: {branch}")
+                except Exception as e:
+                    print_error(f"ブランチ作成に失敗: {str(e)[:200]}")
+                    return None
+            else:
+                print_error("ブランチ名を確認してください。")
+                return None
         elif "permission" in error_msg or "forbidden" in error_msg or "unauthorized" in error_msg:
             print_error(f"No permission to access Lakebase branch '{branch}'")
+            return None
         else:
             print_error(
                 f"Failed to validate Lakebase branch: {result.stderr.strip() if result.stderr else 'Unknown error'}"
             )
-        return None
-
-    print_success(f"Lakebase autoscaling project '{project}', branch '{branch}' validated")
+            return None
+    else:
+        print_success(f"Lakebase autoscaling project '{project}', branch '{branch}' validated")
 
     # Fetch endpoint host for PGHOST
     pg_host = ""
