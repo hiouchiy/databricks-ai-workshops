@@ -22,7 +22,8 @@ resources:
             value: "300"
           - name: MLFLOW_EXPERIMENT_ID
             value_from: "experiment"
-          # Lakebase はリソースバインディング未対応のため直接指定
+          # Lakebase: CLI v0.295 では postgres リソースバインディングが未完全対応のため value で指定
+          # UI でアプリを作成した場合はリソースバインディングが使えるが、Bundle 経由では不可
           - name: LAKEBASE_AUTOSCALING_PROJECT
             value: "hiroshi-fresh-mart-lakebase"
           - name: LAKEBASE_AUTOSCALING_BRANCH
