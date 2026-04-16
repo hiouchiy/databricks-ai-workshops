@@ -23,7 +23,7 @@ from scripts import quickstart_core as core
 customtkinter.set_appearance_mode("dark")
 customtkinter.set_default_color_theme("blue")
 
-TOTAL_PAGES = 13
+TOTAL_PAGES = 14
 
 
 # ── Helper: bilingual text ─────────────────────────────────────────────
@@ -84,6 +84,7 @@ class QuickstartWizard(customtkinter.CTk):
             "setup_failed_steps": [],
             "setup_complete": False,
             # Genie
+            "genie_mode": "new",
             "genie_space_id": "",
             "vs_index": "",
         }
@@ -156,13 +157,14 @@ class QuickstartWizard(customtkinter.CTk):
             self._page_schema,          # 3 -> Step 4
             self._page_warehouse,       # 4 -> Step 5
             self._page_vs_endpoint,     # 5 -> Step 6
-            self._page_lakebase,        # 6 -> Step 7
-            self._page_mlflow,          # 7 -> Step 8
-            self._page_trace,           # 8 -> Step 9
-            self._page_prompt_registry, # 9 -> Step 10
-            self._page_summary,         # 10 -> Step 11
-            self._page_execute,         # 11 -> Step 12
-            self._page_complete,        # 12 -> Step 13
+            self._page_genie,           # 6 -> Step 7
+            self._page_lakebase,        # 7 -> Step 8
+            self._page_mlflow,          # 8 -> Step 9
+            self._page_trace,           # 9 -> Step 10
+            self._page_prompt_registry, # 10 -> Step 11
+            self._page_summary,         # 11 -> Step 12
+            self._page_execute,         # 12 -> Step 13
+            self._page_complete,        # 13 -> Step 14
         ]
 
     def _update_nav(self):
@@ -174,13 +176,13 @@ class QuickstartWizard(customtkinter.CTk):
         )
 
         # Back disabled on page 1, and on execute/complete pages
-        if pg == 0 or pg >= 11:
+        if pg == 0 or pg >= 12:
             self._back_btn.configure(state="disabled")
         else:
             self._back_btn.configure(state="normal")
 
         # Next disabled on execute/complete pages
-        if pg >= 11:
+        if pg >= 12:
             self._next_btn.configure(state="disabled")
         else:
             self._next_btn.configure(state="normal")
@@ -242,6 +244,16 @@ class QuickstartWizard(customtkinter.CTk):
                 # Allow empty with warning
                 pass
         elif pg == 6:
+            # Genie Space
+            mode = self.data.get("genie_mode", "new")
+            if mode == "existing" and not self.data.get("genie_space_id", "").strip():
+                self._show_error(t(
+                    "Genie Space ID を入力してください。",
+                    "Please enter a Genie Space ID."
+                ))
+                return False
+        elif pg == 7:
+            # Lakebase
             mode = self.data.get("lakebase_mode", "new")
             project_name = self.data.get("lakebase_project", "").strip()
             if mode == "new":
@@ -272,7 +284,7 @@ class QuickstartWizard(customtkinter.CTk):
                         "Please enter a branch name."
                     ))
                     return False
-        elif pg == 7:
+        elif pg == 8:
             mode = self.data.get("mlflow_mode", "new")
             if mode == "new":
                 if not self.data.get("mlflow_base_name", "").strip():
@@ -854,7 +866,82 @@ class QuickstartWizard(customtkinter.CTk):
                 self.data["vs_endpoint"] = e["name"]
                 break
 
-    # ── Page 7: Lakebase Setup ──────────────────────────────────────────
+    # ── Page 7: Genie Space ──────────────────────────────────────────────
+    def _page_genie(self, frame: customtkinter.CTkFrame):
+        customtkinter.CTkLabel(
+            frame,
+            text="Genie Space",
+            font=customtkinter.CTkFont(size=22, weight="bold"),
+        ).pack(pady=(20, 10))
+
+        customtkinter.CTkLabel(
+            frame,
+            text=t(
+                "Genie Space は構造化データに対して自然言語クエリを実行するためのツールです。",
+                "Genie Space enables natural language queries against structured data.",
+            ),
+            wraplength=550,
+        ).pack(pady=(0, 10), padx=40, anchor="w")
+
+        self._genie_mode_var = customtkinter.StringVar(
+            value=self.data.get("genie_mode", "new")
+        )
+
+        customtkinter.CTkRadioButton(
+            frame,
+            text=t("新規作成（API で自動作成）", "Create new (auto-create via API)"),
+            variable=self._genie_mode_var,
+            value="new",
+            command=self._rebuild_genie_fields,
+        ).pack(pady=5, padx=40, anchor="w")
+
+        customtkinter.CTkRadioButton(
+            frame,
+            text=t("既存の Genie Space ID を入力", "Enter existing Genie Space ID"),
+            variable=self._genie_mode_var,
+            value="existing",
+            command=self._rebuild_genie_fields,
+        ).pack(pady=5, padx=40, anchor="w")
+
+        self._genie_fields_frame = customtkinter.CTkFrame(frame)
+        self._genie_fields_frame.pack(fill="x", padx=40, pady=10)
+
+        self._rebuild_genie_fields()
+
+    def _rebuild_genie_fields(self):
+        for w in self._genie_fields_frame.winfo_children():
+            w.destroy()
+
+        mode = self._genie_mode_var.get()
+        self.data["genie_mode"] = mode
+
+        if mode == "new":
+            customtkinter.CTkLabel(
+                self._genie_fields_frame,
+                text=t(
+                    "※ セットアップ実行時に自動作成されます。",
+                    "* Will be auto-created during setup execution.",
+                ),
+                text_color="gray",
+            ).pack(anchor="w", pady=5)
+        else:
+            customtkinter.CTkLabel(
+                self._genie_fields_frame,
+                text=t("Genie Space ID:", "Genie Space ID:"),
+            ).pack(anchor="w", pady=(5, 2))
+            self._genie_id_entry = customtkinter.CTkEntry(
+                self._genie_fields_frame, width=400,
+                placeholder_text="e.g. 01ef...abcd",
+            )
+            self._genie_id_entry.pack(pady=(0, 5))
+            if self.data.get("genie_space_id"):
+                self._genie_id_entry.insert(0, self.data["genie_space_id"])
+            self._genie_id_entry.bind("<KeyRelease>", lambda _: self._sync_genie_id())
+
+    def _sync_genie_id(self):
+        self.data["genie_space_id"] = self._genie_id_entry.get().strip()
+
+    # ── Page 8: Lakebase Setup ──────────────────────────────────────────
     def _page_lakebase(self, frame: customtkinter.CTkFrame):
         customtkinter.CTkLabel(
             frame,
@@ -1275,6 +1362,10 @@ class QuickstartWizard(customtkinter.CTk):
             f"{t('VS \u30a8\u30f3\u30c9\u30dd\u30a4\u30f3\u30c8', 'VS Endpoint')}: {self.data.get('vs_endpoint', '') or t('\u306a\u3057', 'None')}",
         ]
 
+        genie_mode_label = t("新規作成", "Create new") if self.data.get("genie_mode") == "new" else t("既存 ID", "Existing ID")
+        genie_id = self.data.get("genie_space_id", "")
+        lines.append(f"Genie Space: {genie_mode_label}" + (f" ({genie_id})" if genie_id else ""))
+
         if self.data.get("lakebase_required"):
             mode_label = t("\u65b0\u898f\u4f5c\u6210", "Create new") if self.data.get("lakebase_mode") == "new" else t("\u65e2\u5b58", "Existing")
             lines.append(f"Lakebase: {mode_label} - {self.data.get('lakebase_project', '')} / {self.data.get('lakebase_branch', '')}")
@@ -1348,8 +1439,8 @@ class QuickstartWizard(customtkinter.CTk):
                 elif kind == "done":
                     self._exec_running = False
                     self.data["setup_complete"] = True
-                    # Auto-advance to complete page (index 12)
-                    self.after(500, lambda: self.show_page(12))
+                    # Auto-advance to complete page (index 13)
+                    self.after(500, lambda: self.show_page(13))
                     return
         except queue.Empty:
             pass
@@ -1460,28 +1551,47 @@ class QuickstartWizard(customtkinter.CTk):
                 step += 1
                 self._set_progress(step / total_steps)
 
-            # Step 5: Create Genie Space
-            self._log(t("Genie Space \u3092\u4f5c\u6210\u4e2d...", "Creating Genie Space..."))
-            try:
-                tables = ["customers", "products", "stores", "transactions",
-                          "transaction_items", "payment_history"]
-                serialized = core._build_serialized_space(catalog, schema, tables)
-                body = {
-                    "title": "\u30d5\u30ec\u30c3\u30b7\u30e5\u30de\u30fc\u30c8 \u5c0f\u58f2\u30c7\u30fc\u30bf",
-                    "description": "\u30d5\u30ec\u30c3\u30b7\u30e5\u30de\u30fc\u30c8\u306e\u5c0f\u58f2\u30c7\u30fc\u30bf\u306b\u5bfe\u3059\u308b\u81ea\u7136\u8a00\u8a9e\u30af\u30a8\u30ea\u3002",
-                    "warehouse_id": warehouse_id,
-                    "serialized_space": serialized,
-                }
-                result = core.api_post("/api/2.0/genie/spaces", token, host, body)
-                genie_space_id = result.get("space_id", "")
-                if genie_space_id:
-                    s["genie_space_id"] = genie_space_id
-                    advance(t(f"Genie Space \u4f5c\u6210\u5b8c\u4e86 (ID: {genie_space_id})", f"Genie Space created (ID: {genie_space_id})"))
-                else:
-                    err_msg = str(result.get("error", "unknown"))[:100]
-                    fail(t("Genie Space", "Genie Space"), err_msg)
-            except Exception as e:
-                fail(t("Genie Space", "Genie Space"), str(e)[:200])
+            # Step 5: Genie Space
+            if s.get("genie_mode") == "existing" and s.get("genie_space_id"):
+                # Existing Genie Space — verify it
+                self._log(t("Genie Space を確認中...", "Verifying Genie Space..."))
+                try:
+                    result = core.api_get(
+                        f"/api/2.0/genie/spaces/{s['genie_space_id']}", token, host)
+                    if "error" not in result and result.get("space_id"):
+                        title = result.get("title", "?")
+                        advance(t(f"Genie Space 確認OK: {title} ({s['genie_space_id']})",
+                                   f"Genie Space verified: {title} ({s['genie_space_id']})"))
+                    else:
+                        fail("Genie Space", t(
+                            f"ID '{s['genie_space_id']}' が見つかりません",
+                            f"ID '{s['genie_space_id']}' not found"))
+                except Exception as e:
+                    fail("Genie Space", str(e)[:200])
+            else:
+                # Create new Genie Space
+                self._log(t("Genie Space を作成中...", "Creating Genie Space..."))
+                try:
+                    tables = ["customers", "products", "stores", "transactions",
+                              "transaction_items", "payment_history"]
+                    serialized = core._build_serialized_space(catalog, schema, tables)
+                    body = {
+                        "title": "フレッシュマート 小売データ",
+                        "description": "フレッシュマートの小売データに対する自然言語クエリ。",
+                        "warehouse_id": warehouse_id,
+                        "serialized_space": serialized,
+                    }
+                    result = core.api_post("/api/2.0/genie/spaces", token, host, body)
+                    genie_space_id = result.get("space_id", "")
+                    if genie_space_id:
+                        s["genie_space_id"] = genie_space_id
+                        advance(t(f"Genie Space 作成完了 (ID: {genie_space_id})",
+                                   f"Genie Space created (ID: {genie_space_id})"))
+                    else:
+                        err_msg = str(result.get("error", "unknown"))[:100]
+                        fail("Genie Space", err_msg)
+                except Exception as e:
+                    fail("Genie Space", str(e)[:200])
 
             # Step 6: Setup Lakebase
             lakebase_config = None
