@@ -1193,10 +1193,12 @@ def _replace_lakebase_resource(content: str, lakebase_config: dict) -> str:
         stripped = line.strip()
         bare = stripped.lstrip("#").strip().lower()
 
-        # Skip lakebase-related comment lines in the resources section
+        # Skip lakebase-related comment lines (env section and resources section)
+        # NOTE: Do NOT detect resource_indent here — the "Lakebase:" prefix also
+        # matches env-section comments, whose `- name:` lines have a different
+        # indent (10 spaces) from resources (8 spaces).  Let the actual resource
+        # block handlers below set resource_indent correctly.
         if stripped.startswith("#") and is_lakebase_comment(bare):
-            if resource_indent is None:
-                resource_indent = _detect_indent(result)
             i += 1
             continue
 
