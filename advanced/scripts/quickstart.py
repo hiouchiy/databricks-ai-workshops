@@ -124,9 +124,22 @@ def main():
         "--lakebase-autoscaling-branch",
         help="Lakebase autoscaling branch name",
     )
+    parser.add_argument(
+        "--lang", choices=["ja", "en"], default=None,
+        help="Language (ja/en). Skips interactive language selection.",
+    )
     args = parser.parse_args()
 
-    select_language()
+    if args.lang:
+        set_language(args.lang)
+    else:
+        select_language()
+
+    # 全 CLI 引数が揃っていれば非対話モード
+    non_interactive = all([
+        args.profile, args.catalog, args.schema, args.vs_endpoint,
+        args.lakebase_autoscaling_project, args.lakebase_autoscaling_branch,
+    ])
 
     try:
         print_header(t("フレッシュマート AI エージェント - クイックスタートセットアップ",
@@ -164,19 +177,39 @@ def main():
         print_step(t("[3/8] ワークスペース設定", "[3/8] Workspace configuration"))
 
         # Catalog
-        default_catalog = args.catalog or username.split("@")[0].replace(".", "_")
-        catalog = input(t(f"  カタログ名 [{default_catalog}]: ",
-                           f"  Catalog name [{default_catalog}]: ")).strip() or default_catalog
+        if args.catalog:
+            catalog = args.catalog
+            print_success(t(f"カタログ: {catalog}", f"Catalog: {catalog}"))
+        else:
+            default_catalog = username.split("@")[0].replace(".", "_")
+            catalog = input(t(f"  カタログ名 [{default_catalog}]: ",
+                               f"  Catalog name [{default_catalog}]: ")).strip() or default_catalog
 
         # Schema
-        default_schema = args.schema or "retail_agent"
-        schema = input(t(f"  スキーマ名 [{default_schema}]: ",
-                          f"  Schema name [{default_schema}]: ")).strip() or default_schema
+        if args.schema:
+            schema = args.schema
+            print_success(t(f"スキーマ: {schema}", f"Schema: {schema}"))
+        else:
+            default_schema = "retail_agent"
+            schema = input(t(f"  スキーマ名 [{default_schema}]: ",
+                              f"  Schema name [{default_schema}]: ")).strip() or default_schema
 
         # Warehouse
         if args.warehouse_id:
             warehouse_id = args.warehouse_id
             print_success(f"Warehouse ID: {warehouse_id}")
+        elif non_interactive:
+            # 非対話: 最初の RUNNING ウェアハウスを自動選択
+            wh_result = run_command(
+                ["databricks", "warehouses", "list", "-p", profile_name, "-o", "json"],
+                check=True,
+            )
+            warehouses = json.loads(wh_result.stdout)
+            running = [w for w in warehouses if w.get("state") == "RUNNING"]
+            picked = running[0] if running else warehouses[0]
+            warehouse_id = picked["id"]
+            print_success(t(f"ウェアハウスを自動選択: {picked.get('name', '')} ({warehouse_id})",
+                             f"Auto-selected warehouse: {picked.get('name', '')} ({warehouse_id})"))
         else:
             warehouse_id, _ = select_warehouse_interactive(profile_name)
 
@@ -218,7 +251,29 @@ def main():
                      "  Warning: VS endpoint not specified. Please create the index manually."))
 
         # 4-6: Genie Space
-        genie_space_id = create_genie_space(token, host, warehouse_id, catalog, schema)
+        if non_interactive:
+            # 非対話モード: API で自動作成
+            print_step(t("Genie Space を自動作成中...", "Auto-creating Genie Space..."))
+            tables = ["customers", "products", "stores", "transactions",
+                      "transaction_items", "payment_history"]
+            serialized = _build_serialized_space(catalog, schema, tables)
+            body = {
+                "title": "フレッシュマート 小売データ",
+                "description": "フレッシュマートの小売データに対する自然言語クエリ。",
+                "warehouse_id": warehouse_id,
+                "serialized_space": serialized,
+            }
+            result = api_post("/api/2.0/genie/spaces", token, host, body)
+            genie_space_id = result.get("space_id", "")
+            if genie_space_id:
+                print_success(t(f"Genie Space 作成完了 (ID: {genie_space_id})",
+                                 f"Genie Space created (ID: {genie_space_id})"))
+            else:
+                print_error(t(f"Genie Space 作成失敗: {result.get('error', '')[:200]}",
+                               f"Genie Space creation failed: {result.get('error', '')[:200]}"))
+                genie_space_id = ""
+        else:
+            genie_space_id = create_genie_space(token, host, warehouse_id, catalog, schema)
 
         # 4-7: Lakebase
         lakebase_config = None
@@ -227,18 +282,75 @@ def main():
             or check_lakebase_required()
         )
         if lakebase_required:
-            lakebase_config = setup_lakebase(
-                profile_name, username,
-                autoscaling_project=args.lakebase_autoscaling_project,
-                autoscaling_branch=args.lakebase_autoscaling_branch,
-            )
-            update_databricks_yml_lakebase(lakebase_config)
-            update_app_yaml_lakebase(lakebase_config)
+            if non_interactive and args.lakebase_autoscaling_project:
+                # 非対話: バリデーション → 失敗ならプロジェクト+ブランチ自動作成
+                project = args.lakebase_autoscaling_project
+                branch = args.lakebase_autoscaling_branch
+                print_step(t(f"Lakebase を検証/作成中: {project}/{branch}",
+                              f"Validating/creating Lakebase: {project}/{branch}"))
+                branch_info = validate_lakebase_autoscaling(profile_name, project, branch)
+                if not branch_info:
+                    # プロジェクトが存在しない → SDK で直接作成
+                    print(t("  プロジェクトを自動作成中...", "  Auto-creating project..."))
+                    try:
+                        w = get_workspace_client(profile_name)
+                        from databricks.sdk.service.postgres import Branch, BranchSpec, Project, ProjectSpec
+                        proj_op = w.postgres.create_project(
+                            project=Project(spec=ProjectSpec(display_name=project)),
+                            project_id=project,
+                        )
+                        created_proj = proj_op.wait()
+                        print_success(t(f"プロジェクト作成完了: {project}",
+                                         f"Project created: {project}"))
+                        branch_op = w.postgres.create_branch(
+                            parent=created_proj.name,
+                            branch=Branch(spec=BranchSpec(no_expiry=True)),
+                            branch_id=branch,
+                        )
+                        created_branch = branch_op.wait()
+                        branch = created_branch.name.split("/branches/")[-1] if "/branches/" in created_branch.name else branch
+                        print_success(t(f"ブランチ作成完了: {branch}",
+                                         f"Branch created: {branch}"))
+                    except Exception as e:
+                        print_error(f"Lakebase auto-create failed: {str(e)[:200]}")
+                    branch_info = validate_lakebase_autoscaling(profile_name, project, branch)
+                if branch_info:
+                    update_env_file("LAKEBASE_AUTOSCALING_PROJECT", project)
+                    update_env_file("LAKEBASE_AUTOSCALING_BRANCH", branch)
+                    pg_host = branch_info.get("host", "")
+                    if pg_host:
+                        update_env_file("PGHOST", pg_host)
+                    update_env_file("PGUSER", username)
+                    update_env_file("PGDATABASE", "databricks_postgres")
+                    lakebase_config = {
+                        "type": "autoscaling",
+                        "project": project,
+                        "branch": branch,
+                        "database_id": branch_info.get("database_id", ""),
+                    }
+                    print_success(t(f"Lakebase: {project} (branch: {branch})",
+                                     f"Lakebase: {project} (branch: {branch})"))
+                else:
+                    print_error(t("Lakebase セットアップに失敗", "Lakebase setup failed"))
+            else:
+                lakebase_config = setup_lakebase(
+                    profile_name, username,
+                    autoscaling_project=args.lakebase_autoscaling_project,
+                    autoscaling_branch=args.lakebase_autoscaling_branch,
+                )
+            if lakebase_config:
+                update_databricks_yml_lakebase(lakebase_config)
+                update_app_yaml_lakebase(lakebase_config)
 
         # 4-8: MLflow Experiments
-        monitoring_name, monitoring_id, eval_name, eval_id = create_mlflow_experiment(
-            profile_name, username
-        )
+        if non_interactive:
+            base = f"/Users/{username}/freshmart-agent"
+            monitoring_name, monitoring_id = _create_single_experiment(profile_name, f"{base}-monitoring")
+            eval_name, eval_id = _create_single_experiment(profile_name, f"{base}-evaluation")
+        else:
+            monitoring_name, monitoring_id, eval_name, eval_id = create_mlflow_experiment(
+                profile_name, username
+            )
 
         # ── Phase 5: .env 更新 ──
         print_step(t("[5/8] 環境設定 (.env)", "[5/8] Environment configuration (.env)"))
@@ -280,6 +392,10 @@ def main():
             append_env_to_app_yaml("MLFLOW_TRACING_SQL_WAREHOUSE_ID", warehouse_id)
             print_success(t(f"トレース送信先: Unity Catalog ({tracing_dest})（既存 Experiment から検出）",
                              f"Trace destination: Unity Catalog ({tracing_dest}) (detected from existing Experiment)"))
+        elif non_interactive:
+            print_success(t("トレース送信先: MLflow Experiment（デフォルト）",
+                             "Trace destination: MLflow Experiment (default)"))
+            use_delta = "n"
         else:
             print()
             print(t("  トレース送信先の選択:", "  Select trace destination:"))
@@ -360,14 +476,19 @@ def main():
                                  "Trace destination: MLflow Experiment (default)"))
 
         # Prompt Registry
-        print()
-        print(t("  Prompt Registry の選択:", "  Prompt Registry selection:"))
-        print(t("    デフォルト: ハードコード（agent.py に組み込み済み、設定不要）",
-                 "    Default: Hardcoded (built into agent.py, no setup needed)"))
-        print(t("    オプション: Unity Catalog Prompt Registry（バージョン管理・A/Bテスト・ロールバック）",
-                 "    Option: Unity Catalog Prompt Registry (version control, A/B testing, rollback)"))
-        use_prompt_registry = input(t("\n  Prompt Registry を使用しますか？ (y/N): ",
-                                       "\n  Use Prompt Registry? (y/N): ")).strip().lower()
+        if non_interactive:
+            use_prompt_registry = "n"
+            print_success(t("Prompt Registry: 使用しない（ハードコード版）",
+                             "Prompt Registry: Not used (hardcoded version)"))
+        else:
+            print()
+            print(t("  Prompt Registry の選択:", "  Prompt Registry selection:"))
+            print(t("    デフォルト: ハードコード（agent.py に組み込み済み、設定不要）",
+                     "    Default: Hardcoded (built into agent.py, no setup needed)"))
+            print(t("    オプション: Unity Catalog Prompt Registry（バージョン管理・A/Bテスト・ロールバック）",
+                     "    Option: Unity Catalog Prompt Registry (version control, A/B testing, rollback)"))
+            use_prompt_registry = input(t("\n  Prompt Registry を使用しますか？ (y/N): ",
+                                           "\n  Use Prompt Registry? (y/N): ")).strip().lower()
         if use_prompt_registry == "y":
             prompt_name = f"{catalog}.{schema}.freshmart_system_prompt"
             print(t(f"  プロンプト登録中: {prompt_name} ...",
