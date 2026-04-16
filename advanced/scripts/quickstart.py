@@ -1587,6 +1587,50 @@ print("Trace location set successfully.")
         return False
 
 
+def select_vs_endpoint_interactive(token: str, host: str) -> str:
+    """List Vector Search endpoints and let user select one. Returns endpoint name."""
+    print_step(t("Vector Search エンドポイントの選択...", "Selecting Vector Search endpoint..."))
+    ep_data = api_get("/api/2.0/vector-search/endpoints", token, host)
+    endpoints = ep_data.get("endpoints", [])
+    if not endpoints:
+        print_error(t("利用可能な Vector Search エンドポイントがありません。",
+                       "No Vector Search endpoints available."))
+        print(t("  Databricks UI の Compute > Vector Search > Create Endpoint から作成してください。",
+                 "  Create one from Databricks UI: Compute > Vector Search > Create Endpoint."))
+        # Fall back to manual input
+        name = input(t("\n  エンドポイント名を手動入力（スキップする場合は空Enter）: ",
+                        "\n  Enter endpoint name manually (or press Enter to skip): ")).strip()
+        return name
+
+    # Sort: ONLINE first, then by name
+    state_order = {"ONLINE": 0, "PROVISIONING": 1}
+    endpoints.sort(key=lambda e: (state_order.get(e.get("endpoint_status", {}).get("state", ""), 9),
+                                   e.get("name", "")))
+
+    print(t("  利用可能な Vector Search エンドポイント:",
+             "  Available Vector Search endpoints:"))
+    for i, ep in enumerate(endpoints, 1):
+        name = ep.get("name", "?")
+        state = ep.get("endpoint_status", {}).get("state", "UNKNOWN")
+        marker = " [ONLINE]" if state == "ONLINE" else f" [{state}]"
+        print(f"    {i}. {name}{marker}")
+
+    while True:
+        choice = input(t("\n  番号で選択 [1]: ", "\n  Select by number [1]: ")).strip() or "1"
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(endpoints):
+                selected = endpoints[idx]
+                name = selected["name"]
+                state = selected.get("endpoint_status", {}).get("state", "UNKNOWN")
+                print_success(f"VS endpoint: {name} ({state})")
+                return name
+        except ValueError:
+            pass
+        print(t("  無効な選択です。もう一度入力してください。",
+                 "  Invalid selection. Please try again."))
+
+
 def select_warehouse_interactive(profile_name: str) -> tuple[str, str]:
     """List warehouses and let user select one. Returns (warehouse_id, warehouse_name)."""
     print_step(t("SQL ウェアハウスの選択...", "Selecting SQL warehouse..."))
@@ -2043,19 +2087,18 @@ def main():
         # VS Endpoint
         if args.vs_endpoint:
             vs_endpoint = args.vs_endpoint
-        else:
-            vs_endpoint = input(t("  Vector Search エンドポイント名（既存）: ",
-                                    "  Vector Search endpoint name (existing): ")).strip()
-        if vs_endpoint:
-            # Verify endpoint exists
+            # Verify the provided endpoint exists
             ep_status = api_get(f"/api/2.0/vector-search/endpoints/{vs_endpoint}", token, host)
             if "error" not in ep_status:
                 ep_state = ep_status.get("endpoint_status", {}).get("state", "UNKNOWN")
                 print_success(t(f"VS エンドポイント: {vs_endpoint} ({ep_state})",
                                  f"VS endpoint: {vs_endpoint} ({ep_state})"))
             else:
-                print(t(f"  ⚠ エンドポイント {vs_endpoint} が見つかりません。手動で作成してください。",
-                         f"  Warning: Endpoint {vs_endpoint} not found. Please create it manually."))
+                print(t(f"  ⚠ エンドポイント {vs_endpoint} が見つかりません。",
+                         f"  Warning: Endpoint {vs_endpoint} not found."))
+                vs_endpoint = ""
+        else:
+            vs_endpoint = select_vs_endpoint_interactive(token, host)
 
         # ── Phase 4: リソース作成 ──
         print_step(t("[4/7] リソース作成", "[4/7] Resource creation"))
