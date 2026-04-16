@@ -146,22 +146,9 @@ uv run start-app
 
 #### Delta Table トレースを選択した場合
 
-クイックスタートで「Unity Catalog Delta Table にトレースを送信する」を選択した場合、最後にトレーステーブルの初期作成手順が表示されます。**Databricks ノートブック上でのみ実行可能**なため、`workshop_setup.py` をワークスペースにインポートし、「トレース送信先の設定」セルを実行してください：
+クイックスタートで「Unity Catalog Delta Table にトレースを送信する」を選択した場合、トレーステーブルの初期作成が **クイックスタート内で自動実行** されます（Databricks 上でサーバーレスの one-time run を使用）。手動でノートブックを開く必要はありません。
 
-```python
-import os
-os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "<WAREHOUSE-ID>"
-
-import mlflow
-from mlflow.entities import UCSchemaLocation
-
-mlflow.tracing.set_experiment_trace_location(
-    location=UCSchemaLocation(catalog_name="<CATALOG>", schema_name="<SCHEMA>"),
-    experiment_id="<MONITORING-EXPERIMENT-ID>",
-)
-```
-
-> `uv run quickstart` を実行済みであれば、`workshop_setup.py` のプレースホルダーは自動入力されているため、そのまま実行するだけで OK です。
+> 自動実行に失敗した場合のみ、手動手順がフォールバックとして表示されます。
 
 #### チームでハンズオンを実施する場合
 
@@ -558,22 +545,9 @@ The chat UI will be available at **http://localhost:3000** and the API at **http
 
 #### If you selected Delta Table tracing
 
-If you chose to send traces to a Unity Catalog Delta Table, the quickstart will display setup instructions at the end. This step can **only be run on a Databricks notebook**, so import `workshop_setup.py` into your workspace and run the "Trace destination setup" cell:
+If you chose to send traces to a Unity Catalog Delta Table, the quickstart will **automatically create the trace tables** by running a serverless one-time job on Databricks. No manual notebook execution is required.
 
-```python
-import os
-os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "<WAREHOUSE-ID>"
-
-import mlflow
-from mlflow.entities import UCSchemaLocation
-
-mlflow.tracing.set_experiment_trace_location(
-    location=UCSchemaLocation(catalog_name="<CATALOG>", schema_name="<SCHEMA>"),
-    experiment_id="<MONITORING-EXPERIMENT-ID>",
-)
-```
-
-> If you ran `uv run quickstart`, the placeholders in `workshop_setup.py` are already auto-filled — just run the cell as-is.
+> If the automatic setup fails, fallback manual instructions will be displayed.
 
 #### Team workshop setup
 
