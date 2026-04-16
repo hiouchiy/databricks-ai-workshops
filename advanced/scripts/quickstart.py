@@ -1458,6 +1458,135 @@ def api_post(path: str, token: str, host: str, body: dict) -> dict:
         return {"error": str(e)}
 
 
+def run_trace_setup_on_databricks(
+    profile_name: str,
+    username: str,
+    catalog: str,
+    schema: str,
+    warehouse_id: str,
+    experiment_id: str,
+) -> bool:
+    """Run set_experiment_trace_location on Databricks via one-time serverless job.
+
+    Uploads a temporary notebook, submits a serverless run, waits for completion,
+    and cleans up. Returns True on success.
+    """
+    import base64
+    import time
+
+    token = get_auth_token(profile_name)
+    host = read_env_file().get("DATABRICKS_HOST", "")
+    if not host:
+        result = run_command(
+            ["databricks", "auth", "env", "-p", profile_name, "-o", "json"],
+            check=False,
+        )
+        if result.returncode == 0:
+            host = json.loads(result.stdout).get("DATABRICKS_HOST", "")
+    host = host.rstrip("/")
+    if not host:
+        return False
+
+    # 1. Generate notebook content
+    notebook_content = f"""# Databricks notebook source
+import os
+os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "{warehouse_id}"
+
+import mlflow
+from mlflow.entities import UCSchemaLocation
+
+mlflow.tracing.set_experiment_trace_location(
+    location=UCSchemaLocation(catalog_name="{catalog}", schema_name="{schema}"),
+    experiment_id="{experiment_id}",
+)
+print("Trace location set successfully.")
+"""
+
+    # 2. Upload temporary notebook
+    notebook_path = f"/Workspace/Users/{username}/.tmp_trace_setup_{int(time.time())}"
+    encoded = base64.b64encode(notebook_content.encode("utf-8")).decode("utf-8")
+    upload_result = api_post("/api/2.0/workspace/import", token, host, {
+        "path": notebook_path,
+        "content": encoded,
+        "format": "SOURCE",
+        "language": "PYTHON",
+        "overwrite": True,
+    })
+    if "error" in upload_result:
+        print_error(t(f"ノートブックのアップロードに失敗: {upload_result['error'][:200]}",
+                       f"Failed to upload notebook: {upload_result['error'][:200]}"))
+        return False
+
+    # 3. Submit one-time serverless run
+    submit_result = api_post("/api/2.0/jobs/runs/submit", token, host, {
+        "run_name": "quickstart_trace_setup",
+        "tasks": [{
+            "task_key": "trace_setup",
+            "notebook_task": {"notebook_path": notebook_path},
+            "environment_key": "default",
+        }],
+        "environments": [{
+            "environment_key": "default",
+            "spec": {"client": "1"},
+        }],
+    })
+    if "error" in submit_result:
+        print_error(t(f"ジョブの送信に失敗: {submit_result['error'][:200]}",
+                       f"Failed to submit run: {submit_result['error'][:200]}"))
+        # Clean up notebook
+        api_post("/api/2.0/workspace/delete", token, host, {"path": notebook_path})
+        return False
+
+    run_id = submit_result.get("run_id")
+    if not run_id:
+        print_error(t("run_id が取得できませんでした", "Could not get run_id"))
+        api_post("/api/2.0/workspace/delete", token, host, {"path": notebook_path})
+        return False
+
+    # 4. Poll for completion
+    print(t("  サーバーレス環境でトレーステーブルを作成中...",
+             "  Creating trace tables on serverless..."), end="", flush=True)
+    max_wait = 300  # 5 minutes
+    start = time.time()
+    final_state = "UNKNOWN"
+    while time.time() - start < max_wait:
+        import urllib.request
+        req = urllib.request.Request(
+            f"{host}/api/2.0/jobs/runs/get?run_id={run_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                run_data = json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            time.sleep(5)
+            continue
+
+        state = run_data.get("state", {})
+        life_cycle = state.get("life_cycle_state", "")
+        result_state = state.get("result_state", "")
+
+        if life_cycle in ("TERMINATED", "SKIPPED", "INTERNAL_ERROR"):
+            final_state = result_state or life_cycle
+            break
+
+        print(".", end="", flush=True)
+        time.sleep(10)
+
+    print()  # newline after dots
+
+    # 5. Clean up temporary notebook
+    api_post("/api/2.0/workspace/delete", token, host, {"path": notebook_path})
+
+    if final_state == "SUCCESS":
+        return True
+    else:
+        state_msg = run_data.get("state", {}).get("state_message", "")
+        print_error(t(f"実行失敗 (state={final_state}): {state_msg[:200]}",
+                       f"Run failed (state={final_state}): {state_msg[:200]}"))
+        return False
+
+
 def select_warehouse_interactive(profile_name: str) -> tuple[str, str]:
     """List warehouses and let user select one. Returns (warehouse_id, warehouse_name)."""
     print_step(t("SQL ウェアハウスの選択...", "Selecting SQL warehouse..."))
@@ -2164,51 +2293,47 @@ def main():
                           "\n\nNext step: uv run start-app\n")
         print(summary)
 
-        # Delta Table の手順表示（選択した場合のみ）
+        # Delta Table トレーステーブルの自動作成（選択した場合のみ）
         if tracing_dest and "." in tracing_dest and not _existing_dest:
-            # 新規設定の場合のみ表示（既存 Experiment から検出した場合は既に設定済みなのでスキップ）
+            # 新規設定の場合のみ実行（既存 Experiment から検出した場合は既に設定済みなのでスキップ）
             _cat, _sch = tracing_dest.split(".", 1)
+            print()
             print("=" * 60)
-            print(t("⚠ Unity Catalog トレーステーブルの初期作成が必要です",
-                     "Warning: Unity Catalog trace table initial creation required"))
+            print(t("Unity Catalog トレーステーブルの初期作成",
+                     "Unity Catalog Trace Table Setup"))
             print("=" * 60)
-            print()
-            print(t("トレーステーブルは Databricks ノートブック上でのみ作成可能です。",
-                     "Trace tables can only be created from a Databricks notebook."))
-            print(t("ローカルからは実行できません。",
-                     "They cannot be created locally."))
-            print()
-            print(t("【手順】", "[Steps]"))
-            print(t("1. Databricks ワークスペースでノートブックを開く",
-                     "1. Open a notebook in your Databricks workspace"))
-            print(t("2. SQL Warehouse ID を確認する：",
-                     "2. Confirm the SQL Warehouse ID:"))
-            print(t(f"   既に選択済み: {warehouse_id}",
-                     f"   Already selected: {warehouse_id}"))
-            print(t("3. 以下のコードをノートブックで実行する：",
-                     "3. Run the following code in the notebook:"))
-            print()
-            print("```python")
-            print("import os")
-            print(f'os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "{warehouse_id}"')
-            print()
-            print("import mlflow")
-            print("from mlflow.entities import UCSchemaLocation")
-            print()
-            print("mlflow.tracing.set_experiment_trace_location(")
-            print(f'    location=UCSchemaLocation(catalog_name="{_cat}", schema_name="{_sch}"),')
-            print(f'    experiment_id="{monitoring_id}",')
-            print(")")
-            print("```")
-            print()
-            print(t("実行後、以下の3つの Delta Table が自動作成されます：",
-                     "After execution, the following 3 Delta Tables will be auto-created:"))
-            print(f"  - {tracing_dest}.mlflow_experiment_trace_otel_spans")
-            print(f"  - {tracing_dest}.mlflow_experiment_trace_otel_logs")
-            print(f"  - {tracing_dest}.mlflow_experiment_trace_otel_metrics")
-            print()
-            print(t("テーブル作成後に 'uv run start-app' を実行してください。",
-                     "After table creation, run 'uv run start-app'."))
+            print(t("  Databricks 上でサーバーレス実行してトレーステーブルを作成します...",
+                     "  Running serverless on Databricks to create trace tables..."))
+
+            success = run_trace_setup_on_databricks(
+                profile_name=profile_name,
+                username=username,
+                catalog=_cat,
+                schema=_sch,
+                warehouse_id=warehouse_id,
+                experiment_id=monitoring_id,
+            )
+            if success:
+                print_success(t("トレーステーブル作成完了!", "Trace table setup complete!"))
+                print(t("  以下の Delta Table が作成されました:",
+                         "  The following Delta Tables were created:"))
+                print(f"    - {tracing_dest}.mlflow_experiment_trace_otel_spans")
+                print(f"    - {tracing_dest}.mlflow_experiment_trace_otel_logs")
+                print(f"    - {tracing_dest}.mlflow_experiment_trace_otel_metrics")
+            else:
+                print_error(t("自動作成に失敗しました。手動で実行してください:",
+                               "Automatic setup failed. Please run manually:"))
+                print()
+                print("```python")
+                print("import os")
+                print(f'os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "{warehouse_id}"')
+                print("import mlflow")
+                print("from mlflow.entities import UCSchemaLocation")
+                print(f'mlflow.tracing.set_experiment_trace_location(')
+                print(f'    location=UCSchemaLocation(catalog_name="{_cat}", schema_name="{_sch}"),')
+                print(f'    experiment_id="{monitoring_id}",')
+                print(")")
+                print("```")
             print("=" * 60)
 
         # チームメンバーへの共有情報
