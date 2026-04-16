@@ -58,28 +58,36 @@ def get_host() -> str:
     return host.rstrip("/")
 
 
-def run_sql(statement: str, token: str, host: str, warehouse_id: str) -> dict:
+def grant_uc_permissions(
+    token: str, host: str, securable_type: str, full_name: str,
+    principal: str, privileges: list[str],
+) -> bool:
+    """Grant Unity Catalog permissions via REST API (no warehouse needed).
+
+    securable_type: "catalog", "schema"
+    """
     payload = json.dumps({
-        "warehouse_id": warehouse_id,
-        "statement": statement,
-        "wait_timeout": "50s",
+        "changes": [{
+            "principal": principal,
+            "add": privileges,
+        }],
     }).encode("utf-8")
     req = urllib.request.Request(
-        f"{host}/api/2.0/sql/statements",
+        f"{host}/api/2.1/unity-catalog/permissions/{securable_type}/{full_name}",
         data=payload,
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="PATCH",
     )
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        state = data.get("status", {}).get("state", "UNKNOWN")
-        if state == "FAILED":
-            err = data.get("status", {}).get("error", {}).get("message", "Unknown")
-            print_error(f"SQL 失敗: {err}")
-        return data
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return True
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8")[:200]
+        print_error(f"UC 権限付与失敗 ({securable_type}/{full_name}): HTTP {e.code}: {body}")
+        return False
     except Exception as e:
-        print_error(f"SQL API エラー: {str(e)[:200]}")
-        return {"status": {"state": "FAILED"}}
+        print_error(f"UC 権限付与失敗: {str(e)[:200]}")
+        return False
 
 
 def get_sp_client_id(app_name: str, profile: str) -> str:
@@ -241,7 +249,6 @@ def main():
     parts = vs_index.split(".")
     catalog = parts[0] if len(parts) >= 2 else ""
     schema = parts[1] if len(parts) >= 2 else ""
-    warehouse_id = os.getenv("MLFLOW_TRACING_SQL_WAREHOUSE_ID", "")
     trace_dest = os.getenv("MLFLOW_TRACING_DESTINATION", "")
 
     if not catalog or not schema:
@@ -259,37 +266,12 @@ def main():
     print(f"  カタログ/スキーマ: {catalog}.{schema}")
     print()
 
-    # ── 1. Unity Catalog 権限 ──
+    # ── 1. Unity Catalog データスキーマ権限（UC Permissions API、ウェアハウス不要）──
     print("=== 1. Unity Catalog データスキーマ権限 ===")
-    if not warehouse_id:
-        # CLI で RUNNING のウェアハウスを自動取得
-        try:
-            wh_result = subprocess.run(
-                ["databricks", "warehouses", "list", "-p", args.profile, "-o", "json"],
-                capture_output=True, text=True,
-            )
-            if wh_result.returncode == 0:
-                import json as _json
-                warehouses = _json.loads(wh_result.stdout)
-                running = [w for w in warehouses if w.get("state") == "RUNNING"]
-                picked = running[0] if running else (warehouses[0] if warehouses else None)
-                if picked:
-                    warehouse_id = picked["id"]
-                    print(f"  ウェアハウスを自動選択: {picked.get('name', '')} ({warehouse_id})")
-        except Exception:
-            pass
-        if not warehouse_id:
-            print_error("SQL Warehouse が見つかりません。MLFLOW_TRACING_SQL_WAREHOUSE_ID を .env に設定してください。")
-            sys.exit(1)
-
-    grants = [
-        f'GRANT USE CATALOG ON CATALOG `{catalog}` TO `{sp_id}`',
-        f'GRANT USE SCHEMA ON SCHEMA `{catalog}`.`{schema}` TO `{sp_id}`',
-        f'GRANT SELECT ON SCHEMA `{catalog}`.`{schema}` TO `{sp_id}`',
-    ]
-    for sql in grants:
-        run_sql(sql, token, host, warehouse_id)
-    print_success(f"データスキーマ: USE CATALOG, USE SCHEMA, SELECT on {catalog}.{schema}")
+    grant_uc_permissions(token, host, "catalog", catalog, sp_id, ["USE_CATALOG"])
+    grant_uc_permissions(token, host, "schema", f"{catalog}.{schema}", sp_id,
+                         ["USE_SCHEMA", "SELECT"])
+    print_success(f"データスキーマ: USE_CATALOG, USE_SCHEMA, SELECT on {catalog}.{schema}")
 
     # トレーススキーマ権限
     print("\n=== 2. Unity Catalog トレーススキーマ権限 ===")
@@ -300,18 +282,18 @@ def main():
     else:
         tc, ts = catalog, schema
 
-    trace_grants = [
-        f'GRANT USE CATALOG ON CATALOG `{tc}` TO `{sp_id}`',
-        f'GRANT USE SCHEMA ON SCHEMA `{tc}`.`{ts}` TO `{sp_id}`',
-        f'GRANT SELECT ON SCHEMA `{tc}`.`{ts}` TO `{sp_id}`',
-        f'GRANT MODIFY ON SCHEMA `{tc}`.`{ts}` TO `{sp_id}`',
-    ]
-    for sql in trace_grants:
-        run_sql(sql, token, host, warehouse_id)
+    if tc != catalog:
+        grant_uc_permissions(token, host, "catalog", tc, sp_id, ["USE_CATALOG"])
+    if tc != catalog or ts != schema:
+        grant_uc_permissions(token, host, "schema", f"{tc}.{ts}", sp_id,
+                             ["USE_SCHEMA", "SELECT", "MODIFY"])
+    else:
+        grant_uc_permissions(token, host, "schema", f"{tc}.{ts}", sp_id, ["MODIFY"])
+
     if tc == catalog and ts == schema:
         print_success(f"トレーススキーマ（同一）: MODIFY on {tc}.{ts}")
     else:
-        print_success(f"トレーススキーマ: USE CATALOG, USE SCHEMA, SELECT, MODIFY on {tc}.{ts}")
+        print_success(f"トレーススキーマ: USE_CATALOG, USE_SCHEMA, SELECT, MODIFY on {tc}.{ts}")
 
     # ── 3. Lakebase PostgreSQL 権限 ──
     print("\n=== 3. Lakebase PostgreSQL 権限 ===")
