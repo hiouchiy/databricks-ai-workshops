@@ -212,75 +212,27 @@ def delete_schema(profile: str):
     print(f"\n  スキーマ: {full_schema}")
     print(f"  ⚠ CASCADE 削除：スキーマ内の全テーブル・インデックス・トレーステーブルが削除されます")
 
-    if not confirm(f"スキーマ '{full_schema}' を CASCADE で削除しますか？"):
+    if not confirm(f"スキーマ '{full_schema}' を削除しますか？（スキーマ内の全テーブル・インデックスも削除されます）"):
         print_skip("ユーザーがキャンセル")
         return
 
-    # Warehouse ID を取得（.env から複数キーを探索、なければ CLI で自動取得）
-    warehouse_id = os.getenv("MLFLOW_TRACING_SQL_WAREHOUSE_ID", "") or os.getenv("WAREHOUSE_ID", "")
-    if not warehouse_id:
-        # CLI で RUNNING のウェアハウスを自動取得
-        wh_result = run_cmd(["databricks", "warehouses", "list", "-p", profile, "-o", "json"])
-        if wh_result.returncode == 0:
-            try:
-                warehouses = json.loads(wh_result.stdout)
-                running = [w for w in warehouses if w.get("state") == "RUNNING"]
-                if running:
-                    warehouse_id = running[0]["id"]
-                    print(f"  ウェアハウスを自動選択: {running[0].get('name', '')} ({warehouse_id})")
-                elif warehouses:
-                    warehouse_id = warehouses[0]["id"]
-                    print(f"  ウェアハウスを自動選択: {warehouses[0].get('name', '')} ({warehouse_id})")
-            except (json.JSONDecodeError, KeyError, IndexError):
-                pass
-    if not warehouse_id:
-        print_skip("Warehouse ID が取得できません")
-        return
-
-    import urllib.request
-    import urllib.error
-
-    # トークン取得
-    token_result = run_cmd(["databricks", "auth", "token", "-p", profile, "-o", "json"])
-    if token_result.returncode != 0:
-        print_error("トークン取得に失敗")
-        return
-    token = json.loads(token_result.stdout)["access_token"]
-
-    host = os.getenv("DATABRICKS_HOST", "")
-    if not host:
-        host_result = run_cmd(["databricks", "auth", "describe", "-p", profile, "-o", "json"])
-        if host_result.returncode == 0:
-            host_data = json.loads(host_result.stdout)
-            host = host_data.get("host", "")
-
-    if not host:
-        print_error("DATABRICKS_HOST が取得できません")
-        return
-
-    stmt = f"DROP SCHEMA IF EXISTS `{catalog}`.`{schema}` CASCADE"
-    payload = json.dumps({
-        "warehouse_id": warehouse_id,
-        "statement": stmt,
-        "wait_timeout": "50s",
-    }).encode("utf-8")
-
-    req = urllib.request.Request(
-        f"{host}/api/2.0/sql/statements",
-        data=payload,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        state = data.get("status", {}).get("state", "UNKNOWN")
-        if state in ("SUCCEEDED", "CLOSED"):
-            print_success(f"スキーマ '{full_schema}' を削除しました（CASCADE）")
+    # Unity Catalog REST API でスキーマ削除（ウェアハウス不要）
+    result = run_cmd([
+        "databricks", "api", "delete",
+        f"/api/2.1/unity-catalog/schemas/{catalog}.{schema}?force=true",
+        "-p", profile,
+    ])
+    if result.returncode == 0:
+        print_success(f"スキーマ '{full_schema}' を削除しました")
+    else:
+        # force=true が未対応の場合、CLI コマンドでリトライ
+        result2 = run_cmd([
+            "databricks", "schemas", "delete", full_schema, "-p", profile,
+        ])
+        if result2.returncode == 0:
+            print_success(f"スキーマ '{full_schema}' を削除しました")
         else:
-            err = data.get("status", {}).get("error", {}).get("message", "")
-            print_error(f"スキーマ削除: {state} {err[:200]}")
-    except Exception as e:
-        print_error(f"スキーマ削除に失敗: {e}")
+            print_error(f"スキーマ削除に失敗: {result.stderr[:200] if result.stderr else result2.stderr[:200] if result2.stderr else 'Unknown error'}")
 
 
 def delete_local_files():
