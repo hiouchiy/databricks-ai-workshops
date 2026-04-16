@@ -80,7 +80,7 @@ advanced/
 | **エージェントフレームワーク** | LangGraph（ステートフルなマルチツールオーケストレーション） |
 | **ツールプロトコル** | MCP（Model Context Protocol）— Genie、Vector Search、Code Interpreter |
 | **メモリストア** | Lakebase（マネージド PostgreSQL）+ セマンティック Embeddings |
-| **トレーシング・評価** | MLflow 3（自動ログ、9 種のスコアラー、会話シミュレーター） |
+| **トレーシング・評価** | MLflow 3（自動ログ、10 種のスコアラー、会話シミュレーター） |
 | **フロントエンド** | React + TypeScript + Vite + Vercel AI SDK |
 | **バックエンド API** | FastAPI（MLflow AgentServer 経由、OpenAI Responses API 互換） |
 | **認証** | Databricks OAuth（U2M）+ On-Behalf-Of（OBO）ユーザーパススルー |
@@ -357,12 +357,17 @@ databricks apps start $APP_NAME --profile DEFAULT
 
 | 問題 | 解決策 |
 |------|--------|
+| `python3: command not found` | Python 3.11 以上がインストールされているか確認。`python` でも動く場合あり |
+| `uv sync` で PyPI 接続エラー | インターネット接続を確認。社内ネットワークの場合は PyPI ミラー/プロキシを設定 |
+| `npm install` が Apps 上でクラッシュ | `package-lock.json` に社内プロキシ URL が含まれている。`rm -f package-lock.json && npm install` で再生成 |
 | `Lakebase configuration is required` | `.env` に `LAKEBASE_AUTOSCALING_PROJECT` と `LAKEBASE_AUTOSCALING_BRANCH`（またはプロビジョニング済みの場合は `LAKEBASE_INSTANCE_NAME`）を設定 |
+| `couldn't get a connection after 30 sec` | Lakebase SP 権限未付与。`uv run grant-sp-permissions` を実行しアプリを再起動 |
+| `checkpoint_migrations` duplicate key | 初回起動時の並行初期化で発生（無害）。リトライで自動回復 |
+| `tool_use without tool_result` | チェックポイント破損。自動でチェックポイント削除＆リトライされる |
 | `302 redirect when querying deployed agent` | PAT ではなく OAuth トークンを使用。`databricks auth token` を実行 |
-| `Permission denied on Lakebase` | `uv run grant-sp-permissions` を実行（または個別に `grant_lakebase_permissions.py`） |
-| `Streaming 200 OK but error in stream` | 想定どおり — 200 はストリーム確立を示す。エラー内容を確認 |
-| `GENIE_SPACE_ID not set` | `.env` に設定するか `uv run quickstart` で指定 |
-| `nvm: command not found` | nvm をインストール：`curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh \| bash` |
+| 502 Bad Gateway（デプロイ後） | フロントエンドの npm build に 3〜5 分かかる。待ってからリトライ |
+| `bundle deploy` リソースエラー | Databricks CLI を v0.297 以上に更新（`brew upgrade databricks`） |
+| Apps UI でリソースが空表示 | CLI が古い。v0.297 以上ならリソースバインディングが正しく反映される |
 
 ---
 
@@ -553,7 +558,22 @@ The chat UI will be available at **http://localhost:3000** and the API at **http
 
 #### If you selected Delta Table tracing
 
-If you chose to send traces to a Unity Catalog Delta Table, the quickstart will display setup instructions at the end. Import `workshop_setup.py` into your Databricks workspace and run the "Trace destination setup" cell (placeholders are auto-filled by quickstart).
+If you chose to send traces to a Unity Catalog Delta Table, the quickstart will display setup instructions at the end. This step can **only be run on a Databricks notebook**, so import `workshop_setup.py` into your workspace and run the "Trace destination setup" cell:
+
+```python
+import os
+os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "<WAREHOUSE-ID>"
+
+import mlflow
+from mlflow.entities import UCSchemaLocation
+
+mlflow.tracing.set_experiment_trace_location(
+    location=UCSchemaLocation(catalog_name="<CATALOG>", schema_name="<SCHEMA>"),
+    experiment_id="<MONITORING-EXPERIMENT-ID>",
+)
+```
+
+> If you ran `uv run quickstart`, the placeholders in `workshop_setup.py` are already auto-filled — just run the cell as-is.
 
 #### Team workshop setup
 
@@ -563,7 +583,15 @@ If running the workshop as a team, the representative should run:
 uv run grant-team-access member1@company.com member2@company.com
 ```
 
-This grants access to Unity Catalog, MLflow Experiments, Genie Space, Lakebase, and SQL Warehouse. Members can be added later by re-running the same command (idempotent). Team members then run quickstart, select "use existing Experiment ID", and start from Step 9.
+This grants access to Unity Catalog, MLflow Experiments, Genie Space, Lakebase, and SQL Warehouse. Members can be added later by re-running the same command (idempotent).
+
+After running the command, share the following info with team members (displayed at the end of the command output):
+- Catalog name and schema name
+- Genie Space ID
+- Lakebase project name and branch name
+- MLflow Experiment IDs (monitoring + evaluation)
+
+Team members then run quickstart, select "use existing Experiment ID", and start from Step 9.
 
 ### Option 2: Manual Setup
 
