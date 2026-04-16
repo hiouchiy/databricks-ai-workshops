@@ -168,9 +168,9 @@ def grant_lakebase_permissions(sp_id: str):
     # public スキーマ
     all_public_tables = short_term_tables + long_term_tables
     try:
-        client.grant_schema(sp_id, "public", schema_privs)
-        for table in all_public_tables:
-            client.grant_table(sp_id, "public", table, table_privs)
+        client.grant_schema(grantee=sp_id, schemas=["public"], privileges=schema_privs)
+        qualified_tables = [f"public.{t}" for t in all_public_tables]
+        client.grant_table(grantee=sp_id, tables=qualified_tables, privileges=table_privs)
         print_success(f"Lakebase public スキーマ: {len(all_public_tables)} テーブル権限付与")
     except Exception as e:
         print_error(f"Lakebase public スキーマ権限付与失敗: {str(e)[:200]}")
@@ -178,9 +178,9 @@ def grant_lakebase_permissions(sp_id: str):
     # frontend スキーマ
     for schema_name, tables in frontend_schemas.items():
         try:
-            client.grant_schema(sp_id, schema_name, schema_privs)
-            for table in tables:
-                client.grant_table(sp_id, schema_name, table, table_privs)
+            client.grant_schema(grantee=sp_id, schemas=[schema_name], privileges=schema_privs)
+            qualified_tables = [f"{schema_name}.{t}" for t in tables]
+            client.grant_table(grantee=sp_id, tables=qualified_tables, privileges=table_privs)
             print_success(f"Lakebase {schema_name} スキーマ: {len(tables)} テーブル権限付与")
         except Exception as e:
             if "does not exist" in str(e).lower():
@@ -246,10 +246,24 @@ def main():
     # ── 1. Unity Catalog 権限 ──
     print("=== 1. Unity Catalog データスキーマ権限 ===")
     if not warehouse_id:
-        print_warn("MLFLOW_TRACING_SQL_WAREHOUSE_ID 未設定。SQL Warehouse ID が必要です。")
-        warehouse_id = input("  SQL Warehouse ID を入力: ").strip()
+        # CLI で RUNNING のウェアハウスを自動取得
+        try:
+            wh_result = subprocess.run(
+                ["databricks", "warehouses", "list", "-p", args.profile, "-o", "json"],
+                capture_output=True, text=True,
+            )
+            if wh_result.returncode == 0:
+                import json as _json
+                warehouses = _json.loads(wh_result.stdout)
+                running = [w for w in warehouses if w.get("state") == "RUNNING"]
+                picked = running[0] if running else (warehouses[0] if warehouses else None)
+                if picked:
+                    warehouse_id = picked["id"]
+                    print(f"  ウェアハウスを自動選択: {picked.get('name', '')} ({warehouse_id})")
+        except Exception:
+            pass
         if not warehouse_id:
-            print_error("SQL Warehouse ID が必要です。")
+            print_error("SQL Warehouse が見つかりません。MLFLOW_TRACING_SQL_WAREHOUSE_ID を .env に設定してください。")
             sys.exit(1)
 
     grants = [
