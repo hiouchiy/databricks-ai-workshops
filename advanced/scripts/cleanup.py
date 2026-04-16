@@ -216,13 +216,26 @@ def delete_schema(profile: str):
         print_skip("ユーザーがキャンセル")
         return
 
-    # Warehouse ID を取得
-    warehouse_id = os.getenv("MLFLOW_TRACING_SQL_WAREHOUSE_ID", "")
+    # Warehouse ID を取得（.env から複数キーを探索、なければ CLI で自動取得）
+    warehouse_id = os.getenv("MLFLOW_TRACING_SQL_WAREHOUSE_ID", "") or os.getenv("WAREHOUSE_ID", "")
     if not warehouse_id:
-        warehouse_id = input("  SQL Warehouse ID を入力してください: ").strip()
-        if not warehouse_id:
-            print_skip("Warehouse ID が未指定")
-            return
+        # CLI で RUNNING のウェアハウスを自動取得
+        wh_result = run_cmd(["databricks", "warehouses", "list", "-p", profile, "-o", "json"])
+        if wh_result.returncode == 0:
+            try:
+                warehouses = json.loads(wh_result.stdout)
+                running = [w for w in warehouses if w.get("state") == "RUNNING"]
+                if running:
+                    warehouse_id = running[0]["id"]
+                    print(f"  ウェアハウスを自動選択: {running[0].get('name', '')} ({warehouse_id})")
+                elif warehouses:
+                    warehouse_id = warehouses[0]["id"]
+                    print(f"  ウェアハウスを自動選択: {warehouses[0].get('name', '')} ({warehouse_id})")
+            except (json.JSONDecodeError, KeyError, IndexError):
+                pass
+    if not warehouse_id:
+        print_skip("Warehouse ID が取得できません")
+        return
 
     import urllib.request
     import urllib.error
