@@ -1348,8 +1348,8 @@ class QuickstartWizard(customtkinter.CTk):
                 elif kind == "done":
                     self._exec_running = False
                     self.data["setup_complete"] = True
-                    # Auto-advance to page 12
-                    self.after(500, lambda: self.show_page(11))
+                    # Auto-advance to complete page (index 12)
+                    self.after(500, lambda: self.show_page(12))
                     return
         except queue.Empty:
             pass
@@ -1387,8 +1387,13 @@ class QuickstartWizard(customtkinter.CTk):
             self._set_progress(step / total_steps)
 
         try:
+            self._log(t("セットアップを開始します...", "Starting setup..."))
+            self._log(f"  Profile: {profile}, Host: {host[:50]}...")
+            self._log(f"  Catalog: {catalog}, Schema: {schema}")
+            self._log("")
+
             # Step 1: Create catalog & schema
-            self._log(t("\u30ab\u30bf\u30ed\u30b0\u30fb\u30b9\u30ad\u30fc\u30de\u3092\u4f5c\u6210\u4e2d...", "Creating catalog & schema..."))
+            self._log(t("カタログ・スキーマを作成中...", "Creating catalog & schema..."))
             try:
                 buf = io.StringIO()
                 with contextlib.redirect_stdout(buf):
@@ -1693,10 +1698,12 @@ class QuickstartWizard(customtkinter.CTk):
                 fail(t("\u4f9d\u5b58\u95a2\u4fc2", "Dependencies"), str(e)[:200])
 
         except Exception as e:
-            self._log(f"\n\u2717 Fatal error: {e}")
-
-        self._log(t("\n\u30bb\u30c3\u30c8\u30a2\u30c3\u30d7\u5b8c\u4e86\uff01", "\nSetup complete!"))
-        self._signal_done()
+            import traceback
+            self._log(f"\n✗ Fatal error: {e}")
+            self._log(traceback.format_exc())
+        finally:
+            self._log(t("\nセットアップ完了！", "\nSetup complete!"))
+            self._signal_done()
 
     # ── Page 13: Complete ───────────────────────────────────────────────
     def _page_complete(self, frame: customtkinter.CTkFrame):
