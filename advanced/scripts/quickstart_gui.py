@@ -1688,7 +1688,7 @@ class QuickstartWizard(customtkinter.CTk):
 
             # Step 8: Run trace setup
             if s.get("trace_dest_mode") == "delta" and s.get("trace_dest_schema"):
-                self._log(t("\u30c8\u30ec\u30fc\u30b9\u30c6\u30fc\u30d6\u30eb\u3092\u4f5c\u6210\u4e2d...", "Creating trace tables..."))
+                self._log(t("トレーステーブルを作成中...", "Creating trace tables..."))
                 try:
                     dest = s["trace_dest_schema"]
                     core.update_env_file("MLFLOW_TRACING_DESTINATION", dest)
@@ -1697,6 +1697,16 @@ class QuickstartWizard(customtkinter.CTk):
                     core.append_env_to_app_yaml("MLFLOW_TRACING_SQL_WAREHOUSE_ID", warehouse_id)
                     if "." in dest:
                         _cat, _sch = dest.split(".", 1)
+                        # Ensure trace schema exists (same as CUI)
+                        verify = core.run_sql_statement(
+                            f"DESCRIBE SCHEMA `{_cat}`.`{_sch}`", token, host, warehouse_id)
+                        if verify.get("status", {}).get("state") not in ("SUCCEEDED", "CLOSED"):
+                            self._log(t(f"  スキーマ {dest} を作成中...",
+                                         f"  Creating schema {dest}..."))
+                            core.run_sql_statement(
+                                f"CREATE CATALOG IF NOT EXISTS `{_cat}`", token, host, warehouse_id)
+                            core.run_sql_statement(
+                                f"CREATE SCHEMA IF NOT EXISTS `{_cat}`.`{_sch}`", token, host, warehouse_id)
                         buf = io.StringIO()
                         with contextlib.redirect_stdout(buf):
                             ok = core.run_trace_setup_on_databricks(
@@ -1918,10 +1928,19 @@ class QuickstartWizard(customtkinter.CTk):
 
         customtkinter.CTkButton(
             btn_frame,
-            text=t("\u9589\u3058\u308b", "Close"),
+            text=t("閉じる", "Close"),
             width=120,
             command=self.destroy,
         ).pack(side="left", padx=10)
+
+        # Next steps
+        customtkinter.CTkLabel(
+            frame,
+            text=t("次のステップ:  uv run start-app",
+                     "Next step:  uv run start-app"),
+            font=customtkinter.CTkFont(size=14, weight="bold"),
+            text_color="#3B8ED0",
+        ).pack(pady=(10, 0))
 
     def _copy_share_text(self):
         self.clipboard_clear()
