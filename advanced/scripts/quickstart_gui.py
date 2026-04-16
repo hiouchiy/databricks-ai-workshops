@@ -1380,7 +1380,7 @@ class QuickstartWizard(customtkinter.CTk):
 
         def fail(step_name: str, err: str):
             self._log(f"\u2717 {step_name}: {err}")
-            s["setup_failed_steps"].append(step_name)
+            s["setup_failed_steps"].append({"name": step_name, "error": err})
             s["setup_log"].append(f"\u2717 {step_name}: {err}")
             nonlocal step
             step += 1
@@ -1716,15 +1716,26 @@ class QuickstartWizard(customtkinter.CTk):
         # Show warnings about failed steps
         failed = self.data.get("setup_failed_steps", [])
         if failed:
+            fail_names = [f.get("name", str(f)) if isinstance(f, dict) else str(f) for f in failed]
             customtkinter.CTkLabel(
                 frame,
                 text=t(
-                    f"\u26a0 {len(failed)} \u500b\u306e\u30b9\u30c6\u30c3\u30d7\u304c\u5931\u6557\u3057\u307e\u3057\u305f: {', '.join(failed)}",
-                    f"\u26a0 {len(failed)} step(s) failed: {', '.join(failed)}",
+                    f"⚠ {len(failed)} 個のステップが失敗しました",
+                    f"⚠ {len(failed)} step(s) failed",
                 ),
                 text_color="orange",
                 wraplength=600,
-            ).pack(pady=(0, 5))
+            ).pack(pady=(0, 2))
+
+            # Show each failure with its error reason
+            fail_box = customtkinter.CTkTextbox(frame, width=620, height=80, text_color="orange")
+            fail_box.pack(padx=20, pady=(0, 5))
+            for f in failed:
+                if isinstance(f, dict):
+                    fail_box.insert("end", f"✗ {f['name']}: {f['error']}\n")
+                else:
+                    fail_box.insert("end", f"✗ {f}\n")
+            fail_box.configure(state="disabled")
 
         # Summary of created resources
         s = self.data
