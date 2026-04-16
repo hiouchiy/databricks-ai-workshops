@@ -1,3 +1,9 @@
+**[日本語](#ja)** | **[English](#en)**
+
+---
+
+<a id="ja"></a>
+
 # ワークショップ：Databricks で食品スーパー向け AI エージェントを構築する
 
 Genie・Vector Search・長期メモリを組み合わせた会話型 AI エージェントを構築・デプロイします。
@@ -803,3 +809,813 @@ uv run cleanup
 8. ローカルファイル（`.env`、`.venv`、ログ）
 
 > **注意：** 各リソースの削除前に確認が表示されます。不要なものだけ選択して削除できます。
+
+---
+
+<a id="en"></a>
+
+# Workshop: Building a Retail Grocery AI Agent on Databricks
+
+Build and deploy a conversational AI agent that combines Genie, Vector Search, and long-term memory.
+
+---
+
+## Prerequisites (Complete Before Workshop)
+
+### Workspace Administrator (Admin) Preparation
+
+Only **one person** per team needs to complete the following steps; all participants can then share these resources.
+
+
+| #   | Task                                    | Reason                                                                                                      |
+| --- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 1   | Create participant catalog & grant permissions | Participants may not have catalog creation privileges. Grant `USE CATALOG` / `CREATE SCHEMA` to all participants |
+| 2   | Verify SQL Warehouse                    | Confirm the shared warehouse is RUNNING and share the Warehouse ID with participants                        |
+| 3   | Pre-create Vector Search endpoint       | Creating a new endpoint takes several minutes; prepare one shared endpoint and share the endpoint name      |
+| 4   | Verify Foundation Model API             | Confirm the `databricks-claude-sonnet-4-5` endpoint is available                                            |
+| 5   | Verify Lakebase is enabled              | Confirm Lakebase is enabled in the workspace                                                                |
+| 6   | Check Databricks Apps slot availability | If near the limit, delete unused apps beforehand (only needed if deploying Apps)                            |
+| 7   | Verify PyPI / npm access                | Confirm that package installation is possible from local environments                                       |
+
+
+### Sharing Permissions for Team Use (Team Lead)
+
+When working as a team, the team lead should run the following locally after completing the quickstart:
+
+```bash
+uv run grant-team-access member1@company.com member2@company.com
+```
+
+The following permissions are granted in bulk:
+
+| Resource | Permissions Granted |
+|---|---|
+| **Unity Catalog** | USE CATALOG, USE SCHEMA, SELECT, MODIFY |
+| **MLflow Experiment** | CAN_MANAGE (monitoring + evaluation) |
+| **Genie Space** | CAN_RUN |
+| **Lakebase** | Project CAN_USE + DB schema permissions |
+| **SQL Warehouse** | CAN_USE |
+
+To add members later, simply re-run the same command (idempotent).
+
+> **About App SP permissions:** Each member must run Step 11-6 themselves after deploying their own app. The team lead cannot configure this in advance (the SP is generated when the app is created).
+
+Share the following information displayed after running the command with team members:
+- Catalog name and schema name
+- Genie Space ID
+- Lakebase project name and branch name
+- MLflow Experiment IDs (monitoring + evaluation)
+
+Members can run the quickstart and select "Enter existing ID" for MLflow Experiment, then start immediately from Step 9.
+
+### Participant Preparation
+
+Install the following tools and verify they work correctly.
+
+
+| Tool           | Installation                                                                | Verification Command                        |
+| -------------- | --------------------------------------------------------------------------- | ------------------------------------------- |
+| Databricks CLI | `brew tap databricks/tap && brew install databricks`                        | `databricks --version` (**v0.297 or later**) |
+| uv             | [Installation Guide](https://docs.astral.sh/uv/getting-started/installation/) | `uv --version`                              |
+| Node.js 20+    | [nodejs.org](https://nodejs.org) or `nvm install 20`                        | `node --version`                            |
+| jq             | `brew install jq`                                                           | `jq --version`                              |
+
+
+**Databricks CLI authentication setup:**
+
+```bash
+databricks auth login --host https://<your-workspace>.cloud.databricks.com --profile DEFAULT
+databricks current-user me  # Success if your username is displayed
+```
+
+**Clone the repository and install dependencies:**
+
+```bash
+git clone https://github.com/hiouchiy/databricks-ai-workshops.git
+cd databricks-ai-workshops/advanced
+
+# Install Python dependencies
+uv venv .venv
+uv sync
+
+# Install Node.js dependencies
+cd e2e-chatbot-app-next && npm install && cd ..
+```
+
+---
+
+## Placeholders
+
+The following values are used throughout the workshop. Replace them with values provided by the instructor or values you created yourself.
+
+
+| Placeholder                    | Description                    | Example                                  |
+| ------------------------------ | ------------------------------ | ---------------------------------------- |
+| `<CATALOG>`                    | Unity Catalog catalog name     | `my_catalog`                             |
+| `<SCHEMA>`                     | Schema name                    | `retail_agent`                           |
+| `<WAREHOUSE-ID>`               | SQL Warehouse ID               | Obtain via `databricks warehouses list`  |
+| `<VS-ENDPOINT>`                | Vector Search endpoint name    | `dbdemos_vs_endpoint` (if using existing) |
+| `<PROJECT-NAME>`               | Lakebase project name          | `freshmart-agent-yourname`               |
+| `<BRANCH-NAME>`                | Lakebase branch name           | `production`                             |
+| `<GENIE-SPACE-ID>`             | Genie Space ID                 | `01ef...abcd` (from URL)                 |
+| `<MONITORING-EXPERIMENT-ID>`   | MLflow monitoring experiment ID | `1159599289265540`                       |
+| `<EVALUATION-EXPERIMENT-ID>`   | MLflow evaluation experiment ID | `1159599289265541`                       |
+
+
+---
+
+## Step 0: Import Setup Notebook (Recommended)
+
+This workshop requires running some commands on Databricks. All commands are consolidated in `workshop_setup.py`, so it is convenient to import it into your workspace.
+
+1. Databricks workspace left menu > **Workspace** > your user folder
+2. **Import** > upload the `workshop_setup.py` file
+3. Set the placeholders to your values in the "Settings" cell at the top of the notebook
+
+> In subsequent steps, wherever it says "SQL editor or notebook", you can simply run the corresponding cell in this notebook.
+
+---
+
+## Step 1: Create Catalog and Schema
+
+> Skip this step if the administrator has already created them.
+
+**Option A: SQL editor or notebook** (run the Step 1 cell in `workshop_setup.py`)
+
+```sql
+CREATE CATALOG IF NOT EXISTS <CATALOG>;
+CREATE SCHEMA IF NOT EXISTS <CATALOG>.<SCHEMA>;
+```
+
+**Option B: Local CLI**
+
+```bash
+databricks api post /api/2.0/sql/statements --profile DEFAULT --json '{
+  "warehouse_id": "<WAREHOUSE-ID>",
+  "statement": "CREATE CATALOG IF NOT EXISTS `<CATALOG>`",
+  "wait_timeout": "30s"
+}'
+databricks api post /api/2.0/sql/statements --profile DEFAULT --json '{
+  "warehouse_id": "<WAREHOUSE-ID>",
+  "statement": "CREATE SCHEMA IF NOT EXISTS `<CATALOG>`.`<SCHEMA>`",
+  "wait_timeout": "30s"
+}'
+```
+
+---
+
+## Step 2: Generate Structured Data
+
+```bash
+cd ../data
+```
+
+Specify the catalog and schema names via environment variables and run (no file edits required):
+
+```bash
+CATALOG=<CATALOG> SCHEMA=<SCHEMA> python3 execute_sql.py --profile DEFAULT --warehouse-id <WAREHOUSE-ID>
+```
+
+Six tables are created: customers (200 records), products (~500 records), stores (10 records), transactions (2,000 records), transaction_items (~10,000 records), and payment_history (400 records).
+
+All data is generated in Japanese (Japanese names, Japanese addresses, Japanese supermarket products).
+
+> **Estimated time:** approximately 5-10 minutes
+
+---
+
+## Step 3: Generate Policy Document Chunks
+
+Similarly, specify the catalog and schema names via environment variables and run:
+
+```bash
+CATALOG=<CATALOG> SCHEMA=<SCHEMA> python3 execute_chunking.py --profile DEFAULT --warehouse-id <WAREHOUSE-ID>
+```
+
+Seven Japanese policy documents (returns, shipping, membership programs, etc.) are chunked and written to the `policy_docs_chunked` table.
+
+> **Important:** Enable Change Data Feed on the table to create a Vector Search index in the next step.
+>
+> **Option A: Notebook** (run the Step 3 cell in `workshop_setup.py`)
+>
+> **Option B: SQL editor**
+> ```sql
+> ALTER TABLE <CATALOG>.<SCHEMA>.policy_docs_chunked
+>   SET TBLPROPERTIES (delta.enableChangeDataFeed = true);
+> ```
+>
+> **Option C: Local CLI**
+> ```bash
+> databricks api post /api/2.0/sql/statements --profile DEFAULT --json '{
+>   "warehouse_id": "<WAREHOUSE-ID>",
+>   "statement": "ALTER TABLE `<CATALOG>`.`<SCHEMA>`.policy_docs_chunked SET TBLPROPERTIES (delta.enableChangeDataFeed = true)",
+>   "wait_timeout": "30s"
+> }'
+> ```
+
+```bash
+cd ../advanced
+```
+
+---
+
+## Step 4: Create Vector Search Index
+
+> **Prerequisite:** Use the Vector Search endpoint pre-created by the instructor.
+> Endpoint name: `<VS-ENDPOINT>` (use the name provided by the instructor)
+>
+> If creating your own, go to **Compute > Vector Search > Create Endpoint** in the Databricks UI and wait until it becomes READY.
+
+Navigate to `<CATALOG>.<SCHEMA>.policy_docs_chunked` in **Catalog Explorer**:
+
+1. Click **Create > Vector Search Index**
+2. Configure as follows:
+  - Name: `policy_docs_index`
+  - Primary key: `chunk_id`
+  - Endpoint: `<VS-ENDPOINT>`
+  - Source column: `content`
+  - Embedding model: `databricks-qwen3-embedding-0-6b`
+  - Sync mode: Triggered
+3. Click **Create**
+
+Note the full path: `<CATALOG>.<SCHEMA>.policy_docs_index`
+
+> **Estimated time:** Initial index sync takes 1-5 minutes. Wait until the status becomes READY.
+> You can proceed to the next step while waiting.
+
+---
+
+## Step 5: Create Genie Space
+
+Databricks UI: **Genie > New Genie Space**
+
+1. Name: `FreshMart Retail Data`
+2. Add all 6 tables from the schema created in Step 1:
+  - `customers`, `products`, `stores`, `transactions`, `transaction_items`, `payment_history`
+3. Select the SQL Warehouse and click **Create**
+4. Copy the **Space ID** from the URL (the last part of the URL)
+
+---
+
+## Step 6: Create Lakebase Autoscaling Instance
+
+```bash
+# Create the project
+databricks api post "/api/2.0/postgres/projects?project_id=<PROJECT-NAME>" --json '{}'
+```
+
+A branch is automatically created. Verify the branch name:
+
+```bash
+databricks api get /api/2.0/postgres/projects/<PROJECT-NAME>/branches \
+  | jq '.branches[].name'
+```
+
+> **Note:** The branch name is auto-generated based on the project name (e.g., `<PROJECT-NAME>-branch`). Save it for later use in `.env`.
+
+Retrieve the PGHOST (`<BRANCH-NAME>` should be replaced with the name confirmed above):
+
+```bash
+databricks api get /api/2.0/postgres/projects/<PROJECT-NAME>/branches/<BRANCH-NAME>/endpoints \
+  | jq -r '.endpoints[0].status.hosts.host'
+```
+
+> **Note:** The endpoint may take 1-2 minutes to become ACTIVE.
+
+---
+
+## Step 7: Create MLflow Experiments
+
+Create **two experiments**: one for monitoring (trace logging during app execution) and one for evaluation (when running evaluation scripts).
+
+```bash
+DATABRICKS_USERNAME=$(databricks current-user me -o json | jq -r .userName)
+
+# For monitoring (trace logging during app execution)
+databricks experiments create-experiment "/Users/$DATABRICKS_USERNAME/freshmart-agent-monitoring"
+
+# For evaluation (when running evaluation scripts)
+databricks experiments create-experiment "/Users/$DATABRICKS_USERNAME/freshmart-agent-evaluation"
+```
+
+Note the `experiment_id` returned for each.
+
+---
+
+## Step 8: Set Environment Variables
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` as follows. Enter the values you noted in previous steps:
+
+```bash
+DATABRICKS_CONFIG_PROFILE=DEFAULT
+DATABRICKS_HOST=https://<your-workspace>.cloud.databricks.com
+MLFLOW_EXPERIMENT_ID=<MONITORING-EXPERIMENT-ID>
+MLFLOW_EVAL_EXPERIMENT_ID=<EVALUATION-EXPERIMENT-ID>
+LAKEBASE_AUTOSCALING_PROJECT=<PROJECT-NAME>
+LAKEBASE_AUTOSCALING_BRANCH=<BRANCH-NAME>
+GENIE_SPACE_ID=<GENIE-SPACE-ID>
+VECTOR_SEARCH_INDEX=<CATALOG>.<SCHEMA>.policy_docs_index
+PGHOST=<Lakebase hostname (obtained in Step 6)>
+PGUSER=<your Databricks email address>
+PGDATABASE=databricks_postgres
+```
+
+> **Note:** `MLFLOW_EXPERIMENT_ID` is used for trace logging (monitoring) during app execution, and `MLFLOW_EVAL_EXPERIMENT_ID` is used when running evaluation scripts.
+
+> **Note:** By default, `PROMPT_REGISTRY_NAME` does not need to be configured. The Japanese system prompt is hardcoded in `agent.py`.
+
+### Using Prompt Registry (Optional)
+
+If you want to version-manage system prompts with Unity Catalog, follow the steps below. This enables prompt version management, A/B testing, and rollbacks.
+
+**1. Register the prompt** (run once):
+
+```bash
+uv run register-prompt --name <CATALOG>.<SCHEMA>.freshmart_system_prompt
+```
+
+**2. Add to `.env`**:
+
+```bash
+PROMPT_REGISTRY_NAME=<CATALOG>.<SCHEMA>.freshmart_system_prompt
+```
+
+**3. Add to `app.yaml`** (when deploying to Apps):
+
+```yaml
+  - name: PROMPT_REGISTRY_NAME
+    value: "<CATALOG>.<SCHEMA>.freshmart_system_prompt"
+```
+
+> When configured, `agent.py` loads the prompt from Prompt Registry instead of the hardcoded version. The `@production` alias of the registered prompt is used.
+
+### Choosing the Trace Destination (Optional)
+
+By default, traces are recorded to the MLflow Experiment. If you want to send traces to a Unity Catalog Delta Table, add the following to `.env`:
+
+```bash
+# Set only when sending traces to a Unity Catalog Delta Table
+MLFLOW_TRACING_DESTINATION=<CATALOG>.<SCHEMA>
+```
+
+
+| Setting                          | Destination                 | Characteristics                                              |
+| -------------------------------- | --------------------------- | ------------------------------------------------------------ |
+| Not set (default)                | MLflow Experiment           | View traces in the Experiments UI. Easy to get started       |
+| Set `<CATALOG>.<SCHEMA>`         | Unity Catalog Delta Table   | Queryable via SQL. Long-term retention. Managed by Unity Catalog permissions |
+
+
+When sending to a Delta Table, the following preparation is required:
+
+**1. Grant permissions** (SQL editor, notebook, or CLI):
+
+```sql
+GRANT MODIFY, SELECT ON SCHEMA <CATALOG>.<SCHEMA> TO `your.email@company.com`;
+```
+
+**2. Initial creation of trace tables** (run the "Trace destination settings" cell in `workshop_setup.py`)
+
+> **Note:** `set_experiment_trace_location` can only be run in a Databricks notebook. It cannot be run locally.
+
+> **Note:** The associated Experiment must have zero traces. If traces already exist, create a new empty Experiment:
+>
+> ```bash
+> databricks experiments create-experiment "/Users/$DATABRICKS_USERNAME/freshmart-agent-monitoring-uc"
+> ```
+>
+> Set the new Experiment ID in the code below and in `MLFLOW_EXPERIMENT_ID` in `.env`.
+
+```python
+import os
+os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "<WAREHOUSE-ID>"
+
+import mlflow
+from mlflow.entities import UCSchemaLocation
+
+mlflow.tracing.set_experiment_trace_location(
+    location=UCSchemaLocation(catalog_name="<CATALOG>", schema_name="<SCHEMA>"),
+    experiment_id="<MONITORING-EXPERIMENT-ID>",
+)
+```
+
+This automatically creates three Delta Tables in the schema:
+
+- `mlflow_experiment_trace_otel_spans` -- Each processing step (LLM calls, tool executions, etc.)
+- `mlflow_experiment_trace_otel_logs` -- Logs during trace execution
+- `mlflow_experiment_trace_otel_metrics` -- Metrics such as latency and token counts
+
+**3. Set the trace destination in `.env`** (edit locally):
+
+```bash
+MLFLOW_TRACING_DESTINATION=<CATALOG>.<SCHEMA>
+```
+
+After creating the tables, start the app and chat to have traces written to the Delta Table. You can query them via SQL:
+
+```sql
+SELECT * FROM <CATALOG>.<SCHEMA>.mlflow_experiment_trace_otel_spans
+WHERE start_time > current_timestamp() - INTERVAL 1 HOUR;
+```
+
+> **Note:** `set_experiment_trace_location` can only be run in a Databricks notebook. It cannot be run from a local environment.
+>
+> Reference: [Send MLflow traces to Unity Catalog](https://docs.databricks.com/aws/en/mlflow3/genai/tracing/trace-unity-catalog)
+
+---
+
+## Step 9: Run Locally
+
+```bash
+uv run start-app
+```
+
+The backend starts at `http://localhost:8000` and the chat UI at `http://localhost:3000`.
+
+> **`--no-ui` mode:** To start only the backend (API) without the chat UI:
+> ```bash
+> uv run start-app --no-ui
+> ```
+> Useful for API testing or running evaluation scripts. You can send requests directly to `http://localhost:8000/invocations` via `curl`.
+>
+> For architecture details, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+> **If it doesn't start correctly:**
+>
+> - Verify that `uv sync` has completed
+> - Verify that the `.env` file is configured correctly
+> - Verify that `databricks auth token` can retrieve a token
+
+### Verification
+
+Open `http://localhost:3000` in your browser and try the following prompts:
+
+**Genie (structured data queries):**
+
+- "Show me the top 5 products by sales"
+- "What is the cheapest product?"
+
+**Vector Search (policy search):**
+
+- "Tell me about the return policy. Can I return fresh produce?"
+- "How much is the delivery fee?"
+
+**Memory:**
+
+- "I'm a vegetarian and I prefer organic products. Please remember that."
+- (In a new chat) "Do you remember my preferences? Can you recommend some products?"
+
+### Checking Traces
+
+You can view agent traces in the Databricks UI under **Experiments > freshmart-agent-monitoring**. LLM calls, tool executions, latency, and other details are recorded for each request. Evaluation results can be viewed under **Experiments > freshmart-agent-evaluation**.
+
+---
+
+## Step 10 (Optional): Agent Evaluation
+
+> **Note:** If the app is running from Step 9, press **Ctrl+C** in the terminal to stop the server before running the evaluation. The evaluation script calls the agent directly without using the server, so leaving the server running may cause port conflicts or process interference.
+>
+> **Note (when using Delta Table traces):** If `MLFLOW_TRACING_DESTINATION` is set in `.env`, the evaluation script automatically disables this setting during execution. This prevents errors when the Delta Table trace tables have not been created yet. Evaluation results are always recorded in the MLflow Experiment specified by `MLFLOW_EVAL_EXPERIMENT_ID`.
+
+### Chat Evaluation (expected_facts-based)
+
+```bash
+uv run agent-evaluate-chat
+```
+
+Uses 9 fixed questions (3 simple + 3 complex + 3 out-of-scope) with expected facts to score on Correctness / RelevanceToQuery / RetrievalSufficiency / Safety / Fluency. No server startup is required; the agent is called directly for evaluation.
+
+### Multi-turn Evaluation (Conversation Simulator)
+
+```bash
+uv run agent-evaluate
+```
+
+Uses 3 Japanese test cases where a simulated user (LLM) automatically conducts multi-turn conversations with the agent. Scoring is performed by 10 MLflow scorers (Completeness, ConversationalSafety, Fluency, KnowledgeRetention, RelevanceToQuery, Safety, ToolCallCorrectness, ToolCallEfficiency, UserFrustration, etc.).
+
+### Advanced Multi-turn Evaluation (20 Test Cases + Custom Scorers)
+
+```bash
+uv run agent-evaluate-advanced
+```
+
+Evaluates with 20 Japanese test cases (structured data, policy search, compound questions, memory) plus 3 custom scorers:
+
+- **tool_routing_accuracy** -- Whether the correct tool (Genie/Vector Search/Memory) is selected based on the question type
+- **policy_specificity** -- Whether policy answers contain specific numbers ("48 hours", "3,000 yen", etc.)
+- **retail_tone_appropriateness** -- Whether the customer service tone is appropriate (empathy, action suggestions, warmth)
+
+Results can be viewed in the MLflow Experiments UI under the **freshmart-agent-evaluation** experiment.
+
+---
+
+## Step 11 (Optional): Deploying to Databricks Apps
+
+> **Prerequisites:**
+> - Databricks CLI **v0.297 or later** (update with `brew upgrade databricks`)
+> - Available Apps slot in the workspace
+> - PyPI and npm registry access from the Apps environment
+
+> **Important:** Verify that `e2e-chatbot-app-next/package-lock.json` references the **public registry (registry.npmjs.org)**. If it contains a corporate proxy URL, `npm install` will fail in the Apps environment. To verify:
+> ```bash
+> grep -c "registry.npmjs.org" e2e-chatbot-app-next/package-lock.json    # ~900 means OK
+> grep -c "your-proxy" e2e-chatbot-app-next/package-lock.json            # 0 means OK
+> ```
+> If a proxy URL is present, regenerate the lockfile:
+> ```bash
+> cd e2e-chatbot-app-next && rm -f package-lock.json && npm install && cd ..
+> ```
+
+### Set Variables First
+
+It is convenient to set frequently used values as variables for the commands that follow:
+
+```bash
+# Unique app name per participant (e.g., freshmart-agent-taro)
+export APP_NAME="<YOUR-APP-NAME>"
+
+# Your Databricks email address
+export MY_EMAIL=$(databricks current-user me --profile DEFAULT -o json | jq -r .userName)
+echo "APP_NAME: $APP_NAME"
+echo "MY_EMAIL: $MY_EMAIL"
+```
+
+### 11-1. Edit databricks.yml
+
+Open `databricks.yml` and edit the following sections to match your environment (these are auto-updated if you used `uv run quickstart`).
+
+**App name** (must be unique per participant):
+
+```yaml
+      name: "<YOUR-APP-NAME>"  # e.g., freshmart-agent-taro
+```
+
+> `name:` appears in 2 places in the file (`dev` and `prod`). Set both to the same name.
+
+**Resource definitions** (enter the values noted in Steps 7-8):
+
+```yaml
+      resources:
+        - name: "experiment"
+          experiment:
+            experiment_id: "<MONITORING-EXPERIMENT-ID>"   # <- Step 7 value
+            permission: "CAN_MANAGE"
+        - name: "retail_grocery_genie"
+          genie_space:
+            name: "FreshMart Retail Data"
+            space_id: "<GENIE-SPACE-ID>"                  # <- Step 5 value
+            permission: "CAN_RUN"
+        - name: "policy_docs_index"
+          uc_securable:
+            securable_full_name: "<CATALOG>.<SCHEMA>.policy_docs_index"  # <- Step 4 value
+            securable_type: "TABLE"
+            permission: "SELECT"
+        - name: "postgres"
+          postgres:
+            branch: "projects/<PROJECT-NAME>/branches/<BRANCH-NAME>"      # <- Step 6 value
+            database: "projects/<PROJECT-NAME>/branches/<BRANCH-NAME>/databases/databricks_postgres"
+            permission: "CAN_CONNECT_AND_CREATE"
+```
+
+> The `postgres` resource binding automatically grants Lakebase connection permissions (CAN_CONNECT_AND_CREATE) to the app's SP at deploy time.
+
+**Lakebase environment variables** (specified as `value` because `agent.py` directly references project/branch names):
+
+```yaml
+          - name: LAKEBASE_AUTOSCALING_PROJECT
+            value: "<PROJECT-NAME>"                       # <- Step 6 value
+          - name: LAKEBASE_AUTOSCALING_BRANCH
+            value: "<BRANCH-NAME>"                        # <- Step 6 value
+```
+
+### 11-2. Edit app.yaml
+
+Set the Lakebase values in `app.yaml` similarly to `databricks.yml`:
+
+```yaml
+  - name: LAKEBASE_AUTOSCALING_PROJECT
+    value: "<PROJECT-NAME>"
+  - name: LAKEBASE_AUTOSCALING_BRANCH
+    value: "<BRANCH-NAME>"
+```
+
+> Other environment variables (MLFLOW_EXPERIMENT_ID, GENIE_SPACE_ID, VECTOR_SEARCH_INDEX) are automatically injected via resource bindings using `valueFrom`, so no editing is needed.
+
+**If using Delta Table traces**, also add the following to `app.yaml` (auto-added if you used `uv run quickstart`):
+
+```yaml
+  - name: MLFLOW_TRACING_DESTINATION
+    value: "<CATALOG>.<SCHEMA>"
+  - name: MLFLOW_TRACING_SQL_WAREHOUSE_ID
+    value: "<WAREHOUSE-ID>"
+```
+
+### 11-3. Bundle Deploy
+
+```bash
+databricks bundle deploy -t dev --profile DEFAULT
+```
+
+The first deployment takes several minutes as it includes app creation.
+
+### 11-4. Start the App
+
+```bash
+databricks apps start $APP_NAME --profile DEFAULT
+```
+
+Wait until compute becomes ACTIVE:
+
+```bash
+databricks apps get $APP_NAME --profile DEFAULT -o json | jq '.compute_status.state'
+# Wait until "ACTIVE" is displayed
+```
+
+### 11-5. Deploy Source Code
+
+```bash
+databricks apps deploy $APP_NAME \
+  --source-code-path "/Workspace/Users/$MY_EMAIL/.bundle/retail_grocery_ltm_memory/dev/files" \
+  --profile DEFAULT
+```
+
+> **Note:** After deployment, npm install, npm build, and app startup take **3-5 minutes**. Wait until the status becomes RUNNING before verifying:
+> ```bash
+> databricks apps get $APP_NAME --profile DEFAULT -o json | jq '.app_status.state'
+> ```
+
+### 11-6. Grant Service Principal Permissions
+
+Resource bindings **automatically grant** the following permissions at deploy time:
+
+| Resource | Automatically Granted Permissions |
+|---|---|
+| MLflow Experiment | CAN_MANAGE |
+| Genie Space | CAN_RUN |
+| Vector Search Index | SELECT |
+| Lakebase project | CAN_CONNECT_AND_CREATE (connection permission) |
+
+The following must be **granted manually**:
+- **Unity Catalog schema permissions** (USE CATALOG, USE SCHEMA, SELECT, MODIFY)
+- **Lakebase PostgreSQL internal permissions** (schema/table level USAGE, SELECT, INSERT, etc.)
+
+#### Option A: One-command bulk grant (recommended)
+
+Grant all SP permissions in one command from your local machine:
+
+```bash
+uv run grant-sp-permissions
+```
+
+The app name is automatically read from `databricks.yml`. The following permissions are granted:
+1. **Unity Catalog** -- USE CATALOG, USE SCHEMA, SELECT, MODIFY (data schema + trace schema)
+2. **Lakebase PostgreSQL** -- Role creation + USAGE, SELECT, INSERT, UPDATE, DELETE on all memory tables
+
+> To specify the app name, add `--app-name <NAME>`.
+
+#### Option B: Grant manually one by one
+
+<details>
+<summary>Show manual steps</summary>
+
+```bash
+# Retrieve SP Client ID
+SP_CLIENT_ID=$(databricks apps get $APP_NAME --output json --profile DEFAULT | jq -r '.service_principal_client_id')
+echo "SP Client ID: $SP_CLIENT_ID"
+```
+
+**Unity Catalog permissions** (SQL editor, `workshop_setup.py` notebook, or CLI):
+
+Permissions for the **data schema** (Genie, Vector Search) that the agent accesses:
+
+```sql
+-- Data schema (schema containing tables and VS index)
+GRANT USE CATALOG ON CATALOG `<CATALOG>` TO `<SP_CLIENT_ID>`;
+GRANT USE SCHEMA ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `<SP_CLIENT_ID>`;
+GRANT SELECT ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `<SP_CLIENT_ID>`;
+```
+
+If using Delta Table traces, permissions for the **trace schema** are also required. If it is the same as the data schema, just add MODIFY to the above. **If a different schema is specified, grant permissions on that schema as well**:
+
+```sql
+-- Trace schema (same as data schema)
+GRANT MODIFY ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `<SP_CLIENT_ID>`;
+
+-- If trace schema is different (e.g., hiroshi.my_traces)
+-- GRANT USE CATALOG ON CATALOG `<TRACE_CATALOG>` TO `<SP_CLIENT_ID>`;
+-- GRANT USE SCHEMA ON SCHEMA `<TRACE_CATALOG>`.`<TRACE_SCHEMA>` TO `<SP_CLIENT_ID>`;
+-- GRANT SELECT, MODIFY ON SCHEMA `<TRACE_CATALOG>`.`<TRACE_SCHEMA>` TO `<SP_CLIENT_ID>`;
+```
+
+> Check `MLFLOW_TRACING_DESTINATION` in `.env` and grant permissions on both schemas if it differs from the data schema.
+
+**Lakebase PostgreSQL internal permissions**:
+
+> The Lakebase project connection permission (`CAN_CONNECT_AND_CREATE`) is automatically granted via resource bindings, but **PostgreSQL internal schema/table permissions must be granted separately**. Without this, a `permission denied for table` error occurs at app startup.
+
+```bash
+uv run python scripts/grant_lakebase_permissions.py "$SP_CLIENT_ID" \
+  --memory-type langgraph-short-term --project <PROJECT-NAME> --branch <BRANCH-NAME>
+uv run python scripts/grant_lakebase_permissions.py "$SP_CLIENT_ID" \
+  --memory-type langgraph-long-term --project <PROJECT-NAME> --branch <BRANCH-NAME>
+```
+
+</details>
+
+#### Restart the App After Granting Permissions
+
+```bash
+databricks apps stop $APP_NAME --profile DEFAULT
+databricks apps start $APP_NAME --profile DEFAULT
+```
+
+### 11-7. Verify
+
+> **Note:** After starting the app, it takes **3-5 minutes** for the frontend to become fully available.
+
+**Browser**: Access the app URL and verify the chat interface is displayed
+
+```bash
+databricks apps get $APP_NAME --profile DEFAULT -o json | jq -r '.url'
+```
+
+**API test**:
+
+```bash
+APP_URL=$(databricks apps get $APP_NAME --output json --profile DEFAULT | jq -r '.url')
+TOKEN=$(databricks auth token --profile DEFAULT -o json | jq -r .access_token)
+
+curl -X POST "${APP_URL}/invocations" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"input": [{"role": "user", "content": "Tell me about the return policy"}]}'
+```
+
+### 11-8. Redeploying After Changes
+
+After editing `app.yaml`, `agent.py`, the frontend, etc. locally, run the following to push changes to Apps:
+
+```bash
+# 1. Re-sync bundle (local -> workspace)
+databricks bundle deploy -t dev --profile DEFAULT
+
+# 2. Re-deploy source code to the app
+databricks apps deploy $APP_NAME \
+  --source-code-path "/Workspace/Users/$MY_EMAIL/.bundle/retail_grocery_ltm_memory/dev/files" \
+  --profile DEFAULT
+```
+
+> **Note:** After redeployment, npm install/build runs, so it takes **3-5 minutes**. Wait until the status becomes RUNNING.
+>
+> If you changed the `env` section in `app.yaml`, an app restart is also required:
+> ```bash
+> databricks apps stop $APP_NAME --profile DEFAULT
+> databricks apps start $APP_NAME --profile DEFAULT
+> ```
+
+---
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| `python3: command not found` | Verify Python 3.11 or later is installed. `python` may also work |
+| PyPI connection error during `uv sync` | Check internet connection. On corporate networks, verify internal PyPI mirror or proxy settings |
+| `npm install` crashes in Apps environment | `package-lock.json` contains corporate proxy URLs. Regenerate with `rm -f package-lock.json && npm install` for public registry lockfile |
+| `delta.enableChangeDataFeed` error | CDF enablement from Step 3 was not executed. Run `ALTER TABLE` in the SQL editor |
+| VS index not becoming READY | Check status in Catalog Explorer. Verify the endpoint is ONLINE |
+| Lakebase `project_id is required` | Specify `?project_id=<NAME>` in the API query parameter (in the URL, not the JSON body) |
+| `experiments create --name` error | Use `experiments create-experiment "<NAME>"` |
+| `couldn't get a connection after 30 sec` | Lakebase SP permissions not granted. Execute the Lakebase permissions in Step 11-6 and restart the app |
+| `relation "store" does not exist` | Memory tables not created. Restart the app; they are auto-created on the first request |
+| `302` error on API calls | Use OAuth token (`databricks auth token`) instead of PAT |
+| 502 Bad Gateway after deployment | Frontend npm build is still in progress. Wait 3-5 minutes and try again |
+| Resource error during `bundle deploy` | Update Databricks CLI to v0.297 or later (`brew upgrade databricks`) |
+| Apps limit error | Delete unused apps before redeploying |
+| Resources empty in Apps UI | CLI is outdated. Resource bindings are correctly reflected with v0.297 or later |
+
+---
+
+## Resource Cleanup
+
+To delete all resources created during the workshop at once, run:
+
+```bash
+uv run cleanup
+```
+
+The following resources are deleted one by one with confirmation prompts:
+
+1. Databricks App
+2. MLflow Experiments (monitoring + evaluation)
+3. Vector Search index
+4. Genie Space
+5. Lakebase project
+6. Unity Catalog schema (CASCADE -- also deletes tables and trace tables)
+7. Workspace bundle files
+8. Local files (`.env`, `.venv`, logs)
+
+> **Note:** A confirmation prompt is displayed before deleting each resource. You can selectively delete only what you no longer need.
