@@ -655,6 +655,7 @@ class QuickstartWizard(customtkinter.CTk):
             self._catalog_entry.pack(pady=(0, 5))
             if env_val:
                 self._catalog_entry.insert(0, env_val)
+                self.data["catalog"] = env_val
 
             self._catalog_validation_label = customtkinter.CTkLabel(
                 self._catalog_fields_frame, text="", wraplength=400,
@@ -713,6 +714,7 @@ class QuickstartWizard(customtkinter.CTk):
         self._schema_entry.pack(pady=10, padx=40)
         if env_val:
             self._schema_entry.insert(0, env_val)
+            self.data["schema"] = env_val
 
         self._schema_validation_label = customtkinter.CTkLabel(
             frame, text="", wraplength=400,
@@ -1292,6 +1294,7 @@ class QuickstartWizard(customtkinter.CTk):
             val = self.data.get("trace_dest_schema") or default_schema
             if val:
                 self._trace_schema_entry.insert(0, val)
+                self.data["trace_dest_schema"] = val  # sync immediately
             self._trace_schema_entry.bind("<KeyRelease>", lambda _: self._sync_trace_schema())
 
     def _sync_trace_schema(self):
