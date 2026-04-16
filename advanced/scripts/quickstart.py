@@ -318,6 +318,42 @@ def main():
                                  f"Trace destination: Unity Catalog ({tracing_dest})"))
                 print_success(t(".env と app.yaml の両方に設定を追加しました",
                                  "Settings added to both .env and app.yaml"))
+
+                # トレーステーブルの初期作成を即座に実行
+                _t_cat2, _t_sch2 = tracing_dest.split(".", 1)
+                print()
+                print(t("  トレーステーブルを Databricks 上で自動作成します...",
+                         "  Auto-creating trace tables on Databricks..."))
+                trace_setup_ok = run_trace_setup_on_databricks(
+                    profile_name=profile_name,
+                    username=username,
+                    catalog=_t_cat2,
+                    schema=_t_sch2,
+                    warehouse_id=warehouse_id,
+                    experiment_id=monitoring_id,
+                )
+                if trace_setup_ok:
+                    print_success(t("トレーステーブル作成完了!",
+                                     "Trace table setup complete!"))
+                    print(t("  以下の Delta Table が作成されました:",
+                             "  The following Delta Tables were created:"))
+                    print(f"    - {tracing_dest}.mlflow_experiment_trace_otel_spans")
+                    print(f"    - {tracing_dest}.mlflow_experiment_trace_otel_logs")
+                    print(f"    - {tracing_dest}.mlflow_experiment_trace_otel_metrics")
+                else:
+                    print_error(t("自動作成に失敗しました。手動で実行してください:",
+                                   "Automatic setup failed. Please run manually:"))
+                    print()
+                    print("```python")
+                    print("import os")
+                    print(f'os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "{warehouse_id}"')
+                    print("import mlflow")
+                    print("from mlflow.entities import UCSchemaLocation")
+                    print(f'mlflow.tracing.set_experiment_trace_location(')
+                    print(f'    location=UCSchemaLocation(catalog_name="{_t_cat2}", schema_name="{_t_sch2}"),')
+                    print(f'    experiment_id="{monitoring_id}",')
+                    print(")")
+                    print("```")
             else:
                 print_success(t("トレース送信先: MLflow Experiment（デフォルト）",
                                  "Trace destination: MLflow Experiment (default)"))
@@ -420,8 +456,6 @@ def main():
         if tracing_dest:
             summary += t(f"\n\n✓ トレース送信先: Unity Catalog ({tracing_dest})",
                           f"\n\n✓ Trace destination: Unity Catalog ({tracing_dest})")
-            summary += t("\n  ⚠ トレーステーブルの初期作成が必要です（下記参照）",
-                          "\n  Warning: Initial trace table creation required (see below)")
         else:
             summary += t("\n\n✓ トレース送信先: MLflow Experiment（デフォルト）",
                           "\n\n✓ Trace destination: MLflow Experiment (default)")
@@ -429,53 +463,9 @@ def main():
         if lakebase_config:
             summary += f"\n\n✓ Lakebase: {lakebase_config['project']} (branch: {lakebase_config['branch']})"
 
-        if not tracing_dest:
-            summary += t("\n\n次のステップ: uv run start-app\n",
-                          "\n\nNext step: uv run start-app\n")
+        summary += t("\n\n次のステップ: uv run start-app\n",
+                      "\n\nNext step: uv run start-app\n")
         print(summary)
-
-        # Delta Table トレーステーブルの自動作成（選択した場合のみ）
-        if tracing_dest and "." in tracing_dest and not _existing_dest:
-            # 新規設定の場合のみ実行（既存 Experiment から検出した場合は既に設定済みなのでスキップ）
-            _cat, _sch = tracing_dest.split(".", 1)
-            print()
-            print("=" * 60)
-            print(t("Unity Catalog トレーステーブルの初期作成",
-                     "Unity Catalog Trace Table Setup"))
-            print("=" * 60)
-            print(t("  Databricks 上でサーバーレス実行してトレーステーブルを作成します...",
-                     "  Running serverless on Databricks to create trace tables..."))
-
-            success = run_trace_setup_on_databricks(
-                profile_name=profile_name,
-                username=username,
-                catalog=_cat,
-                schema=_sch,
-                warehouse_id=warehouse_id,
-                experiment_id=monitoring_id,
-            )
-            if success:
-                print_success(t("トレーステーブル作成完了!", "Trace table setup complete!"))
-                print(t("  以下の Delta Table が作成されました:",
-                         "  The following Delta Tables were created:"))
-                print(f"    - {tracing_dest}.mlflow_experiment_trace_otel_spans")
-                print(f"    - {tracing_dest}.mlflow_experiment_trace_otel_logs")
-                print(f"    - {tracing_dest}.mlflow_experiment_trace_otel_metrics")
-            else:
-                print_error(t("自動作成に失敗しました。手動で実行してください:",
-                               "Automatic setup failed. Please run manually:"))
-                print()
-                print("```python")
-                print("import os")
-                print(f'os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "{warehouse_id}"')
-                print("import mlflow")
-                print("from mlflow.entities import UCSchemaLocation")
-                print(f'mlflow.tracing.set_experiment_trace_location(')
-                print(f'    location=UCSchemaLocation(catalog_name="{_cat}", schema_name="{_sch}"),')
-                print(f'    experiment_id="{monitoring_id}",')
-                print(")")
-                print("```")
-            print("=" * 60)
 
         # チームメンバーへの共有情報
         print()
