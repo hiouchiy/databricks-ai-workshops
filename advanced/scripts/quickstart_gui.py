@@ -578,17 +578,17 @@ class QuickstartWizard(customtkinter.CTk):
         self.data["_catalog_mode"] = mode
 
         if mode == "existing":
-            # Fetch catalogs via SQL API
+            # Fetch catalogs via Unity Catalog REST API (no warehouse needed)
             token = self.data.get("token", "")
             host = self.data.get("host", "")
-            warehouse_id = self.data.get("warehouse_id", "")
             catalogs: list[str] = []
-            if token and host and warehouse_id:
+            if token and host:
                 try:
-                    result = core.run_sql_statement("SHOW CATALOGS", token, host, warehouse_id)
-                    if result.get("status", {}).get("state") == "SUCCEEDED":
-                        data_array = result.get("result", {}).get("data_array", [])
-                        catalogs = [row[0] for row in data_array if row]
+                    result = core.api_get("/api/2.1/unity-catalog/catalogs", token, host)
+                    for cat in result.get("catalogs", []):
+                        catalogs.append(cat.get("name", ""))
+                    catalogs = [c for c in catalogs if c]
+                    catalogs.sort()
                 except Exception:
                     pass
 
@@ -596,8 +596,8 @@ class QuickstartWizard(customtkinter.CTk):
                 customtkinter.CTkLabel(
                     self._catalog_fields_frame,
                     text=t(
-                        "カタログを取得できませんでした。\n認証とウェアハウスの設定を確認してください。",
-                        "Could not fetch catalogs.\nPlease check authentication and warehouse settings.",
+                        "カタログを取得できませんでした。\n認証設定を確認してください。",
+                        "Could not fetch catalogs.\nPlease check authentication settings.",
                     ),
                     text_color="orange",
                     wraplength=400,
