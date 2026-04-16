@@ -109,16 +109,23 @@ advanced/
 
 ### 方法 1：クイックスタート（推奨）
 
+CUI（コマンドライン）版と GUI（デスクトップアプリ）版の2つが用意されています。実行内容は同じです。
+
 ```bash
 # リポジトリをクローン
 git clone https://github.com/hiouchiy/databricks-ai-workshops.git
 cd databricks-ai-workshops/advanced
 
-# 対話式セットアップウィザードを実行
+# CUI 版（ターミナルで対話式に実行）
 uv run quickstart
+
+# GUI 版（デスクトップウィザードが起動）
+uv run quickstart-ui
 ```
 
-クイックスタートスクリプトが以下を対話式で実行します：
+GUI 版はステップごとに1画面ずつ設定を進めるウィザード形式で、カタログの一覧選択・名前のバリデーション・進捗バー表示などの機能があります。ターミナル操作に不慣れな場合は GUI 版をお勧めします。
+
+クイックスタートが以下を対話式で実行します：
 1. 前提条件チェック（`uv`、`Node.js`、`Databricks CLI`）
 2. Databricks 認証
 3. カタログ名・スキーマ名・SQL ウェアハウス・Vector Search エンドポイントの入力
@@ -508,16 +515,23 @@ advanced/
 
 ### Option 1: Quick Start (Recommended)
 
+Both a CUI (command-line) and GUI (desktop app) version are available. They perform the same setup.
+
 ```bash
 # Clone the repository
 git clone https://github.com/hiouchiy/databricks-ai-workshops.git
 cd databricks-ai-workshops/advanced
 
-# Run the interactive setup wizard
+# CUI version (interactive terminal wizard)
 uv run quickstart
+
+# GUI version (desktop wizard with step-by-step pages)
+uv run quickstart-ui
 ```
 
-The quickstart script will interactively walk you through:
+The GUI version guides you through one setting per page, with features like catalog dropdown selection, name validation, and a progress bar. Recommended if you prefer a visual interface.
+
+The quickstart will interactively walk you through:
 1. Prerequisites check (`uv`, `Node.js`, `Databricks CLI`)
 2. Databricks authentication
 3. Input catalog name, schema name, SQL warehouse, and Vector Search endpoint
