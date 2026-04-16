@@ -74,6 +74,11 @@ class QuickstartWizard(customtkinter.CTk):
             # Trace
             "trace_dest_mode": "mlflow",
             "trace_dest_schema": "",
+            "existing_trace_dest": "",
+            # Prompt Registry
+            "use_prompt_registry": "no",
+            # Prerequisites
+            "prereqs_ok": False,
             # Execution
             "setup_log": [],
             "setup_failed_steps": [],
@@ -114,6 +119,12 @@ class QuickstartWizard(customtkinter.CTk):
 
         # Show first page
         self.show_page(0)
+
+        # Bring window to front
+        self.lift()
+        self.attributes("-topmost", True)
+        self.after(500, lambda: self.attributes("-topmost", False))
+        self.focus_force()
 
     # ── Window centering ────────────────────────────────────────────────
     def _center_window(self, w: int, h: int):
@@ -336,9 +347,24 @@ class QuickstartWizard(customtkinter.CTk):
     def _page_auth(self, frame: customtkinter.CTkFrame):
         customtkinter.CTkLabel(
             frame,
-            text=t("Databricks \u8a8d\u8a3c", "Databricks Authentication"),
+            text=t("Databricks 認証", "Databricks Authentication"),
             font=customtkinter.CTkFont(size=22, weight="bold"),
-        ).pack(pady=(20, 10))
+        ).pack(pady=(20, 5))
+
+        # Prerequisites check (run once)
+        if not self.data.get("prereqs_ok"):
+            prereqs = core.check_prerequisites()
+            missing = core.check_missing_prerequisites(prereqs)
+            if missing:
+                warn_text = t(
+                    "⚠ 不足ツール: " + ", ".join(missing),
+                    "⚠ Missing tools: " + ", ".join(missing),
+                )
+                customtkinter.CTkLabel(
+                    frame, text=warn_text, text_color="orange", wraplength=550,
+                ).pack(pady=(0, 5), padx=40)
+            else:
+                self.data["prereqs_ok"] = True
 
         profiles = core.get_databricks_profiles()
         profile_names = [p["name"] for p in profiles]
@@ -825,6 +851,66 @@ class QuickstartWizard(customtkinter.CTk):
             if self.data.get("eval_id"):
                 self._eval_id_entry.insert(0, self.data["eval_id"])
             self._eval_id_entry.bind("<KeyRelease>", lambda _: self._sync_eval_id())
+
+            # Button to detect existing trace destination
+            customtkinter.CTkButton(
+                self._mlflow_fields_frame,
+                text=t("トレース設定を検出", "Detect trace settings"),
+                width=200,
+                command=self._detect_existing_trace,
+            ).pack(pady=(10, 5))
+
+            self._trace_detect_label = customtkinter.CTkLabel(
+                self._mlflow_fields_frame, text="", wraplength=400,
+            )
+            self._trace_detect_label.pack()
+
+    def _detect_existing_trace(self):
+        """Check if existing experiment already has Delta Table tracing configured."""
+        mon_id = self.data.get("monitoring_id", "").strip()
+        if not mon_id:
+            self._trace_detect_label.configure(
+                text=t("モニタリング Experiment ID を先に入力してください",
+                        "Enter Monitoring Experiment ID first"),
+                text_color="orange",
+            )
+            return
+
+        profile = self.data.get("profile_name", "")
+        try:
+            result = core.run_command(
+                ["databricks", "experiments", "get-experiment", mon_id, "-p", profile, "-o", "json"],
+                check=False,
+            )
+            if result.returncode == 0:
+                import json as _json
+                exp_data = _json.loads(result.stdout)
+                tags = exp_data.get("experiment", exp_data).get("tags", [])
+                for tag in tags:
+                    if tag.get("key") == "mlflow.experiment.databricksTraceDestinationPath":
+                        dest = tag.get("value", "")
+                        self.data["existing_trace_dest"] = dest
+                        self.data["trace_dest_mode"] = "delta"
+                        self.data["trace_dest_schema"] = dest
+                        self._trace_detect_label.configure(
+                            text=t(f"✓ Delta Table トレース検出: {dest}",
+                                    f"✓ Delta Table tracing detected: {dest}"),
+                            text_color="green",
+                        )
+                        return
+                self._trace_detect_label.configure(
+                    text=t("トレース設定なし（MLflow Experiment デフォルト）",
+                            "No trace config found (MLflow Experiment default)"),
+                    text_color="gray",
+                )
+            else:
+                self._trace_detect_label.configure(
+                    text=t("Experiment が見つかりません。ID を確認してください。",
+                            "Experiment not found. Please check the ID."),
+                    text_color="orange",
+                )
+        except Exception as e:
+            self._trace_detect_label.configure(text=str(e)[:100], text_color="red")
 
     def _sync_mlflow_base(self):
         self.data["mlflow_base_name"] = self._mlflow_base_entry.get().strip()
