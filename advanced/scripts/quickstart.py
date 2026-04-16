@@ -86,6 +86,7 @@ from scripts.quickstart_core import (
     _build_serialized_space,
     create_genie_space,
     install_dependencies,
+    init_lakebase_tables,
 )
 
 
@@ -132,7 +133,7 @@ def main():
                         "FreshMart AI Agent - Quickstart Setup"))
 
         # ── Phase 1: 前提条件チェック ──
-        print_step(t("[1/7] 前提条件チェック", "[1/7] Prerequisites check"))
+        print_step(t("[1/8] 前提条件チェック", "[1/8] Prerequisites check"))
         prereqs = check_prerequisites()
         missing = check_missing_prerequisites(prereqs)
         if missing:
@@ -151,7 +152,7 @@ def main():
         setup_env_file()
 
         # ── Phase 2: 認証 ──
-        print_step(t("[2/7] Databricks 認証", "[2/7] Databricks authentication"))
+        print_step(t("[2/8] Databricks 認証", "[2/8] Databricks authentication"))
         profile_name = setup_databricks_auth(args.profile, args.host)
         username = get_databricks_username(profile_name)
         host = get_databricks_host(profile_name)
@@ -160,7 +161,7 @@ def main():
         print(t(f"  ワークスペース: {host}", f"  Workspace: {host}"))
 
         # ── Phase 3: ユーザー入力 ──
-        print_step(t("[3/7] ワークスペース設定", "[3/7] Workspace configuration"))
+        print_step(t("[3/8] ワークスペース設定", "[3/8] Workspace configuration"))
 
         # Catalog
         default_catalog = args.catalog or username.split("@")[0].replace(".", "_")
@@ -196,7 +197,7 @@ def main():
             vs_endpoint = select_vs_endpoint_interactive(token, host)
 
         # ── Phase 4: リソース作成 ──
-        print_step(t("[4/7] リソース作成", "[4/7] Resource creation"))
+        print_step(t("[4/8] リソース作成", "[4/8] Resource creation"))
 
         # 4-1: Catalog & Schema
         create_catalog_schema(token, host, warehouse_id, catalog, schema)
@@ -240,7 +241,7 @@ def main():
         )
 
         # ── Phase 5: .env 更新 ──
-        print_step(t("[5/7] 環境設定 (.env)", "[5/7] Environment configuration (.env)"))
+        print_step(t("[5/8] 環境設定 (.env)", "[5/8] Environment configuration (.env)"))
         update_env_file("DATABRICKS_HOST", host)
         update_env_file("MLFLOW_EXPERIMENT_ID", monitoring_id)
         update_env_file("MLFLOW_EVAL_EXPERIMENT_ID", eval_id)
@@ -415,10 +416,15 @@ def main():
                              "Updated placeholders in workshop_setup.py"))
 
         # ── Phase 6: 依存関係 ──
-        print_step(t("[6/7] 依存関係のインストール", "[6/7] Installing dependencies"))
+        print_step(t("[6/8] 依存関係のインストール", "[6/8] Installing dependencies"))
         install_dependencies()
 
-        # ── Phase 7: サマリー ──
+        # ── Phase 7: Lakebase テーブル初期化 ──
+        if lakebase_config:
+            print_step(t("[7/8] Lakebase テーブル初期化", "[7/8] Lakebase table initialization"))
+            init_lakebase_tables()
+
+        # ── Phase 8: サマリー ──
         print_header(t("セットアップ完了！", "Setup Complete!"))
 
         # Access LANG from core module

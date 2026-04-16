@@ -2036,3 +2036,60 @@ def install_dependencies():
     else:
         print(t("  ⚠ e2e-chatbot-app-next/ が見つかりません（フロントエンドなし）",
                  "  Warning: e2e-chatbot-app-next/ not found (no frontend)"))
+
+
+def init_lakebase_tables() -> bool:
+    """Briefly start the agent server to trigger Lakebase table creation.
+
+    The LangGraph checkpointer and DatabricksStore run auto-migrations on
+    startup, creating all required PostgreSQL tables. We start the server
+    for a few seconds, then stop it.
+
+    Returns True if the server started and presumably created the tables.
+    """
+    import time
+
+    print_step(t("Lakebase テーブルを初期化中（サーバーを一時起動）...",
+                  "Initializing Lakebase tables (briefly starting server)..."))
+
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "agent_server.start_server:app",
+             "--host", "127.0.0.1", "--port", "18765"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env={**os.environ, "PORT": "18765"},
+        )
+
+        # Wait for initialization (migrations run on import/startup)
+        for i in range(20):
+            time.sleep(1)
+            if proc.poll() is not None:
+                # Process exited early — check if it at least started
+                break
+            # Check if server is responding
+            try:
+                import urllib.request
+                urllib.request.urlopen("http://127.0.0.1:18765/health", timeout=2)
+                print_success(t("サーバー起動確認、テーブル作成済み",
+                                 "Server started, tables created"))
+                break
+            except Exception:
+                pass  # Not ready yet
+
+        # Stop the server
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+        print_success(t("Lakebase テーブル初期化完了",
+                         "Lakebase table initialization complete"))
+        return True
+    except Exception as e:
+        print(t(f"  ⚠ テーブル初期化をスキップ: {str(e)[:150]}",
+                 f"  Warning: Skipping table init: {str(e)[:150]}"))
+        print(t("  アプリ初回起動後に grant-sp-permissions を再実行してください。",
+                 "  Run grant-sp-permissions again after the first app startup."))
+        return False
