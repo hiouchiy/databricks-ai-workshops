@@ -1539,7 +1539,10 @@ print("Trace location set successfully.")
         }],
         "environments": [{
             "environment_key": "default",
-            "spec": {"client": "1"},
+            "spec": {
+                "client": "1",
+                "dependencies": ["mlflow"],
+            },
         }],
     })
     if "error" in submit_result:
