@@ -165,28 +165,44 @@ def grant_lakebase_permissions(sp_id: str):
         "drizzle": ["__drizzle_migrations"],
     }
 
-    # public スキーマ
-    all_public_tables = short_term_tables + long_term_tables
-    try:
-        client.grant_schema(grantee=sp_id, schemas=["public"], privileges=schema_privs)
-        qualified_tables = [f"public.{t}" for t in all_public_tables]
-        client.grant_table(grantee=sp_id, tables=qualified_tables, privileges=table_privs)
-        print_success(f"Lakebase public スキーマ: {len(all_public_tables)} テーブル権限付与")
-    except Exception as e:
-        print_error(f"Lakebase public スキーマ権限付与失敗: {str(e)[:200]}")
+    # 全スキーマをまとめて処理
+    all_schemas = {
+        "public": short_term_tables + long_term_tables,
+        **frontend_schemas,
+    }
 
-    # frontend スキーマ
-    for schema_name, tables in frontend_schemas.items():
+    for schema_name, tables in all_schemas.items():
+        # スキーマ権限
         try:
             client.grant_schema(grantee=sp_id, schemas=[schema_name], privileges=schema_privs)
-            qualified_tables = [f"{schema_name}.{t}" for t in tables]
-            client.grant_table(grantee=sp_id, tables=qualified_tables, privileges=table_privs)
-            print_success(f"Lakebase {schema_name} スキーマ: {len(tables)} テーブル権限付与")
         except Exception as e:
             if "does not exist" in str(e).lower():
                 print_warn(f"Lakebase {schema_name} スキーマ未作成（初回起動後に再実行してください）")
+                continue
             else:
                 print_error(f"Lakebase {schema_name} スキーマ権限付与失敗: {str(e)[:200]}")
+                continue
+
+        # テーブル権限（1テーブルずつ、存在しないテーブルはスキップ）
+        granted = 0
+        skipped = 0
+        for table in tables:
+            try:
+                client.grant_table(grantee=sp_id, tables=[f"{schema_name}.{table}"], privileges=table_privs)
+                granted += 1
+            except Exception as e:
+                if "does not exist" in str(e).lower():
+                    skipped += 1
+                else:
+                    print_error(f"  {schema_name}.{table}: {str(e)[:150]}")
+
+        if granted > 0:
+            msg = f"Lakebase {schema_name}: {granted} テーブル権限付与"
+            if skipped > 0:
+                msg += f"（{skipped} テーブル未作成 — 初回起動後に再実行）"
+            print_success(msg)
+        elif skipped > 0:
+            print_warn(f"Lakebase {schema_name}: 全 {skipped} テーブル未作成（初回起動後に再実行してください）")
 
 
 def main():
