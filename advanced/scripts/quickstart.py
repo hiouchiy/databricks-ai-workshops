@@ -915,7 +915,37 @@ def validate_lakebase_autoscaling(profile_name: str, project: str, branch: str) 
         except (json.JSONDecodeError, IndexError, KeyError):
             pass
 
-    return {"host": pg_host}
+    # Fetch database ID for the postgres resource binding in databricks.yml
+    # The resource path uses the Lakebase database_id (e.g. "db-xxxx-yyyyyy"),
+    # NOT the PostgreSQL database name ("databricks_postgres").
+    database_id = ""
+    result = run_command(
+        [
+            "databricks",
+            "-p",
+            profile_name,
+            "api",
+            "get",
+            f"/api/2.0/postgres/projects/{project}/branches/{branch}/databases",
+            "--output",
+            "json",
+        ],
+        check=False,
+    )
+    if result.returncode == 0 and result.stdout:
+        try:
+            db_data = json.loads(result.stdout)
+            databases = db_data.get("databases", [])
+            if databases:
+                database_id = databases[0].get("status", {}).get("database_id", "")
+        except (json.JSONDecodeError, IndexError, KeyError):
+            pass
+
+    if not database_id:
+        print_error("Could not fetch database ID from Lakebase branch. "
+                     "The postgres resource in databricks.yml may need manual correction.")
+
+    return {"host": pg_host, "database_id": database_id}
 
 
 def setup_lakebase(
@@ -988,7 +1018,12 @@ def setup_lakebase(
         print_success(
             f"Lakebase autoscaling config saved to .env (project: {autoscaling_project}, branch: {autoscaling_branch})"
         )
-        return {"type": "autoscaling", "project": autoscaling_project, "branch": autoscaling_branch}
+        return {
+            "type": "autoscaling",
+            "project": autoscaling_project,
+            "branch": autoscaling_branch,
+            "database_id": branch_info.get("database_id", ""),
+        }
 
     # Interactive selection
     selection = select_lakebase_interactive(profile_name)
@@ -1043,6 +1078,7 @@ def setup_lakebase(
         print_success(
             f"Lakebase autoscaling config saved to .env (project: {project}, branch: {branch})"
         )
+        selection["database_id"] = branch_info.get("database_id", "")
 
     return selection
 
@@ -1164,12 +1200,12 @@ def _replace_lakebase_resource(content: str, lakebase_config: dict) -> str:
                 break
         return i
 
-    def _build_postgres_block(indent: str, project: str, branch: str) -> list[str]:
+    def _build_postgres_block(indent: str, project: str, branch: str, database_id: str) -> list[str]:
         return [
             f'{indent}- name: "postgres"',
             f"{indent}  postgres:",
             f'{indent}    branch: "projects/{project}/branches/{branch}"',
-            f'{indent}    database: "projects/{project}/branches/{branch}/databases/databricks_postgres"',
+            f'{indent}    database: "projects/{project}/branches/{branch}/databases/{database_id}"',
             f"{indent}    permission: \"CAN_CONNECT_AND_CREATE\"",
         ]
 
@@ -1214,7 +1250,8 @@ def _replace_lakebase_resource(content: str, lakebase_config: dict) -> str:
             if lakebase_config["type"] == "autoscaling" and not emitted_lakebase_resource:
                 indent = resource_indent or "        "
                 result.extend(_build_postgres_block(
-                    indent, lakebase_config["project"], lakebase_config["branch"]))
+                    indent, lakebase_config["project"], lakebase_config["branch"],
+                    lakebase_config.get("database_id", "")))
                 emitted_lakebase_resource = True
             continue
 
@@ -1227,7 +1264,8 @@ def _replace_lakebase_resource(content: str, lakebase_config: dict) -> str:
             if lakebase_config["type"] == "autoscaling" and not emitted_lakebase_resource:
                 indent = resource_indent or "        "
                 result.extend(_build_postgres_block(
-                    indent, lakebase_config["project"], lakebase_config["branch"]))
+                    indent, lakebase_config["project"], lakebase_config["branch"],
+                    lakebase_config.get("database_id", "")))
                 emitted_lakebase_resource = True
             continue
 
@@ -1288,7 +1326,8 @@ def _replace_lakebase_resource(content: str, lakebase_config: dict) -> str:
                 new_lines = _build_database_block(indent, lakebase_config["instance_name"])
             else:
                 new_lines = _build_postgres_block(
-                    indent, lakebase_config["project"], lakebase_config["branch"])
+                    indent, lakebase_config["project"], lakebase_config["branch"],
+                    lakebase_config.get("database_id", ""))
             result = result[:insert_idx] + new_lines + result[insert_idx:]
 
     return "\n".join(result) + "\n"

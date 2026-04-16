@@ -51,7 +51,7 @@ resources:
         - name: "postgres"
           postgres:
             branch: "projects/hiroshi-fresh-mart-lakebase/branches/hiroshi-fresh-mart-lakebase-branch"
-            database: "projects/hiroshi-fresh-mart-lakebase/branches/hiroshi-fresh-mart-lakebase-branch/databases/databricks_postgres"
+            database: "projects/hiroshi-fresh-mart-lakebase/branches/hiroshi-fresh-mart-lakebase-branch/databases/db-mmvq-rbav5mnpjo"
             permission: "CAN_CONNECT_AND_CREATE"
 
 targets:
