@@ -626,7 +626,18 @@ databricks apps deploy $APP_NAME \
 
 ### 11-6. サービスプリンシパルへのパーミッション付与
 
-リソースバインディング（Experiment、Genie、VS Index）は自動的に SP に権限が付与されますが、**Unity Catalog スキーマと Lakebase は手動で付与**する必要があります。
+リソースバインディングにより、以下の権限はデプロイ時に **自動付与** されます：
+
+| リソース | 自動付与される権限 |
+|---|---|
+| MLflow Experiment | CAN_MANAGE |
+| Genie Space | CAN_RUN |
+| Vector Search Index | SELECT |
+| Lakebase プロジェクト | CAN_CONNECT_AND_CREATE（接続権限） |
+
+以下は**手動で付与**する必要があります：
+- **Unity Catalog スキーマ権限**（USE CATALOG, USE SCHEMA, SELECT, MODIFY）
+- **Lakebase PostgreSQL 内部権限**（スキーマ・テーブルレベルの USAGE, SELECT, INSERT 等）
 
 ```bash
 # SP Client ID を取得
@@ -659,7 +670,9 @@ GRANT MODIFY ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `<SP_CLIENT_ID>`;
 
 > `.env` の `MLFLOW_TRACING_DESTINATION` を確認して、データスキーマと異なる場合は両方に権限を付与してください。
 
-**Lakebase パーミッション**：
+**Lakebase PostgreSQL 内部パーミッション**：
+
+> Lakebase のプロジェクト接続権限（`CAN_CONNECT_AND_CREATE`）はリソースバインディングで自動付与されますが、**PostgreSQL 内部のスキーマ・テーブル権限は別途付与が必要**です。これがないと、アプリ起動時に `permission denied for table` エラーが発生します。
 
 ```bash
 uv run python scripts/grant_lakebase_permissions.py "$SP_CLIENT_ID" \

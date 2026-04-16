@@ -22,9 +22,8 @@ resources:
             value: "300"
           - name: MLFLOW_EXPERIMENT_ID
             value_from: "experiment"
-          # Lakebase: CLI v0.297 でもアプリの postgres リソースバインディングが未対応
-          # （branch_id / database_name が unknown field として無視される）
-          # SP への Lakebase 権限は grant_lakebase_permissions.py で手動付与
+          # Lakebase: agent.py は project + branch で接続するため value で指定
+          # リソースバインディング（postgres）は SP への CAN_CONNECT_AND_CREATE 自動付与に使用
           - name: LAKEBASE_AUTOSCALING_PROJECT
             value: "hiroshi-fresh-mart-lakebase"
           - name: LAKEBASE_AUTOSCALING_BRANCH
@@ -48,6 +47,12 @@ resources:
             securable_full_name: "hiroshi.retail_agent.policy_docs_index"
             securable_type: "TABLE"
             permission: "SELECT"
+        # Lakebase: SP への自動権限付与（公式テンプレートと同じフォーマット）
+        - name: "postgres"
+          postgres:
+            branch: "projects/hiroshi-fresh-mart-lakebase/branches/hiroshi-fresh-mart-lakebase-branch"
+            database: "projects/hiroshi-fresh-mart-lakebase/branches/hiroshi-fresh-mart-lakebase-branch/databases/databricks_postgres"
+            permission: "CAN_CONNECT_AND_CREATE"
 
 targets:
   dev:
