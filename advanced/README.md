@@ -57,7 +57,9 @@ advanced/
 │   ├── quickstart.py                # 対話式セットアップウィザード
 │   ├── start_app.py                 # フロントエンド + バックエンドを同時起動
 │   ├── discover_tools.py            # 利用可能な Databricks ツールの検出
-│   ├── grant_lakebase_permissions.py
+│   ├── grant_sp_permissions.py       # デプロイ後の SP 権限一括付与（UC + Lakebase）
+│   ├── grant_lakebase_permissions.py # Lakebase PostgreSQL 内部権限の個別付与
+│   ├── grant_team_access.py          # チームメンバーへのリソース共有
 │   └── register_prompt.py           # 日本語システムプロンプトを Prompt Registry に登録
 │
 ├── .claude/skills/                  # Claude Code 用 AI 開発支援スキル
@@ -332,6 +334,21 @@ uv add <パッケージ名>
 
 ## Databricks Apps へのデプロイ
 
+```bash
+# 1. バンドルデプロイ
+databricks bundle deploy -t dev --profile DEFAULT
+
+# 2. アプリ起動（初回は 3〜5 分かかります）
+databricks bundle run retail_grocery_ltm_memory -t dev --profile DEFAULT
+
+# 3. SP 権限付与（UC + Lakebase を一括）
+uv run grant-sp-permissions
+
+# 4. アプリ再起動
+databricks apps stop $APP_NAME --profile DEFAULT
+databricks apps start $APP_NAME --profile DEFAULT
+```
+
 詳細な手順は [WORKSHOP_INSTRUCTIONS.md](WORKSHOP_INSTRUCTIONS.md) のステップ 11 を参照してください。
 
 ---
@@ -342,7 +359,7 @@ uv add <パッケージ名>
 |------|--------|
 | `Lakebase configuration is required` | `.env` に `LAKEBASE_AUTOSCALING_PROJECT` と `LAKEBASE_AUTOSCALING_BRANCH`（またはプロビジョニング済みの場合は `LAKEBASE_INSTANCE_NAME`）を設定 |
 | `302 redirect when querying deployed agent` | PAT ではなく OAuth トークンを使用。`databricks auth token` を実行 |
-| `Permission denied on Lakebase` | `uv run python scripts/grant_lakebase_permissions.py` を実行 |
+| `Permission denied on Lakebase` | `uv run grant-sp-permissions` を実行（または個別に `grant_lakebase_permissions.py`） |
 | `Streaming 200 OK but error in stream` | 想定どおり — 200 はストリーム確立を示す。エラー内容を確認 |
 | `GENIE_SPACE_ID not set` | `.env` に設定するか `uv run quickstart` で指定 |
 | `nvm: command not found` | nvm をインストール：`curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh \| bash` |
@@ -447,7 +464,9 @@ advanced/
 │   ├── quickstart.py                # Interactive setup wizard
 │   ├── start_app.py                 # Starts both frontend + backend
 │   ├── discover_tools.py            # Discovers available Databricks tools
-│   ├── grant_lakebase_permissions.py
+│   ├── grant_sp_permissions.py       # Post-deploy SP permissions (UC + Lakebase)
+│   ├── grant_lakebase_permissions.py # Lakebase PostgreSQL internal permissions
+│   ├── grant_team_access.py          # Share resources with team members
 │   └── register_prompt.py           # Register Japanese system prompt to Prompt Registry
 │
 ├── .claude/skills/                  # Claude Code skills for AI-assisted development
@@ -699,6 +718,21 @@ uv add <package_name>
 
 ## Deploying to Databricks Apps
 
+```bash
+# 1. Bundle deploy
+databricks bundle deploy -t dev --profile DEFAULT
+
+# 2. Start app (takes 3-5 minutes on first run)
+databricks bundle run retail_grocery_ltm_memory -t dev --profile DEFAULT
+
+# 3. Grant SP permissions (UC + Lakebase in one command)
+uv run grant-sp-permissions
+
+# 4. Restart app
+databricks apps stop $APP_NAME --profile DEFAULT
+databricks apps start $APP_NAME --profile DEFAULT
+```
+
 For detailed deployment instructions, see Step 11 in [WORKSHOP_INSTRUCTIONS.md](WORKSHOP_INSTRUCTIONS.md).
 
 ---
@@ -712,7 +746,7 @@ For detailed deployment instructions, see Step 11 in [WORKSHOP_INSTRUCTIONS.md](
 | `npm install` crashes in Apps | `package-lock.json` contains corporate proxy URLs. Run `rm -f package-lock.json && npm install` to regenerate with public registry |
 | `delta.enableChangeDataFeed` error | CDF not enabled. Run `ALTER TABLE` in SQL editor |
 | VS index not becoming READY | Check status in Catalog Explorer. Ensure endpoint is ONLINE |
-| `couldn't get a connection after 30 sec` | Lakebase SP permissions missing. Run `grant_lakebase_permissions.py` and restart app |
+| `couldn't get a connection after 30 sec` | Lakebase SP permissions missing. Run `uv run grant-sp-permissions` and restart app |
 | `checkpoint_migrations` duplicate key | Harmless on first startup (concurrent init). Auto-recovered on retry |
 | `tool_use without tool_result` | Corrupted checkpoint. Auto-recovered by deleting checkpoint and retrying |
 | `302 redirect when querying deployed agent` | Use OAuth token, not PAT. Run `databricks auth token` |

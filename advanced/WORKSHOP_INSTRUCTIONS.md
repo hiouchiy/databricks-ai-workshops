@@ -646,13 +646,32 @@ databricks apps deploy $APP_NAME \
 - **Unity Catalog スキーマ権限**（USE CATALOG, USE SCHEMA, SELECT, MODIFY）
 - **Lakebase PostgreSQL 内部権限**（スキーマ・テーブルレベルの USAGE, SELECT, INSERT 等）
 
+#### 方法 A：ワンコマンドで一括付与（推奨）
+
+ローカルからすべての SP 権限を一括で付与できます：
+
+```bash
+uv run grant-sp-permissions
+```
+
+アプリ名は `databricks.yml` から自動取得されます。以下の権限が付与されます：
+1. **Unity Catalog** — USE CATALOG, USE SCHEMA, SELECT, MODIFY（データスキーマ + トレーススキーマ）
+2. **Lakebase PostgreSQL** — ロール作成 + 全メモリテーブルの USAGE, SELECT, INSERT, UPDATE, DELETE
+
+> アプリ名を指定する場合は `--app-name <名前>` を追加してください。
+
+#### 方法 B：手動で個別に付与
+
+<details>
+<summary>手動手順を表示</summary>
+
 ```bash
 # SP Client ID を取得
 SP_CLIENT_ID=$(databricks apps get $APP_NAME --output json --profile DEFAULT | jq -r '.service_principal_client_id')
 echo "SP Client ID: $SP_CLIENT_ID"
 ```
 
-**Unity Catalog パーミッション**（`workshop_setup.py` の SP 権限セル、SQL エディタ、または CLI）：
+**Unity Catalog パーミッション**（SQL エディタ、`workshop_setup.py` ノートブック、または CLI）：
 
 エージェントがアクセスする**データスキーマ**（Genie、Vector Search）への権限：
 
@@ -688,7 +707,9 @@ uv run python scripts/grant_lakebase_permissions.py "$SP_CLIENT_ID" \
   --memory-type langgraph-long-term --project <PROJECT-NAME> --branch <BRANCH-NAME>
 ```
 
-パーミッション付与後、アプリを再起動してください：
+</details>
+
+#### パーミッション付与後のアプリ再起動
 
 ```bash
 databricks apps stop $APP_NAME --profile DEFAULT
