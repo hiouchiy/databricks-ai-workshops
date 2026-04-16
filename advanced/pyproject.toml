@@ -19,6 +19,7 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "uuid-utils>=0.9.0",
     "streamlit>=1.45.0",
+    "customtkinter>=5.2.0",
 ]
 
 [build-system]
@@ -46,3 +47,4 @@ register-prompt = "scripts.register_prompt:main"
 cleanup = "scripts.cleanup:main"
 grant-team-access = "scripts.grant_team_access:main"
 grant-sp-permissions = "scripts.grant_sp_permissions:main"
+quickstart-ui = "scripts.quickstart_gui:main"

@@ -1,978 +1,1425 @@
 #!/usr/bin/env python3
 """
-Streamlit GUI wizard for Databricks agent quickstart setup.
+CustomTkinter desktop wizard for Databricks agent quickstart setup.
 
 Usage:
-    uv run streamlit run scripts/quickstart_gui.py
+    uv run quickstart-ui
 """
 
+import contextlib
+import io
 import json
+import queue
 import subprocess
-import sys
-import time
+import threading
+import tkinter as tk
 from pathlib import Path
 
-import streamlit as st
+import customtkinter
 
 from scripts import quickstart_core as core
 
-# ─────────────────────────────────────────────────────────────────────
-# Session state initialisation
-# ─────────────────────────────────────────────────────────────────────
+# ── Appearance ──────────────────────────────────────────────────────────
+customtkinter.set_appearance_mode("dark")
+customtkinter.set_default_color_theme("blue")
 
-_DEFAULTS = {
-    "page": 1,
-    "lang": "ja",
-    # Auth
-    "profile_name": "",
-    "host": "",
-    "username": "",
-    "token": "",
-    "auth_ok": False,
-    # Workspace
-    "catalog": "",
-    "schema": "",
-    "warehouse_id": "",
-    "warehouse_name": "",
-    "vs_endpoint": "",
-    # Lakebase
-    "lakebase_mode": "new",
-    "lakebase_project": "",
-    "lakebase_branch": "",
-    "lakebase_config": None,
-    "lakebase_required": False,
-    # MLflow
-    "mlflow_mode": "new",
-    "mlflow_base_name": "",
-    "monitoring_name": "",
-    "monitoring_id": "",
-    "eval_name": "",
-    "eval_id": "",
-    # Options
-    "trace_dest_mode": "mlflow",
-    "trace_dest_schema": "",
-    "use_prompt_registry": False,
-    # Execution
-    "setup_started": False,
-    "setup_complete": False,
-    "setup_log": [],
-    # Genie
-    "genie_space_id": "",
-    "vs_index": "",
-    # Existing experiment detection
-    "existing_trace_dest": "",
-}
-
-for k, v in _DEFAULTS.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
-
-# Sync core language
-core.set_language(st.session_state.lang)
+TOTAL_PAGES = 12
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Helpers
-# ─────────────────────────────────────────────────────────────────────
-
-def _t(ja: str, en: str) -> str:
-    """Shorthand for bilingual text using core language."""
+# ── Helper: bilingual text ─────────────────────────────────────────────
+def t(ja: str, en: str) -> str:
     return core.t(ja, en)
 
 
-def _nav_buttons(current: int, *, can_next: bool = True, can_back: bool = True):
-    """Render Back / Next navigation buttons."""
-    cols = st.columns(2)
-    with cols[0]:
-        if can_back and current > 1:
-            if st.button(_t("← 戻る", "← Back"), key=f"back_{current}"):
-                st.session_state.page = current - 1
-                st.rerun()
-    with cols[1]:
-        if can_next:
-            if st.button(_t("次へ →", "Next →"), key=f"next_{current}", type="primary"):
-                st.session_state.page = current + 1
-                st.rerun()
+# ════════════════════════════════════════════════════════════════════════
+#  QuickstartWizard
+# ════════════════════════════════════════════════════════════════════════
+class QuickstartWizard(customtkinter.CTk):
+    def __init__(self):
+        super().__init__()
 
+        self.title("FreshMart AI Agent - Quickstart Setup")
+        self.geometry("700x550")
+        self.resizable(False, False)
+        self._center_window(700, 550)
 
-def _list_warehouses(profile_name: str) -> list[dict]:
-    """Fetch warehouse list via CLI."""
-    try:
-        result = core.run_command(
-            ["databricks", "warehouses", "list", "-p", profile_name, "-o", "json"],
-            check=True,
+        # ── State ───────────────────────────────────────────────────────
+        self.state: dict = {
+            "lang": "ja",
+            # Auth
+            "profile_name": "",
+            "host": "",
+            "username": "",
+            "token": "",
+            "auth_ok": False,
+            # Workspace
+            "catalog": "",
+            "schema": "",
+            "warehouse_id": "",
+            "warehouse_name": "",
+            "vs_endpoint": "",
+            # Lakebase
+            "lakebase_mode": "new",
+            "lakebase_project": "",
+            "lakebase_branch": "",
+            "lakebase_config": None,
+            "lakebase_required": False,
+            # MLflow
+            "mlflow_mode": "new",
+            "mlflow_base_name": "",
+            "monitoring_name": "",
+            "monitoring_id": "",
+            "eval_name": "",
+            "eval_id": "",
+            # Trace
+            "trace_dest_mode": "mlflow",
+            "trace_dest_schema": "",
+            # Execution
+            "setup_log": [],
+            "setup_failed_steps": [],
+            "setup_complete": False,
+            # Genie
+            "genie_space_id": "",
+            "vs_index": "",
+        }
+
+        self.current_page = 0  # 0-indexed internally; displayed as 1-indexed
+
+        # ── Cached widget data ──────────────────────────────────────────
+        self._warehouses: list[dict] = []
+        self._vs_endpoints: list[dict] = []
+
+        # ── Queue for execution thread ──────────────────────────────────
+        self._exec_queue: queue.Queue = queue.Queue()
+        self._exec_running = False
+
+        # ── Content frame & bottom bar ──────────────────────────────────
+        self._content_frame: customtkinter.CTkFrame | None = None
+
+        self._bottom_bar = customtkinter.CTkFrame(self, height=50)
+        self._bottom_bar.pack(side="bottom", fill="x", padx=10, pady=(0, 10))
+
+        self._back_btn = customtkinter.CTkButton(
+            self._bottom_bar, text="", width=100, command=self._go_back
         )
-        warehouses = json.loads(result.stdout)
-        warehouses.sort(key=lambda w: (0 if w.get("state") == "RUNNING" else 1, w.get("name", "")))
-        return warehouses
-    except Exception:
-        return []
+        self._back_btn.pack(side="left", padx=5)
 
+        self._page_label = customtkinter.CTkLabel(self._bottom_bar, text="")
+        self._page_label.pack(side="left", expand=True)
 
-def _list_vs_endpoints(token: str, host: str) -> list[dict]:
-    """Fetch VS endpoints via REST API."""
-    data = core.api_get("/api/2.0/vector-search/endpoints", token, host)
-    endpoints = data.get("endpoints", [])
-    state_order = {"ONLINE": 0, "PROVISIONING": 1}
-    endpoints.sort(key=lambda e: (
-        state_order.get(e.get("endpoint_status", {}).get("state", ""), 9),
-        e.get("name", ""),
-    ))
-    return endpoints
+        self._next_btn = customtkinter.CTkButton(
+            self._bottom_bar, text="", width=100, command=self._go_next
+        )
+        self._next_btn.pack(side="right", padx=5)
 
+        # Show first page
+        self.show_page(0)
 
-# ─────────────────────────────────────────────────────────────────────
-# Page 1: Language + Auth
-# ─────────────────────────────────────────────────────────────────────
+    # ── Window centering ────────────────────────────────────────────────
+    def _center_window(self, w: int, h: int):
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        x = (sw - w) // 2
+        y = (sh - h) // 2
+        self.geometry(f"{w}x{h}+{x}+{y}")
 
-def page_language_auth():
-    st.header(_t("1. 言語・認証設定", "1. Language & Authentication"))
+    # ── Page navigation ─────────────────────────────────────────────────
+    def show_page(self, n: int):
+        if self._content_frame is not None:
+            self._content_frame.destroy()
 
-    # Language
-    lang_options = ["日本語", "English"]
-    lang_idx = 0 if st.session_state.lang == "ja" else 1
-    selected = st.radio(_t("言語", "Language"), lang_options, index=lang_idx,
-                        key="lang_radio", horizontal=True)
-    new_lang = "ja" if selected == "日本語" else "en"
-    if new_lang != st.session_state.lang:
-        st.session_state.lang = new_lang
-        core.set_language(new_lang)
-        st.rerun()
+        self.current_page = n
+        self._content_frame = customtkinter.CTkFrame(self)
+        self._content_frame.pack(fill="both", expand=True, padx=10, pady=(10, 5))
 
-    st.divider()
+        builder = self._page_builders()[n]
+        builder(self._content_frame)
 
-    # Profile selector
-    profiles = core.get_databricks_profiles()
-    profile_names = [p["name"] for p in profiles]
+        self._update_nav()
 
-    if not profile_names:
-        st.warning(_t("Databricks プロファイルが見つかりません。先に `databricks auth login` を実行してください。",
-                       "No Databricks profiles found. Please run `databricks auth login` first."))
-        return
-
-    default_idx = 0
-    if st.session_state.profile_name in profile_names:
-        default_idx = profile_names.index(st.session_state.profile_name)
-
-    selected_profile = st.selectbox(
-        _t("Databricks CLI プロファイル", "Databricks CLI Profile"),
-        profile_names,
-        index=default_idx,
-        key="profile_select",
-    )
-
-    connect_clicked = st.button(_t("接続", "Connect"), type="primary", key="connect_btn")
-
-    if connect_clicked:
-        with st.spinner(_t("プロファイルを検証中...", "Validating profile...")):
-            if core.validate_profile(selected_profile):
-                st.session_state.profile_name = selected_profile
-                st.session_state.host = core.get_databricks_host(selected_profile)
-                try:
-                    st.session_state.username = core.get_databricks_username(selected_profile)
-                except SystemExit:
-                    st.error(_t("ユーザー名の取得に失敗しました。", "Failed to get username."))
-                    return
-                try:
-                    st.session_state.token = core.get_auth_token(selected_profile)
-                except Exception:
-                    st.error(_t("トークンの取得に失敗しました。", "Failed to get auth token."))
-                    return
-                st.session_state.auth_ok = True
-            else:
-                st.session_state.auth_ok = False
-                st.error(_t(
-                    f"プロファイル '{selected_profile}' の認証に失敗しました。`databricks auth login --profile {selected_profile}` を実行してください。",
-                    f"Profile '{selected_profile}' is not authenticated. Run `databricks auth login --profile {selected_profile}`."))
-                return
-
-    if st.session_state.auth_ok:
-        st.success(_t(
-            f"認証OK: {st.session_state.username} @ {st.session_state.host}",
-            f"Authenticated: {st.session_state.username} @ {st.session_state.host}"))
-
-        # Pre-fill defaults
-        if not st.session_state.catalog:
-            st.session_state.catalog = st.session_state.username.split("@")[0].replace(".", "_")
-        if not st.session_state.schema:
-            st.session_state.schema = "retail_agent"
-
-        # Check lakebase
-        st.session_state.lakebase_required = core.check_lakebase_required()
-
-        _nav_buttons(1, can_back=False)
-
-
-# ─────────────────────────────────────────────────────────────────────
-# Page 2: Catalog, Schema, Warehouse, VS Endpoint
-# ─────────────────────────────────────────────────────────────────────
-
-def page_workspace_config():
-    st.header(_t("2. ワークスペース設定", "2. Workspace Configuration"))
-
-    # Catalog
-    env_catalog = core.get_env_value("CATALOG") or st.session_state.catalog
-    st.session_state.catalog = st.text_input(
-        _t("カタログ名", "Catalog name"),
-        value=env_catalog,
-        key="catalog_input",
-    )
-
-    # Schema
-    env_schema = core.get_env_value("SCHEMA") or st.session_state.schema
-    st.session_state.schema = st.text_input(
-        _t("スキーマ名", "Schema name"),
-        value=env_schema,
-        key="schema_input",
-    )
-
-    st.divider()
-
-    # Warehouse
-    st.subheader(_t("SQL ウェアハウス", "SQL Warehouse"))
-    warehouses = _list_warehouses(st.session_state.profile_name)
-    if warehouses:
-        wh_labels = [
-            f"{w.get('name', '?')} ({w.get('id', '?')}) [{w.get('state', '?')}]"
-            for w in warehouses
+    def _page_builders(self):
+        return [
+            self._page_language,        # 0 -> Step 1
+            self._page_auth,            # 1 -> Step 2
+            self._page_catalog,         # 2 -> Step 3
+            self._page_schema,          # 3 -> Step 4
+            self._page_warehouse,       # 4 -> Step 5
+            self._page_vs_endpoint,     # 5 -> Step 6
+            self._page_lakebase,        # 6 -> Step 7
+            self._page_mlflow,          # 7 -> Step 8
+            self._page_trace,           # 8 -> Step 9
+            self._page_summary,         # 9 -> Step 10
+            self._page_execute,         # 10 -> Step 11
+            self._page_complete,        # 11 -> Step 12
         ]
-        default_wh = 0
-        if st.session_state.warehouse_id:
-            for i, w in enumerate(warehouses):
-                if w.get("id") == st.session_state.warehouse_id:
-                    default_wh = i
-                    break
-        selected_wh = st.selectbox(
-            _t("ウェアハウスを選択", "Select warehouse"),
-            wh_labels,
-            index=default_wh,
-            key="wh_select",
-        )
-        idx = wh_labels.index(selected_wh)
-        st.session_state.warehouse_id = warehouses[idx]["id"]
-        st.session_state.warehouse_name = warehouses[idx].get("name", "")
-    else:
-        st.warning(_t("ウェアハウスが見つかりません。", "No warehouses found."))
-        st.session_state.warehouse_id = st.text_input(
-            _t("ウェアハウス ID (手動入力)", "Warehouse ID (manual)"),
-            value=st.session_state.warehouse_id,
+
+    def _update_nav(self):
+        pg = self.current_page
+        self._back_btn.configure(text=t("\u2190 \u623b\u308b", "\u2190 Back"))
+        self._next_btn.configure(text=t("\u6b21\u3078 \u2192", "Next \u2192"))
+        self._page_label.configure(
+            text=f"Step {pg + 1} of {TOTAL_PAGES}"
         )
 
-    st.divider()
+        # Back disabled on page 1, and on pages 11-12
+        if pg == 0 or pg >= 10:
+            self._back_btn.configure(state="disabled")
+        else:
+            self._back_btn.configure(state="normal")
 
-    # VS Endpoint
-    st.subheader(_t("Vector Search エンドポイント", "Vector Search Endpoint"))
-    endpoints = _list_vs_endpoints(st.session_state.token, st.session_state.host)
-    if endpoints:
-        ep_labels = [
-            f"{e.get('name', '?')} [{e.get('endpoint_status', {}).get('state', '?')}]"
-            for e in endpoints
-        ]
-        default_ep = 0
-        if st.session_state.vs_endpoint:
-            for i, e in enumerate(endpoints):
-                if e.get("name") == st.session_state.vs_endpoint:
-                    default_ep = i
-                    break
-        selected_ep = st.selectbox(
-            _t("エンドポイントを選択", "Select endpoint"),
-            ep_labels,
-            index=default_ep,
-            key="ep_select",
-        )
-        idx = ep_labels.index(selected_ep)
-        st.session_state.vs_endpoint = endpoints[idx]["name"]
-    else:
-        st.warning(_t("Vector Search エンドポイントが見つかりません。", "No VS endpoints found."))
-        st.session_state.vs_endpoint = st.text_input(
-            _t("エンドポイント名 (手動入力)", "Endpoint name (manual)"),
-            value=st.session_state.vs_endpoint,
-        )
+        # Next disabled on pages 11-12
+        if pg >= 10:
+            self._next_btn.configure(state="disabled")
+        else:
+            self._next_btn.configure(state="normal")
 
-    _nav_buttons(2)
+    def _go_back(self):
+        if self.current_page > 0:
+            self.show_page(self.current_page - 1)
 
+    def _go_next(self):
+        if not self._validate_current_page():
+            return
+        if self.current_page < TOTAL_PAGES - 1:
+            self.show_page(self.current_page + 1)
 
-# ─────────────────────────────────────────────────────────────────────
-# Page 3: Lakebase Setup
-# ─────────────────────────────────────────────────────────────────────
-
-def page_lakebase():
-    st.header(_t("3. Lakebase セットアップ", "3. Lakebase Setup"))
-
-    if not st.session_state.lakebase_required:
-        st.info(_t("このテンプレートでは Lakebase は不要です。スキップして次へ進めます。",
-                    "Lakebase is not required for this template. You can skip to the next step."))
-        _nav_buttons(3)
-        return
-
-    mode = st.radio(
-        _t("Lakebase インスタンス", "Lakebase instance"),
-        [_t("新規作成", "Create new"), _t("既存を使用", "Use existing")],
-        index=0 if st.session_state.lakebase_mode == "new" else 1,
-        key="lb_mode_radio",
-        horizontal=True,
-    )
-    st.session_state.lakebase_mode = "new" if mode == _t("新規作成", "Create new") else "existing"
-
-    if st.session_state.lakebase_mode == "new":
-        project_name = st.text_input(
-            _t("プロジェクト名", "Project name"),
-            value=st.session_state.lakebase_project,
-            key="lb_project_new",
-        )
-        st.session_state.lakebase_project = project_name
-
-        if st.button(_t("作成", "Create"), key="lb_create_btn", type="primary"):
-            if not project_name:
-                st.error(_t("プロジェクト名を入力してください。", "Please enter a project name."))
+    # ── Validation ──────────────────────────────────────────────────────
+    def _validate_current_page(self) -> bool:
+        pg = self.current_page
+        if pg == 1:
+            if not self.state.get("auth_ok"):
+                self._show_error(t(
+                    "\u5148\u306b\u300c\u63a5\u7d9a\u300d\u3092\u30af\u30ea\u30c3\u30af\u3057\u3066\u8a8d\u8a3c\u3092\u5b8c\u4e86\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                    "Please click 'Connect' to complete authentication first."
+                ))
+                return False
+        elif pg == 2:
+            if not self.state.get("catalog", "").strip():
+                self._show_error(t(
+                    "\u30ab\u30bf\u30ed\u30b0\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                    "Please enter a catalog name."
+                ))
+                return False
+        elif pg == 3:
+            if not self.state.get("schema", "").strip():
+                self._show_error(t(
+                    "\u30b9\u30ad\u30fc\u30de\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                    "Please enter a schema name."
+                ))
+                return False
+        elif pg == 4:
+            if not self.state.get("warehouse_id", "").strip():
+                self._show_error(t(
+                    "\u30a6\u30a7\u30a2\u30cf\u30a6\u30b9\u3092\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                    "Please select a warehouse."
+                ))
+                return False
+        elif pg == 5:
+            if not self.state.get("vs_endpoint", "").strip():
+                # Allow empty with warning
+                pass
+        elif pg == 6:
+            mode = self.state.get("lakebase_mode", "new")
+            if mode == "new":
+                if not self.state.get("lakebase_project", "").strip():
+                    self._show_error(t(
+                        "\u30d7\u30ed\u30b8\u30a7\u30af\u30c8\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                        "Please enter a project name."
+                    ))
+                    return False
             else:
-                with st.spinner(_t("Lakebase プロジェクトを作成中...", "Creating Lakebase project...")):
-                    try:
-                        w = core.get_workspace_client(st.session_state.profile_name)
-                        if not w:
-                            st.error(_t("Databricks に接続できません。", "Cannot connect to Databricks."))
-                            return
-                        from databricks.sdk.service.postgres import Branch, BranchSpec, Project, ProjectSpec
-                        project_op = w.postgres.create_project(
-                            project=Project(spec=ProjectSpec(display_name=project_name)),
-                            project_id=project_name,
-                        )
-                        project = project_op.wait()
-                        project_short = project.name.removeprefix("projects/")
+                if not self.state.get("lakebase_project", "").strip():
+                    self._show_error(t(
+                        "\u30d7\u30ed\u30b8\u30a7\u30af\u30c8\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                        "Please enter a project name."
+                    ))
+                    return False
+                if not self.state.get("lakebase_branch", "").strip():
+                    self._show_error(t(
+                        "\u30d6\u30e9\u30f3\u30c1\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                        "Please enter a branch name."
+                    ))
+                    return False
+        elif pg == 7:
+            mode = self.state.get("mlflow_mode", "new")
+            if mode == "new":
+                if not self.state.get("mlflow_base_name", "").strip():
+                    self._show_error(t(
+                        "\u30d9\u30fc\u30b9\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                        "Please enter a base name."
+                    ))
+                    return False
+            else:
+                if not self.state.get("monitoring_id", "").strip():
+                    self._show_error(t(
+                        "\u30e2\u30cb\u30bf\u30ea\u30f3\u30b0 Experiment ID \u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                        "Please enter a Monitoring Experiment ID."
+                    ))
+                    return False
+                if not self.state.get("eval_id", "").strip():
+                    self._show_error(t(
+                        "\u8a55\u4fa1 Experiment ID \u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                        "Please enter an Evaluation Experiment ID."
+                    ))
+                    return False
+        return True
 
-                        branch_id = f"{project_name}-branch"
-                        branch_op = w.postgres.create_branch(
-                            parent=project.name,
-                            branch=Branch(spec=BranchSpec(no_expiry=True)),
-                            branch_id=branch_id,
-                        )
-                        branch = branch_op.wait()
-                        branch_name = (
-                            branch.name.split("/branches/")[-1]
-                            if "/branches/" in branch.name
-                            else branch_id
-                        )
-                        st.session_state.lakebase_project = project_short
-                        st.session_state.lakebase_branch = branch_name
-                        st.success(_t(
-                            f"プロジェクト作成完了: {project_short} / ブランチ: {branch_name}",
-                            f"Created project: {project_short} / branch: {branch_name}"))
-                    except Exception as e:
-                        st.error(_t(f"作成に失敗: {str(e)[:200]}", f"Creation failed: {str(e)[:200]}"))
-    else:
-        st.session_state.lakebase_project = st.text_input(
-            _t("プロジェクト名", "Project name"),
-            value=st.session_state.lakebase_project,
-            key="lb_project_existing",
+    def _show_error(self, msg: str):
+        dialog = customtkinter.CTkToplevel(self)
+        dialog.title(t("\u30a8\u30e9\u30fc", "Error"))
+        dialog.geometry("400x150")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+        # Center relative to main window
+        self.update_idletasks()
+        x = self.winfo_x() + (700 - 400) // 2
+        y = self.winfo_y() + (550 - 150) // 2
+        dialog.geometry(f"+{x}+{y}")
+
+        customtkinter.CTkLabel(
+            dialog, text=msg, wraplength=360
+        ).pack(padx=20, pady=(20, 10))
+        customtkinter.CTkButton(
+            dialog, text="OK", width=80, command=dialog.destroy
+        ).pack(pady=(0, 15))
+
+    # ════════════════════════════════════════════════════════════════════
+    #  PAGE BUILDERS
+    # ════════════════════════════════════════════════════════════════════
+
+    # ── Page 1: Language ────────────────────────────────────────────────
+    def _page_language(self, frame: customtkinter.CTkFrame):
+        customtkinter.CTkLabel(
+            frame, text="Language / \u8a00\u8a9e\u9078\u629e",
+            font=customtkinter.CTkFont(size=22, weight="bold"),
+        ).pack(pady=(30, 20))
+
+        customtkinter.CTkLabel(
+            frame,
+            text=t(
+                "\u30bb\u30c3\u30c8\u30a2\u30c3\u30d7\u30a6\u30a3\u30b6\u30fc\u30c9\u3067\u4f7f\u7528\u3059\u308b\u8a00\u8a9e\u3092\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                "Select the language for the setup wizard.",
+            ),
+            wraplength=500,
+        ).pack(pady=(0, 20))
+
+        self._lang_var = customtkinter.StringVar(value=self.state["lang"])
+
+        customtkinter.CTkRadioButton(
+            frame,
+            text="\u65e5\u672c\u8a9e",
+            variable=self._lang_var,
+            value="ja",
+            font=customtkinter.CTkFont(size=16),
+            command=self._on_lang_change,
+        ).pack(pady=10)
+
+        customtkinter.CTkRadioButton(
+            frame,
+            text="English",
+            variable=self._lang_var,
+            value="en",
+            font=customtkinter.CTkFont(size=16),
+            command=self._on_lang_change,
+        ).pack(pady=10)
+
+    def _on_lang_change(self):
+        lang = self._lang_var.get()
+        self.state["lang"] = lang
+        core.set_language(lang)
+        # Rebuild current page to refresh labels
+        self.show_page(self.current_page)
+
+    # ── Page 2: Databricks Authentication ───────────────────────────────
+    def _page_auth(self, frame: customtkinter.CTkFrame):
+        customtkinter.CTkLabel(
+            frame,
+            text=t("Databricks \u8a8d\u8a3c", "Databricks Authentication"),
+            font=customtkinter.CTkFont(size=22, weight="bold"),
+        ).pack(pady=(20, 10))
+
+        profiles = core.get_databricks_profiles()
+        profile_names = [p["name"] for p in profiles]
+
+        if not profile_names:
+            customtkinter.CTkLabel(
+                frame,
+                text=t(
+                    "Databricks \u30d7\u30ed\u30d5\u30a1\u30a4\u30eb\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3002\n\u5148\u306b `databricks auth login` \u3092\u5b9f\u884c\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                    "No Databricks profiles found.\nPlease run `databricks auth login` first.",
+                ),
+                text_color="orange",
+                wraplength=500,
+            ).pack(pady=20)
+            return
+
+        customtkinter.CTkLabel(
+            frame, text=t("\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb\u3092\u9078\u629e:", "Select profile:"),
+        ).pack(pady=(5, 2), anchor="w", padx=40)
+
+        self._profile_var = customtkinter.StringVar(
+            value=self.state.get("profile_name") or (profile_names[0] if profile_names else "")
         )
-        st.session_state.lakebase_branch = st.text_input(
-            _t("ブランチ名", "Branch name"),
-            value=st.session_state.lakebase_branch,
-            key="lb_branch_existing",
-        )
+        customtkinter.CTkOptionMenu(
+            frame,
+            variable=self._profile_var,
+            values=profile_names,
+            width=400,
+        ).pack(pady=(0, 10), padx=40)
 
-    # Validation status
-    if st.session_state.lakebase_project and st.session_state.lakebase_branch:
-        if st.button(_t("検証", "Validate"), key="lb_validate_btn"):
-            with st.spinner(_t("検証中...", "Validating...")):
-                info = core.validate_lakebase_autoscaling(
-                    st.session_state.profile_name,
-                    st.session_state.lakebase_project,
-                    st.session_state.lakebase_branch,
-                )
-                if info:
-                    st.session_state.lakebase_config = {
-                        "type": "autoscaling",
-                        "project": st.session_state.lakebase_project,
-                        "branch": st.session_state.lakebase_branch,
-                        "database_id": info.get("database_id", ""),
-                    }
-                    st.success(_t("Lakebase 検証OK", "Lakebase validated"))
-                else:
-                    st.error(_t("検証に失敗しました。", "Validation failed."))
+        customtkinter.CTkButton(
+            frame,
+            text=t("\u63a5\u7d9a", "Connect"),
+            width=200,
+            command=self._on_connect,
+        ).pack(pady=10)
 
-    _nav_buttons(3)
+        self._auth_status = customtkinter.CTkLabel(frame, text="", wraplength=500)
+        self._auth_status.pack(pady=5)
 
-
-# ─────────────────────────────────────────────────────────────────────
-# Page 4: MLflow Experiments
-# ─────────────────────────────────────────────────────────────────────
-
-def page_mlflow():
-    st.header(_t("4. MLflow Experiments", "4. MLflow Experiments"))
-
-    mode = st.radio(
-        _t("Experiment の設定", "Experiment setup"),
-        [_t("新規作成", "Create new"), _t("既存の ID を入力", "Enter existing IDs")],
-        index=0 if st.session_state.mlflow_mode == "new" else 1,
-        key="mlflow_mode_radio",
-        horizontal=True,
-    )
-    st.session_state.mlflow_mode = "new" if mode == _t("新規作成", "Create new") else "existing"
-
-    if st.session_state.mlflow_mode == "new":
-        default_base = f"/Users/{st.session_state.username}/freshmart-agent"
-        st.session_state.mlflow_base_name = st.text_input(
-            _t("ベース名", "Base name"),
-            value=st.session_state.mlflow_base_name or default_base,
-            key="mlflow_base",
-        )
-        st.caption(_t(
-            "モニタリング用: {name}-monitoring / 評価用: {name}-evaluation が作成されます",
-            "Will create: {name}-monitoring / {name}-evaluation").format(
-                name=st.session_state.mlflow_base_name))
-    else:
-        st.session_state.monitoring_id = st.text_input(
-            _t("モニタリング Experiment ID", "Monitoring Experiment ID"),
-            value=st.session_state.monitoring_id,
-            key="mon_id_input",
-        )
-        st.session_state.eval_id = st.text_input(
-            _t("評価 Experiment ID", "Evaluation Experiment ID"),
-            value=st.session_state.eval_id,
-            key="eval_id_input",
-        )
-
-        if st.session_state.monitoring_id and st.session_state.eval_id:
-            if st.button(_t("検証", "Verify"), key="mlflow_verify"):
-                with st.spinner(_t("検証中...", "Verifying...")):
-                    m_name, m_id = core._verify_experiment(st.session_state.profile_name, st.session_state.monitoring_id)
-                    e_name, e_id = core._verify_experiment(st.session_state.profile_name, st.session_state.eval_id)
-                    if m_name and e_name:
-                        st.session_state.monitoring_name = m_name
-                        st.session_state.eval_name = e_name
-                        st.success(_t(
-                            f"モニタリング: {m_name} / 評価: {e_name}",
-                            f"Monitoring: {m_name} / Evaluation: {e_name}"))
-
-                        # Check for Delta Table trace destination
-                        try:
-                            exp_result = core.run_command(
-                                ["databricks", "experiments", "get-experiment",
-                                 st.session_state.monitoring_id,
-                                 "-p", st.session_state.profile_name, "-o", "json"],
-                                check=False,
-                            )
-                            if exp_result.returncode == 0:
-                                exp_data = json.loads(exp_result.stdout)
-                                exp_tags = exp_data.get("experiment", exp_data).get("tags", [])
-                                for tag in exp_tags:
-                                    if tag.get("key") == "mlflow.experiment.databricksTraceDestinationPath":
-                                        st.session_state.existing_trace_dest = tag.get("value", "")
-                                        break
-                            if st.session_state.existing_trace_dest:
-                                st.info(_t(
-                                    f"Delta Table トレース送信先を検出: {st.session_state.existing_trace_dest}",
-                                    f"Delta Table trace destination detected: {st.session_state.existing_trace_dest}"))
-                        except Exception:
-                            pass
-                    else:
-                        if not m_name:
-                            st.error(_t(
-                                f"モニタリング Experiment ID '{st.session_state.monitoring_id}' が見つかりません。",
-                                f"Monitoring Experiment ID '{st.session_state.monitoring_id}' not found."))
-                        if not e_name:
-                            st.error(_t(
-                                f"評価 Experiment ID '{st.session_state.eval_id}' が見つかりません。",
-                                f"Evaluation Experiment ID '{st.session_state.eval_id}' not found."))
-
-    _nav_buttons(4)
-
-
-# ─────────────────────────────────────────────────────────────────────
-# Page 5: Options
-# ─────────────────────────────────────────────────────────────────────
-
-def page_options():
-    st.header(_t("5. オプション設定", "5. Options"))
-
-    # Trace destination
-    st.subheader(_t("トレース送信先", "Trace Destination"))
-
-    if st.session_state.existing_trace_dest:
-        st.info(_t(
-            f"既存の Experiment から Delta Table 送信先を検出済み: {st.session_state.existing_trace_dest}",
-            f"Delta Table destination detected from existing Experiment: {st.session_state.existing_trace_dest}"))
-        st.session_state.trace_dest_mode = "delta"
-        st.session_state.trace_dest_schema = st.session_state.existing_trace_dest
-    else:
-        trace_mode = st.radio(
-            _t("送信先", "Destination"),
-            [
-                _t("MLflow Experiment (デフォルト)", "MLflow Experiment (default)"),
-                _t("Unity Catalog Delta Table", "Unity Catalog Delta Table"),
-            ],
-            index=0 if st.session_state.trace_dest_mode == "mlflow" else 1,
-            key="trace_dest_radio",
-        )
-        st.session_state.trace_dest_mode = "mlflow" if "MLflow" in trace_mode else "delta"
-
-        if st.session_state.trace_dest_mode == "delta":
-            default_schema = f"{st.session_state.catalog}.{st.session_state.schema}"
-            st.session_state.trace_dest_schema = st.text_input(
-                _t("送信先スキーマ", "Destination schema"),
-                value=st.session_state.trace_dest_schema or default_schema,
-                key="trace_schema_input",
+        # Show previously successful auth
+        if self.state.get("auth_ok"):
+            self._auth_status.configure(
+                text=t(
+                    f"\u2713 \u8a8d\u8a3cOK: {self.state['username']} @ {self.state['host']}",
+                    f"\u2713 Authenticated: {self.state['username']} @ {self.state['host']}",
+                ),
+                text_color="green",
             )
 
-    st.divider()
+    def _on_connect(self):
+        profile = self._profile_var.get()
+        self._auth_status.configure(
+            text=t("\u691c\u8a3c\u4e2d...", "Validating..."), text_color="white"
+        )
+        self.update_idletasks()
 
-    # Prompt Registry
-    st.subheader(_t("Prompt Registry", "Prompt Registry"))
-    st.session_state.use_prompt_registry = st.checkbox(
-        _t("Unity Catalog Prompt Registry を使用（バージョン管理・A/Bテスト）",
-           "Use Unity Catalog Prompt Registry (version control, A/B testing)"),
-        value=st.session_state.use_prompt_registry,
-        key="prompt_reg_check",
-    )
+        if not core.validate_profile(profile):
+            self.state["auth_ok"] = False
+            self._auth_status.configure(
+                text=t(
+                    f"\u2717 \u30d7\u30ed\u30d5\u30a1\u30a4\u30eb '{profile}' \u306e\u8a8d\u8a3c\u306b\u5931\u6557\u3002\n`databricks auth login --profile {profile}` \u3092\u5b9f\u884c\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                    f"\u2717 Profile '{profile}' is not authenticated.\nRun `databricks auth login --profile {profile}`.",
+                ),
+                text_color="red",
+            )
+            return
 
-    st.divider()
+        self.state["profile_name"] = profile
+        self.state["host"] = core.get_databricks_host(profile)
+        try:
+            self.state["username"] = core.get_databricks_username(profile)
+        except SystemExit:
+            self._auth_status.configure(
+                text=t("\u2717 \u30e6\u30fc\u30b6\u30fc\u540d\u306e\u53d6\u5f97\u306b\u5931\u6557", "\u2717 Failed to get username"),
+                text_color="red",
+            )
+            return
+        try:
+            self.state["token"] = core.get_auth_token(profile)
+        except Exception:
+            self._auth_status.configure(
+                text=t("\u2717 \u30c8\u30fc\u30af\u30f3\u306e\u53d6\u5f97\u306b\u5931\u6557", "\u2717 Failed to get token"),
+                text_color="red",
+            )
+            return
 
-    # Summary
-    st.subheader(_t("設定サマリー", "Configuration Summary"))
+        self.state["auth_ok"] = True
+        self.state["lakebase_required"] = core.check_lakebase_required()
 
-    summary_data = {
-        _t("プロファイル", "Profile"): st.session_state.profile_name,
-        _t("ワークスペース", "Workspace"): st.session_state.host,
-        _t("ユーザー", "User"): st.session_state.username,
-        _t("カタログ", "Catalog"): st.session_state.catalog,
-        _t("スキーマ", "Schema"): st.session_state.schema,
-        _t("ウェアハウス", "Warehouse"): f"{st.session_state.warehouse_name} ({st.session_state.warehouse_id})",
-        _t("VS エンドポイント", "VS Endpoint"): st.session_state.vs_endpoint,
-        _t("MLflow", "MLflow"): (
-            _t("新規作成", "Create new") if st.session_state.mlflow_mode == "new"
-            else f"ID: {st.session_state.monitoring_id} / {st.session_state.eval_id}"
-        ),
-        _t("トレース送信先", "Trace Destination"): (
-            "MLflow Experiment" if st.session_state.trace_dest_mode == "mlflow"
-            else f"Delta Table ({st.session_state.trace_dest_schema})"
-        ),
-        _t("Prompt Registry", "Prompt Registry"): (
-            _t("使用する", "Yes") if st.session_state.use_prompt_registry
-            else _t("使用しない", "No")
-        ),
-    }
-    if st.session_state.lakebase_required:
-        summary_data[_t("Lakebase", "Lakebase")] = (
-            f"{st.session_state.lakebase_project} / {st.session_state.lakebase_branch}"
-            if st.session_state.lakebase_project else _t("未設定", "Not configured")
+        # Pre-fill defaults
+        if not self.state["catalog"]:
+            self.state["catalog"] = self.state["username"].split("@")[0].replace(".", "_")
+        if not self.state["schema"]:
+            self.state["schema"] = "retail_agent"
+        if not self.state["mlflow_base_name"]:
+            self.state["mlflow_base_name"] = f"/Users/{self.state['username']}/freshmart-agent"
+
+        self._auth_status.configure(
+            text=t(
+                f"\u2713 \u8a8d\u8a3cOK: {self.state['username']} @ {self.state['host']}",
+                f"\u2713 Authenticated: {self.state['username']} @ {self.state['host']}",
+            ),
+            text_color="green",
         )
 
-    for k, v in summary_data.items():
-        st.text(f"{k}: {v}")
+    # ── Page 3: Catalog Name ────────────────────────────────────────────
+    def _page_catalog(self, frame: customtkinter.CTkFrame):
+        customtkinter.CTkLabel(
+            frame,
+            text=t("\u30ab\u30bf\u30ed\u30b0\u540d", "Catalog Name"),
+            font=customtkinter.CTkFont(size=22, weight="bold"),
+        ).pack(pady=(20, 10))
 
-    _nav_buttons(5)
+        customtkinter.CTkLabel(
+            frame,
+            text=t(
+                "\u30c7\u30fc\u30bf\u3092\u683c\u7d0d\u3059\u308b Unity Catalog \u30ab\u30bf\u30ed\u30b0\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                "Enter the Unity Catalog catalog name where data will be stored.",
+            ),
+            wraplength=500,
+        ).pack(pady=(0, 10))
 
+        # Try to pre-fill from .env
+        env_val = core.get_env_value("CATALOG") or self.state.get("catalog", "")
 
-# ─────────────────────────────────────────────────────────────────────
-# Page 6: Execute
-# ─────────────────────────────────────────────────────────────────────
+        self._catalog_entry = customtkinter.CTkEntry(
+            frame, width=400, placeholder_text="e.g. my_catalog"
+        )
+        self._catalog_entry.pack(pady=10, padx=40)
+        if env_val:
+            self._catalog_entry.insert(0, env_val)
 
-def page_execute():
-    st.header(_t("6. セットアップ実行", "6. Execute Setup"))
+        # Sync on key release
+        self._catalog_entry.bind("<KeyRelease>", lambda _: self._sync_catalog())
 
-    if st.session_state.setup_complete:
-        st.success(_t("セットアップは完了済みです。", "Setup is already complete."))
-        if st.button(_t("結果を表示 →", "View results →"), type="primary"):
-            st.session_state.page = 7
-            st.rerun()
-        return
+    def _sync_catalog(self):
+        self.state["catalog"] = self._catalog_entry.get().strip()
 
-    if not st.session_state.setup_started:
-        st.warning(_t(
-            "以下のリソースが作成されます。実行後は元に戻せません。",
-            "The following resources will be created. This cannot be undone."))
-        st.markdown(f"""
-- **{_t("カタログ・スキーマ", "Catalog & Schema")}**: `{st.session_state.catalog}.{st.session_state.schema}`
-- **{_t("構造化データ", "Structured data")}**: 6 {_t("テーブル", "tables")}
-- **{_t("Vector Search インデックス", "Vector Search index")}**
-- **{_t("Genie Space", "Genie Space")}**
-- **{_t("MLflow Experiments", "MLflow Experiments")}**
-""")
+    # ── Page 4: Schema Name ─────────────────────────────────────────────
+    def _page_schema(self, frame: customtkinter.CTkFrame):
+        customtkinter.CTkLabel(
+            frame,
+            text=t("\u30b9\u30ad\u30fc\u30de\u540d", "Schema Name"),
+            font=customtkinter.CTkFont(size=22, weight="bold"),
+        ).pack(pady=(20, 10))
 
-        if st.button(_t("セットアップを実行", "Run Setup"), type="primary", key="run_setup"):
-            st.session_state.setup_started = True
-            st.rerun()
+        customtkinter.CTkLabel(
+            frame,
+            text=t(
+                "\u30c7\u30fc\u30bf\u3092\u683c\u7d0d\u3059\u308b\u30b9\u30ad\u30fc\u30de\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                "Enter the schema name where data will be stored.",
+            ),
+            wraplength=500,
+        ).pack(pady=(0, 10))
 
-        st.button(_t("← 戻る", "← Back"), key="back_6", on_click=lambda: _go_back(5))
-        return
+        env_val = core.get_env_value("SCHEMA") or self.state.get("schema", "")
 
-    # ── Run the actual setup ──
-    _run_setup()
+        self._schema_entry = customtkinter.CTkEntry(
+            frame, width=400, placeholder_text="e.g. retail_agent"
+        )
+        self._schema_entry.pack(pady=10, padx=40)
+        if env_val:
+            self._schema_entry.insert(0, env_val)
 
+        self._schema_entry.bind("<KeyRelease>", lambda _: self._sync_schema())
 
-def _go_back(page: int):
-    st.session_state.page = page
+    def _sync_schema(self):
+        self.state["schema"] = self._schema_entry.get().strip()
 
+    # ── Page 5: SQL Warehouse ───────────────────────────────────────────
+    def _page_warehouse(self, frame: customtkinter.CTkFrame):
+        customtkinter.CTkLabel(
+            frame,
+            text=t("SQL Warehouse \u306e\u9078\u629e", "Select SQL Warehouse"),
+            font=customtkinter.CTkFont(size=22, weight="bold"),
+        ).pack(pady=(20, 10))
 
-def _run_setup():
-    """Execute all setup steps with live progress."""
-    token = st.session_state.token
-    host = st.session_state.host
-    profile_name = st.session_state.profile_name
-    username = st.session_state.username
-    catalog = st.session_state.catalog
-    schema = st.session_state.schema
-    warehouse_id = st.session_state.warehouse_id
-    vs_endpoint = st.session_state.vs_endpoint
-    log = st.session_state.setup_log
-
-    with st.status(_t("セットアップ実行中...", "Running setup..."), expanded=True) as status:
+        # Fetch warehouses
         try:
-            # .env setup
-            st.write(_t("設定ファイルをセットアップ中...", "Setting up config files..."))
-            core.setup_env_file()
-            core.update_env_file("DATABRICKS_CONFIG_PROFILE", profile_name)
-            core.update_env_file("MLFLOW_TRACKING_URI", f'"databricks://{profile_name}"')
-            core.update_env_file("DATABRICKS_HOST", host)
-            log.append(_t("✓ .env 作成完了", "✓ .env created"))
-            st.write(log[-1])
+            result = core.run_command(
+                ["databricks", "warehouses", "list", "-p", self.state["profile_name"], "-o", "json"],
+                check=True,
+            )
+            self._warehouses = json.loads(result.stdout)
+            self._warehouses.sort(
+                key=lambda w: (0 if w.get("state") == "RUNNING" else 1, w.get("name", ""))
+            )
+        except Exception:
+            self._warehouses = []
 
-            # Catalog & Schema
-            st.write(_t("カタログ・スキーマを作成中...", "Creating catalog & schema..."))
-            core.create_catalog_schema(token, host, warehouse_id, catalog, schema)
-            log.append(_t("✓ カタログ・スキーマ作成完了", "✓ Catalog & schema created"))
-            st.write(log[-1])
+        if not self._warehouses:
+            customtkinter.CTkLabel(
+                frame,
+                text=t(
+                    "\u30a6\u30a7\u30a2\u30cf\u30a6\u30b9\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3002",
+                    "No SQL warehouses found.",
+                ),
+                text_color="orange",
+            ).pack(pady=20)
+            return
 
-            # Data generation
-            st.write(_t("データを生成中（5〜10分かかる場合があります）...",
-                         "Generating data (may take 5-10 minutes)..."))
-            core.generate_data(profile_name, warehouse_id, catalog, schema,
-                               token=token, host=host)
-            log.append(_t("✓ データ生成完了", "✓ Data generated"))
-            st.write(log[-1])
+        labels = [
+            f"{w.get('name', '?')} ({w.get('id', '?')}) [{w.get('state', '?')}]"
+            for w in self._warehouses
+        ]
 
-            # CDF
-            st.write(_t("Change Data Feed を有効化中...", "Enabling Change Data Feed..."))
-            core.enable_cdf(token, host, warehouse_id, catalog, schema)
-            log.append(_t("✓ CDF 有効化完了", "✓ CDF enabled"))
-            st.write(log[-1])
+        # Auto-select first RUNNING
+        default_label = labels[0]
+        for i, w in enumerate(self._warehouses):
+            if w.get("state") == "RUNNING":
+                default_label = labels[i]
+                break
 
-            # Vector Search Index
-            vs_index = ""
-            if vs_endpoint:
-                st.write(_t("Vector Search インデックスを作成中...",
-                             "Creating Vector Search index..."))
-                vs_index = core.create_vector_search_index(
-                    token, host, catalog, schema, vs_endpoint)
-                log.append(_t(f"✓ VS インデックス: {vs_index}", f"✓ VS index: {vs_index}"))
-                st.write(log[-1])
-            else:
-                vs_index = f"{catalog}.{schema}.policy_docs_index"
-                log.append(_t("⚠ VS エンドポイント未指定（インデックスは手動作成が必要）",
-                               "⚠ VS endpoint not specified (manual index creation needed)"))
-                st.write(log[-1])
-            st.session_state.vs_index = vs_index
+        self._wh_var = customtkinter.StringVar(value=default_label)
+        customtkinter.CTkOptionMenu(
+            frame, variable=self._wh_var, values=labels, width=500,
+            command=self._on_wh_change,
+        ).pack(pady=10, padx=40)
 
-            # Genie Space
-            st.write(_t("Genie Space を作成中...", "Creating Genie Space..."))
-            tables = ["customers", "products", "stores", "transactions",
-                      "transaction_items", "payment_history"]
-            serialized = core._build_serialized_space(catalog, schema, tables)
-            body = {
-                "title": "フレッシュマート 小売データ",
-                "description": "フレッシュマートの小売データに対する自然言語クエリ。",
-                "warehouse_id": warehouse_id,
-                "serialized_space": serialized,
-            }
-            result = core.api_post("/api/2.0/genie/spaces", token, host, body)
-            genie_space_id = result.get("space_id", "")
-            if not genie_space_id and "error" in result:
-                log.append(_t(f"⚠ Genie Space 自動作成に失敗: {str(result['error'])[:100]}",
-                               f"⚠ Genie Space auto-creation failed: {str(result['error'])[:100]}"))
-                st.write(log[-1])
-            else:
-                st.session_state.genie_space_id = genie_space_id
-                log.append(_t(f"✓ Genie Space 作成完了 (ID: {genie_space_id})",
-                               f"✓ Genie Space created (ID: {genie_space_id})"))
-                st.write(log[-1])
+        # Set initial state
+        self._on_wh_change(default_label)
 
-            # Lakebase
-            lakebase_config = None
-            if st.session_state.lakebase_required and st.session_state.lakebase_project:
-                st.write(_t("Lakebase を設定中...", "Setting up Lakebase..."))
-                branch_info = core.validate_lakebase_autoscaling(
-                    profile_name,
-                    st.session_state.lakebase_project,
-                    st.session_state.lakebase_branch,
+    def _on_wh_change(self, selection: str):
+        for w in self._warehouses:
+            label = f"{w.get('name', '?')} ({w.get('id', '?')}) [{w.get('state', '?')}]"
+            if label == selection:
+                self.state["warehouse_id"] = w["id"]
+                self.state["warehouse_name"] = w.get("name", "")
+                break
+
+    # ── Page 6: Vector Search Endpoint ──────────────────────────────────
+    def _page_vs_endpoint(self, frame: customtkinter.CTkFrame):
+        customtkinter.CTkLabel(
+            frame,
+            text=t("Vector Search \u30a8\u30f3\u30c9\u30dd\u30a4\u30f3\u30c8\u306e\u9078\u629e", "Select Vector Search Endpoint"),
+            font=customtkinter.CTkFont(size=22, weight="bold"),
+        ).pack(pady=(20, 10))
+
+        # Fetch endpoints
+        token = self.state.get("token", "")
+        host = self.state.get("host", "")
+        if token and host:
+            data = core.api_get("/api/2.0/vector-search/endpoints", token, host)
+            self._vs_endpoints = data.get("endpoints", [])
+            state_order = {"ONLINE": 0, "PROVISIONING": 1}
+            self._vs_endpoints.sort(
+                key=lambda e: (
+                    state_order.get(e.get("endpoint_status", {}).get("state", ""), 9),
+                    e.get("name", ""),
                 )
-                if branch_info:
-                    lakebase_config = {
-                        "type": "autoscaling",
-                        "project": st.session_state.lakebase_project,
-                        "branch": st.session_state.lakebase_branch,
-                        "database_id": branch_info.get("database_id", ""),
-                    }
-                    st.session_state.lakebase_config = lakebase_config
-                    core.update_env_file("LAKEBASE_AUTOSCALING_PROJECT", lakebase_config["project"])
-                    core.update_env_file("LAKEBASE_AUTOSCALING_BRANCH", lakebase_config["branch"])
-                    pg_host = branch_info.get("host", "")
-                    if pg_host:
-                        core.update_env_file("PGHOST", pg_host)
-                    core.update_env_file("PGUSER", username)
-                    core.update_env_file("PGDATABASE", "databricks_postgres")
-                    core.update_databricks_yml_lakebase(lakebase_config)
-                    core.update_app_yaml_lakebase(lakebase_config)
-                    log.append(_t("✓ Lakebase 設定完了", "✓ Lakebase configured"))
-                    st.write(log[-1])
-                else:
-                    log.append(_t("⚠ Lakebase 検証に失敗", "⚠ Lakebase validation failed"))
-                    st.write(log[-1])
-
-            # MLflow Experiments
-            st.write(_t("MLflow Experiments を設定中...", "Setting up MLflow Experiments..."))
-            if st.session_state.mlflow_mode == "new":
-                base = st.session_state.mlflow_base_name or f"/Users/{username}/freshmart-agent"
-                m_name, m_id = core._create_single_experiment(profile_name, f"{base}-monitoring")
-                e_name, e_id = core._create_single_experiment(profile_name, f"{base}-evaluation")
-                st.session_state.monitoring_name = m_name
-                st.session_state.monitoring_id = m_id
-                st.session_state.eval_name = e_name
-                st.session_state.eval_id = e_id
-            # else: IDs already in session_state from page 4
-
-            monitoring_id = st.session_state.monitoring_id
-            eval_id = st.session_state.eval_id
-            log.append(_t(f"✓ MLflow Experiments: {monitoring_id} / {eval_id}",
-                           f"✓ MLflow Experiments: {monitoring_id} / {eval_id}"))
-            st.write(log[-1])
-
-            # .env updates
-            st.write(_t("環境変数を更新中...", "Updating environment variables..."))
-            core.update_env_file("MLFLOW_EXPERIMENT_ID", monitoring_id)
-            core.update_env_file("MLFLOW_EVAL_EXPERIMENT_ID", eval_id)
-            core.update_env_file("GENIE_SPACE_ID", st.session_state.genie_space_id)
-            core.update_env_file("VECTOR_SEARCH_INDEX", vs_index)
-            core.update_databricks_yml_experiment(monitoring_id)
-            core.update_databricks_yml_resources(st.session_state.genie_space_id, vs_index)
-
-            # Tracing
-            tracing_dest = ""
-            if st.session_state.trace_dest_mode == "delta":
-                tracing_dest = st.session_state.trace_dest_schema
-                if tracing_dest:
-                    core.update_env_file("MLFLOW_TRACING_DESTINATION", tracing_dest)
-                    core.update_env_file("MLFLOW_TRACING_SQL_WAREHOUSE_ID", warehouse_id)
-                    core.append_env_to_app_yaml("MLFLOW_TRACING_DESTINATION", tracing_dest)
-                    core.append_env_to_app_yaml("MLFLOW_TRACING_SQL_WAREHOUSE_ID", warehouse_id)
-                    log.append(_t(f"✓ トレース送信先: {tracing_dest}",
-                                   f"✓ Trace destination: {tracing_dest}"))
-                    st.write(log[-1])
-
-                    # Run trace table setup if new (not existing)
-                    if not st.session_state.existing_trace_dest and "." in tracing_dest:
-                        st.write(_t("トレーステーブルを作成中...", "Creating trace tables..."))
-                        _cat, _sch = tracing_dest.split(".", 1)
-                        ok = core.run_trace_setup_on_databricks(
-                            profile_name=profile_name,
-                            username=username,
-                            catalog=_cat,
-                            schema=_sch,
-                            warehouse_id=warehouse_id,
-                            experiment_id=monitoring_id,
-                        )
-                        if ok:
-                            log.append(_t("✓ トレーステーブル作成完了",
-                                           "✓ Trace tables created"))
-                        else:
-                            log.append(_t("⚠ トレーステーブル自動作成に失敗",
-                                           "⚠ Trace table auto-creation failed"))
-                        st.write(log[-1])
-
-            # Prompt Registry
-            if st.session_state.use_prompt_registry:
-                prompt_name = f"{catalog}.{schema}.freshmart_system_prompt"
-                st.write(_t(f"プロンプト登録中: {prompt_name}",
-                             f"Registering prompt: {prompt_name}"))
-                try:
-                    result = subprocess.run(
-                        ["uv", "run", "register-prompt", "--name", prompt_name],
-                        capture_output=True, text=True,
-                    )
-                    if result.returncode == 0:
-                        core.update_env_file("PROMPT_REGISTRY_NAME", prompt_name)
-                        core.append_env_to_app_yaml("PROMPT_REGISTRY_NAME", prompt_name)
-                        log.append(_t(f"✓ Prompt Registry: {prompt_name}",
-                                       f"✓ Prompt Registry: {prompt_name}"))
-                    else:
-                        log.append(_t("⚠ プロンプト登録に失敗（ハードコード版を使用）",
-                                       "⚠ Prompt registration failed (using hardcoded)"))
-                except Exception:
-                    log.append(_t("⚠ プロンプト登録に失敗", "⚠ Prompt registration failed"))
-                st.write(log[-1])
-
-            # workshop_setup.py
-            setup_notebook = Path("workshop_setup.py")
-            if setup_notebook.exists():
-                content = setup_notebook.read_text()
-                replacements = {
-                    '"<CATALOG>"': f'"{catalog}"',
-                    '"<SCHEMA>"': f'"{schema}"',
-                    '"<WAREHOUSE-ID>"': f'"{warehouse_id}"',
-                    '"<MONITORING-EXPERIMENT-ID>"': f'"{monitoring_id}"',
-                    '"<EVAL-EXPERIMENT-ID>"': f'"{eval_id}"',
-                    '"<GENIE-SPACE-ID>"': f'"{st.session_state.genie_space_id}"',
-                    '"<LAKEBASE-PROJECT>"': (
-                        f'"{lakebase_config["project"]}"' if lakebase_config
-                        else '"<LAKEBASE-PROJECT>"'
-                    ),
-                    '"<LAKEBASE-BRANCH>"': (
-                        f'"{lakebase_config["branch"]}"' if lakebase_config
-                        else '"<LAKEBASE-BRANCH>"'
-                    ),
-                }
-                for old, new in replacements.items():
-                    content = content.replace(old, new)
-                setup_notebook.write_text(content)
-                log.append(_t("✓ workshop_setup.py 更新完了",
-                               "✓ workshop_setup.py updated"))
-                st.write(log[-1])
-
-            # Dependencies
-            st.write(_t("依存関係をインストール中...", "Installing dependencies..."))
-            core.install_dependencies()
-            log.append(_t("✓ 依存関係インストール完了", "✓ Dependencies installed"))
-            st.write(log[-1])
-
-            st.session_state.setup_complete = True
-            status.update(label=_t("セットアップ完了!", "Setup complete!"), state="complete")
-
-        except SystemExit:
-            status.update(label=_t("セットアップに失敗しました", "Setup failed"), state="error")
-            st.error(_t("セットアップ中にエラーが発生しました。ログを確認してください。",
-                         "An error occurred during setup. Please check the log."))
-        except Exception as e:
-            status.update(label=_t("セットアップに失敗しました", "Setup failed"), state="error")
-            st.error(f"{_t('エラー', 'Error')}: {e}")
-
-    if st.session_state.setup_complete:
-        if st.button(_t("結果を表示 →", "View results →"), type="primary", key="go_results"):
-            st.session_state.page = 7
-            st.rerun()
-
-
-# ─────────────────────────────────────────────────────────────────────
-# Page 7: Complete
-# ─────────────────────────────────────────────────────────────────────
-
-def page_complete():
-    st.header(_t("セットアップ完了!", "Setup Complete!"))
-
-    st.balloons()
-
-    # Summary
-    monitoring_id = st.session_state.monitoring_id
-    eval_id = st.session_state.eval_id
-    catalog = st.session_state.catalog
-    schema = st.session_state.schema
-    vs_index = st.session_state.vs_index
-    genie_space_id = st.session_state.genie_space_id
-    host = st.session_state.host
-    vs_endpoint = st.session_state.vs_endpoint
-    lakebase_config = st.session_state.lakebase_config
-
-    st.subheader(_t("作成されたリソース", "Created Resources"))
-    resources = f"""
-| {_t("リソース", "Resource")} | {_t("値", "Value")} |
-|---|---|
-| {_t("カタログ", "Catalog")} | `{catalog}` |
-| {_t("スキーマ", "Schema")} | `{catalog}.{schema}` |
-| Vector Search | `{vs_index}` |
-| Genie Space ID | `{genie_space_id}` |
-| {_t("モニタリング Experiment", "Monitoring Experiment")} | `{monitoring_id}` |
-| {_t("評価 Experiment", "Evaluation Experiment")} | `{eval_id}` |
-"""
-    if lakebase_config:
-        resources += f"| Lakebase | `{lakebase_config['project']}` (branch: `{lakebase_config['branch']}`) |\n"
-
-    if st.session_state.trace_dest_mode == "delta" and st.session_state.trace_dest_schema:
-        resources += f"| {_t('トレース送信先', 'Trace Dest')} | `{st.session_state.trace_dest_schema}` |\n"
-
-    st.markdown(resources)
-
-    if host and monitoring_id:
-        st.markdown(f"[{_t('Experiment を開く', 'Open Experiment')}]({host}/ml/experiments/{monitoring_id})")
-
-    st.divider()
-
-    # Team sharing
-    st.subheader(_t("チームメンバーへの共有情報", "Team Sharing Info"))
-
-    share_text_lines = [
-        f"{_t('カタログ名', 'Catalog')}: {catalog}",
-        f"{_t('スキーマ名', 'Schema')}: {schema}",
-        f"{_t('VS エンドポイント', 'VS Endpoint')}: {vs_endpoint}",
-        f"Genie Space ID: {genie_space_id}",
-    ]
-    if lakebase_config:
-        share_text_lines.append(f"{_t('Lakebase プロジェクト', 'Lakebase project')}: {lakebase_config['project']}")
-        share_text_lines.append(f"{_t('Lakebase ブランチ', 'Lakebase branch')}: {lakebase_config['branch']}")
-    share_text_lines.append(f"{_t('モニタリング Exp ID', 'Monitoring Exp ID')}: {monitoring_id}")
-    share_text_lines.append(f"{_t('評価 Exp ID', 'Evaluation Exp ID')}: {eval_id}")
-
-    share_text = "\n".join(share_text_lines)
-
-    st.code(share_text, language=None)
-
-    st.caption(_t(
-        "権限付与: `uv run grant-team-access member1@company.com member2@company.com`",
-        "Grant access: `uv run grant-team-access member1@company.com member2@company.com`"))
-
-    st.divider()
-
-    # Next steps
-    st.subheader(_t("次のステップ", "Next Steps"))
-    st.code("uv run start-app", language="bash")
-    st.caption(_t("エージェントサーバーとチャット UI を起動します。",
-                   "Starts the agent server and chat UI."))
-
-
-# ─────────────────────────────────────────────────────────────────────
-# Router
-# ─────────────────────────────────────────────────────────────────────
-
-PAGE_MAP = {
-    1: page_language_auth,
-    2: page_workspace_config,
-    3: page_lakebase,
-    4: page_mlflow,
-    5: page_options,
-    6: page_execute,
-    7: page_complete,
-}
-
-# Page config
-st.set_page_config(
-    page_title="FreshMart Agent - Quickstart",
-    page_icon="🚀",
-    layout="centered",
-)
-
-# Sidebar progress
-with st.sidebar:
-    st.title("FreshMart Agent")
-    st.caption("Quickstart Setup")
-    st.divider()
-
-    page_labels = {
-        1: _t("1. 言語・認証", "1. Language & Auth"),
-        2: _t("2. ワークスペース", "2. Workspace"),
-        3: _t("3. Lakebase", "3. Lakebase"),
-        4: _t("4. MLflow", "4. MLflow"),
-        5: _t("5. オプション", "5. Options"),
-        6: _t("6. 実行", "6. Execute"),
-        7: _t("7. 完了", "7. Complete"),
-    }
-
-    current = st.session_state.page
-    for num, label in page_labels.items():
-        if num == current:
-            st.markdown(f"**→ {label}**")
-        elif num < current:
-            st.markdown(f"✓ {label}")
+            )
         else:
-            st.markdown(f"  {label}")
+            self._vs_endpoints = []
 
-# Render current page
-page_fn = PAGE_MAP.get(st.session_state.page, page_language_auth)
-page_fn()
+        if not self._vs_endpoints:
+            customtkinter.CTkLabel(
+                frame,
+                text=t(
+                    "Vector Search \u30a8\u30f3\u30c9\u30dd\u30a4\u30f3\u30c8\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3002\n\u7a7a\u306e\u307e\u307e\u6b21\u3078\u9032\u3080\u3053\u3068\u3082\u3067\u304d\u307e\u3059\u3002",
+                    "No Vector Search endpoints found.\nYou may proceed without one.",
+                ),
+                text_color="orange",
+                wraplength=500,
+            ).pack(pady=20)
+            return
+
+        labels = [
+            f"{e.get('name', '?')} [{e.get('endpoint_status', {}).get('state', '?')}]"
+            for e in self._vs_endpoints
+        ]
+
+        default_label = labels[0]
+        for i, e in enumerate(self._vs_endpoints):
+            if e.get("endpoint_status", {}).get("state") == "ONLINE":
+                default_label = labels[i]
+                break
+
+        self._ep_var = customtkinter.StringVar(value=default_label)
+        customtkinter.CTkOptionMenu(
+            frame, variable=self._ep_var, values=labels, width=500,
+            command=self._on_ep_change,
+        ).pack(pady=10, padx=40)
+
+        self._on_ep_change(default_label)
+
+    def _on_ep_change(self, selection: str):
+        for e in self._vs_endpoints:
+            label = f"{e.get('name', '?')} [{e.get('endpoint_status', {}).get('state', '?')}]"
+            if label == selection:
+                self.state["vs_endpoint"] = e["name"]
+                break
+
+    # ── Page 7: Lakebase Setup ──────────────────────────────────────────
+    def _page_lakebase(self, frame: customtkinter.CTkFrame):
+        customtkinter.CTkLabel(
+            frame,
+            text=t("Lakebase \u8a2d\u5b9a", "Lakebase Setup"),
+            font=customtkinter.CTkFont(size=22, weight="bold"),
+        ).pack(pady=(20, 10))
+
+        if not self.state.get("lakebase_required"):
+            customtkinter.CTkLabel(
+                frame,
+                text=t(
+                    "\u3053\u306e\u30c6\u30f3\u30d7\u30ec\u30fc\u30c8\u3067\u306f Lakebase \u306f\u4e0d\u8981\u3067\u3059\u3002\u6b21\u3078\u9032\u3093\u3067\u304f\u3060\u3055\u3044\u3002",
+                    "Lakebase is not required for this template. Please proceed.",
+                ),
+                wraplength=500,
+            ).pack(pady=20)
+            return
+
+        self._lb_mode_var = customtkinter.StringVar(
+            value=self.state.get("lakebase_mode", "new")
+        )
+
+        customtkinter.CTkRadioButton(
+            frame,
+            text=t("\u65b0\u898f\u4f5c\u6210", "Create new"),
+            variable=self._lb_mode_var,
+            value="new",
+            command=self._rebuild_lakebase_fields,
+        ).pack(pady=5, padx=40, anchor="w")
+
+        customtkinter.CTkRadioButton(
+            frame,
+            text=t("\u65e2\u5b58\u3092\u4f7f\u7528", "Use existing"),
+            variable=self._lb_mode_var,
+            value="existing",
+            command=self._rebuild_lakebase_fields,
+        ).pack(pady=5, padx=40, anchor="w")
+
+        self._lb_fields_frame = customtkinter.CTkFrame(frame)
+        self._lb_fields_frame.pack(fill="x", padx=40, pady=10)
+
+        self._rebuild_lakebase_fields()
+
+    def _rebuild_lakebase_fields(self):
+        for w in self._lb_fields_frame.winfo_children():
+            w.destroy()
+
+        mode = self._lb_mode_var.get()
+        self.state["lakebase_mode"] = mode
+
+        if mode == "new":
+            customtkinter.CTkLabel(
+                self._lb_fields_frame,
+                text=t("\u30d7\u30ed\u30b8\u30a7\u30af\u30c8\u540d:", "Project name:"),
+            ).pack(anchor="w", pady=(5, 2))
+            self._lb_proj_entry = customtkinter.CTkEntry(
+                self._lb_fields_frame, width=400,
+                placeholder_text="e.g. freshmart-lakebase",
+            )
+            self._lb_proj_entry.pack(pady=(0, 5))
+            if self.state.get("lakebase_project"):
+                self._lb_proj_entry.insert(0, self.state["lakebase_project"])
+            self._lb_proj_entry.bind("<KeyRelease>", lambda _: self._sync_lb_project())
+
+            customtkinter.CTkLabel(
+                self._lb_fields_frame,
+                text=t(
+                    "\u203b \u5b9f\u969b\u306e\u4f5c\u6210\u306f\u30bb\u30c3\u30c8\u30a2\u30c3\u30d7\u5b9f\u884c\u6642 (Step 11) \u306b\u884c\u308f\u308c\u307e\u3059\u3002",
+                    "* Actual creation happens during setup execution (Step 11).",
+                ),
+                text_color="gray",
+                wraplength=400,
+            ).pack(anchor="w")
+        else:
+            customtkinter.CTkLabel(
+                self._lb_fields_frame,
+                text=t("\u30d7\u30ed\u30b8\u30a7\u30af\u30c8\u540d:", "Project name:"),
+            ).pack(anchor="w", pady=(5, 2))
+            self._lb_proj_entry = customtkinter.CTkEntry(
+                self._lb_fields_frame, width=400,
+            )
+            self._lb_proj_entry.pack(pady=(0, 5))
+            if self.state.get("lakebase_project"):
+                self._lb_proj_entry.insert(0, self.state["lakebase_project"])
+            self._lb_proj_entry.bind("<KeyRelease>", lambda _: self._sync_lb_project())
+
+            customtkinter.CTkLabel(
+                self._lb_fields_frame,
+                text=t("\u30d6\u30e9\u30f3\u30c1\u540d:", "Branch name:"),
+            ).pack(anchor="w", pady=(5, 2))
+            self._lb_branch_entry = customtkinter.CTkEntry(
+                self._lb_fields_frame, width=400,
+            )
+            self._lb_branch_entry.pack(pady=(0, 5))
+            if self.state.get("lakebase_branch"):
+                self._lb_branch_entry.insert(0, self.state["lakebase_branch"])
+            self._lb_branch_entry.bind("<KeyRelease>", lambda _: self._sync_lb_branch())
+
+    def _sync_lb_project(self):
+        self.state["lakebase_project"] = self._lb_proj_entry.get().strip()
+
+    def _sync_lb_branch(self):
+        self.state["lakebase_branch"] = self._lb_branch_entry.get().strip()
+
+    # ── Page 8: MLflow Experiment ───────────────────────────────────────
+    def _page_mlflow(self, frame: customtkinter.CTkFrame):
+        customtkinter.CTkLabel(
+            frame,
+            text="MLflow Experiment",
+            font=customtkinter.CTkFont(size=22, weight="bold"),
+        ).pack(pady=(20, 10))
+
+        self._mlflow_mode_var = customtkinter.StringVar(
+            value=self.state.get("mlflow_mode", "new")
+        )
+
+        customtkinter.CTkRadioButton(
+            frame,
+            text=t("\u65b0\u898f\u4f5c\u6210", "Create new"),
+            variable=self._mlflow_mode_var,
+            value="new",
+            command=self._rebuild_mlflow_fields,
+        ).pack(pady=5, padx=40, anchor="w")
+
+        customtkinter.CTkRadioButton(
+            frame,
+            text=t("\u65e2\u5b58 ID \u3092\u5165\u529b", "Enter existing IDs"),
+            variable=self._mlflow_mode_var,
+            value="existing",
+            command=self._rebuild_mlflow_fields,
+        ).pack(pady=5, padx=40, anchor="w")
+
+        self._mlflow_fields_frame = customtkinter.CTkFrame(frame)
+        self._mlflow_fields_frame.pack(fill="x", padx=40, pady=10)
+
+        self._rebuild_mlflow_fields()
+
+    def _rebuild_mlflow_fields(self):
+        for w in self._mlflow_fields_frame.winfo_children():
+            w.destroy()
+
+        mode = self._mlflow_mode_var.get()
+        self.state["mlflow_mode"] = mode
+
+        if mode == "new":
+            customtkinter.CTkLabel(
+                self._mlflow_fields_frame,
+                text=t("\u30d9\u30fc\u30b9\u540d:", "Base name:"),
+            ).pack(anchor="w", pady=(5, 2))
+
+            self._mlflow_base_entry = customtkinter.CTkEntry(
+                self._mlflow_fields_frame, width=400,
+                placeholder_text="e.g. /Users/you/freshmart-agent",
+            )
+            self._mlflow_base_entry.pack(pady=(0, 5))
+            if self.state.get("mlflow_base_name"):
+                self._mlflow_base_entry.insert(0, self.state["mlflow_base_name"])
+            self._mlflow_base_entry.bind("<KeyRelease>", lambda _: self._sync_mlflow_base())
+
+            customtkinter.CTkLabel(
+                self._mlflow_fields_frame,
+                text=t(
+                    "{name}-monitoring \u3068 {name}-evaluation \u304c\u4f5c\u6210\u3055\u308c\u307e\u3059\u3002",
+                    "{name}-monitoring and {name}-evaluation will be created.",
+                ),
+                text_color="gray",
+                wraplength=400,
+            ).pack(anchor="w")
+        else:
+            customtkinter.CTkLabel(
+                self._mlflow_fields_frame,
+                text=t("\u30e2\u30cb\u30bf\u30ea\u30f3\u30b0 Experiment ID:", "Monitoring Experiment ID:"),
+            ).pack(anchor="w", pady=(5, 2))
+            self._mon_id_entry = customtkinter.CTkEntry(
+                self._mlflow_fields_frame, width=400,
+            )
+            self._mon_id_entry.pack(pady=(0, 5))
+            if self.state.get("monitoring_id"):
+                self._mon_id_entry.insert(0, self.state["monitoring_id"])
+            self._mon_id_entry.bind("<KeyRelease>", lambda _: self._sync_mon_id())
+
+            customtkinter.CTkLabel(
+                self._mlflow_fields_frame,
+                text=t("\u8a55\u4fa1 Experiment ID:", "Evaluation Experiment ID:"),
+            ).pack(anchor="w", pady=(5, 2))
+            self._eval_id_entry = customtkinter.CTkEntry(
+                self._mlflow_fields_frame, width=400,
+            )
+            self._eval_id_entry.pack(pady=(0, 5))
+            if self.state.get("eval_id"):
+                self._eval_id_entry.insert(0, self.state["eval_id"])
+            self._eval_id_entry.bind("<KeyRelease>", lambda _: self._sync_eval_id())
+
+    def _sync_mlflow_base(self):
+        self.state["mlflow_base_name"] = self._mlflow_base_entry.get().strip()
+
+    def _sync_mon_id(self):
+        self.state["monitoring_id"] = self._mon_id_entry.get().strip()
+
+    def _sync_eval_id(self):
+        self.state["eval_id"] = self._eval_id_entry.get().strip()
+
+    # ── Page 9: Trace Destination ───────────────────────────────────────
+    def _page_trace(self, frame: customtkinter.CTkFrame):
+        customtkinter.CTkLabel(
+            frame,
+            text=t("\u30c8\u30ec\u30fc\u30b9\u9001\u4fe1\u5148", "Trace Destination"),
+            font=customtkinter.CTkFont(size=22, weight="bold"),
+        ).pack(pady=(20, 10))
+
+        self._trace_mode_var = customtkinter.StringVar(
+            value=self.state.get("trace_dest_mode", "mlflow")
+        )
+
+        customtkinter.CTkRadioButton(
+            frame,
+            text="MLflow Experiment (default)",
+            variable=self._trace_mode_var,
+            value="mlflow",
+            command=self._rebuild_trace_fields,
+        ).pack(pady=5, padx=40, anchor="w")
+
+        customtkinter.CTkRadioButton(
+            frame,
+            text="Unity Catalog Delta Table",
+            variable=self._trace_mode_var,
+            value="delta",
+            command=self._rebuild_trace_fields,
+        ).pack(pady=5, padx=40, anchor="w")
+
+        self._trace_fields_frame = customtkinter.CTkFrame(frame)
+        self._trace_fields_frame.pack(fill="x", padx=40, pady=10)
+
+        self._rebuild_trace_fields()
+
+    def _rebuild_trace_fields(self):
+        for w in self._trace_fields_frame.winfo_children():
+            w.destroy()
+
+        mode = self._trace_mode_var.get()
+        self.state["trace_dest_mode"] = mode
+
+        if mode == "delta":
+            default_schema = f"{self.state.get('catalog', '')}.{self.state.get('schema', '')}"
+            customtkinter.CTkLabel(
+                self._trace_fields_frame,
+                text=t("\u9001\u4fe1\u5148\u30b9\u30ad\u30fc\u30de:", "Destination schema:"),
+            ).pack(anchor="w", pady=(5, 2))
+            self._trace_schema_entry = customtkinter.CTkEntry(
+                self._trace_fields_frame, width=400,
+            )
+            self._trace_schema_entry.pack(pady=(0, 5))
+            val = self.state.get("trace_dest_schema") or default_schema
+            if val:
+                self._trace_schema_entry.insert(0, val)
+            self._trace_schema_entry.bind("<KeyRelease>", lambda _: self._sync_trace_schema())
+
+    def _sync_trace_schema(self):
+        self.state["trace_dest_schema"] = self._trace_schema_entry.get().strip()
+
+    # ── Page 10: Summary ────────────────────────────────────────────────
+    def _page_summary(self, frame: customtkinter.CTkFrame):
+        customtkinter.CTkLabel(
+            frame,
+            text=t("\u8a2d\u5b9a\u78ba\u8a8d", "Configuration Summary"),
+            font=customtkinter.CTkFont(size=22, weight="bold"),
+        ).pack(pady=(20, 10))
+
+        textbox = customtkinter.CTkTextbox(frame, width=600, height=340)
+        textbox.pack(padx=20, pady=5)
+
+        lines = [
+            f"{t('\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb', 'Profile')}: {self.state.get('profile_name', '')}",
+            f"{t('\u30ef\u30fc\u30af\u30b9\u30da\u30fc\u30b9', 'Workspace')}: {self.state.get('host', '')}",
+            f"{t('\u30e6\u30fc\u30b6\u30fc', 'User')}: {self.state.get('username', '')}",
+            f"{t('\u30ab\u30bf\u30ed\u30b0', 'Catalog')}: {self.state.get('catalog', '')}",
+            f"{t('\u30b9\u30ad\u30fc\u30de', 'Schema')}: {self.state.get('schema', '')}",
+            f"{t('\u30a6\u30a7\u30a2\u30cf\u30a6\u30b9', 'Warehouse')}: {self.state.get('warehouse_name', '')} ({self.state.get('warehouse_id', '')})",
+            f"{t('VS \u30a8\u30f3\u30c9\u30dd\u30a4\u30f3\u30c8', 'VS Endpoint')}: {self.state.get('vs_endpoint', '') or t('\u306a\u3057', 'None')}",
+        ]
+
+        if self.state.get("lakebase_required"):
+            mode_label = t("\u65b0\u898f\u4f5c\u6210", "Create new") if self.state.get("lakebase_mode") == "new" else t("\u65e2\u5b58", "Existing")
+            lines.append(f"Lakebase: {mode_label} - {self.state.get('lakebase_project', '')} / {self.state.get('lakebase_branch', '')}")
+
+        if self.state.get("mlflow_mode") == "new":
+            lines.append(f"MLflow: {t('\u65b0\u898f\u4f5c\u6210', 'Create new')} ({self.state.get('mlflow_base_name', '')})")
+        else:
+            lines.append(f"MLflow: {t('\u65e2\u5b58 ID', 'Existing IDs')} ({self.state.get('monitoring_id', '')} / {self.state.get('eval_id', '')})")
+
+        if self.state.get("trace_dest_mode") == "delta":
+            lines.append(f"{t('\u30c8\u30ec\u30fc\u30b9\u9001\u4fe1\u5148', 'Trace Dest')}: Delta Table ({self.state.get('trace_dest_schema', '')})")
+        else:
+            lines.append(f"{t('\u30c8\u30ec\u30fc\u30b9\u9001\u4fe1\u5148', 'Trace Dest')}: MLflow Experiment")
+
+        textbox.insert("0.0", "\n".join(lines))
+        textbox.configure(state="disabled")
+
+    # ── Page 11: Execute ────────────────────────────────────────────────
+    def _page_execute(self, frame: customtkinter.CTkFrame):
+        customtkinter.CTkLabel(
+            frame,
+            text=t("\u30bb\u30c3\u30c8\u30a2\u30c3\u30d7\u5b9f\u884c\u4e2d...", "Running Setup..."),
+            font=customtkinter.CTkFont(size=22, weight="bold"),
+        ).pack(pady=(15, 5))
+
+        self._exec_progress = customtkinter.CTkProgressBar(frame, width=600)
+        self._exec_progress.pack(padx=20, pady=5)
+        self._exec_progress.set(0)
+
+        self._exec_textbox = customtkinter.CTkTextbox(frame, width=620, height=320)
+        self._exec_textbox.pack(padx=20, pady=5)
+        self._exec_textbox.configure(state="disabled")
+
+        # Auto-start execution
+        if not self._exec_running and not self.state.get("setup_complete"):
+            self._exec_running = True
+            self.state["setup_log"] = []
+            self.state["setup_failed_steps"] = []
+            thread = threading.Thread(target=self._run_setup, daemon=True)
+            thread.start()
+            self.after(100, self._check_progress)
+
+    def _log(self, msg: str):
+        """Post a message to the queue (called from background thread)."""
+        self._exec_queue.put(("log", msg))
+
+    def _set_progress(self, value: float):
+        """Post progress update (0.0 - 1.0) to the queue."""
+        self._exec_queue.put(("progress", value))
+
+    def _signal_done(self):
+        self._exec_queue.put(("done", None))
+
+    def _check_progress(self):
+        """Poll the queue from the main thread and update UI."""
+        try:
+            while True:
+                kind, data = self._exec_queue.get_nowait()
+                if kind == "log":
+                    self._exec_textbox.configure(state="normal")
+                    self._exec_textbox.insert("end", data + "\n")
+                    self._exec_textbox.see("end")
+                    self._exec_textbox.configure(state="disabled")
+                elif kind == "progress":
+                    self._exec_progress.set(data)
+                elif kind == "done":
+                    self._exec_running = False
+                    self.state["setup_complete"] = True
+                    # Auto-advance to page 12
+                    self.after(500, lambda: self.show_page(11))
+                    return
+        except queue.Empty:
+            pass
+
+        if self._exec_running:
+            self.after(100, self._check_progress)
+
+    def _run_setup(self):
+        """Execute all setup steps in a background thread."""
+        s = self.state
+        token = s["token"]
+        host = s["host"]
+        profile = s["profile_name"]
+        username = s["username"]
+        catalog = s["catalog"]
+        schema = s["schema"]
+        warehouse_id = s["warehouse_id"]
+        vs_endpoint = s["vs_endpoint"]
+        total_steps = 10
+        step = 0
+
+        def advance(step_name: str):
+            nonlocal step
+            step += 1
+            self._set_progress(step / total_steps)
+            self._log(f"\u2713 {step_name}")
+            s["setup_log"].append(f"\u2713 {step_name}")
+
+        def fail(step_name: str, err: str):
+            self._log(f"\u2717 {step_name}: {err}")
+            s["setup_failed_steps"].append(step_name)
+            s["setup_log"].append(f"\u2717 {step_name}: {err}")
+            nonlocal step
+            step += 1
+            self._set_progress(step / total_steps)
+
+        try:
+            # Step 1: Create catalog & schema
+            self._log(t("\u30ab\u30bf\u30ed\u30b0\u30fb\u30b9\u30ad\u30fc\u30de\u3092\u4f5c\u6210\u4e2d...", "Creating catalog & schema..."))
+            try:
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    core.setup_env_file()
+                    core.update_env_file("DATABRICKS_CONFIG_PROFILE", profile)
+                    core.update_env_file("MLFLOW_TRACKING_URI", f'"databricks://{profile}"')
+                    core.update_env_file("DATABRICKS_HOST", host)
+                    core.create_catalog_schema(token, host, warehouse_id, catalog, schema)
+                output = buf.getvalue()
+                if output.strip():
+                    self._log(output.strip())
+                advance(t("\u30ab\u30bf\u30ed\u30b0\u30fb\u30b9\u30ad\u30fc\u30de\u4f5c\u6210\u5b8c\u4e86", "Catalog & schema created"))
+            except Exception as e:
+                fail(t("\u30ab\u30bf\u30ed\u30b0\u30fb\u30b9\u30ad\u30fc\u30de", "Catalog & schema"), str(e)[:200])
+
+            # Step 2: Generate structured data
+            self._log(t("\u69cb\u9020\u5316\u30c7\u30fc\u30bf\u3092\u751f\u6210\u4e2d\uff085\uff5e10\u5206\uff09...", "Generating structured data (5-10 min)..."))
+            try:
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    core.generate_data(profile, warehouse_id, catalog, schema,
+                                       token=token, host=host)
+                output = buf.getvalue()
+                if output.strip():
+                    self._log(output.strip())
+                advance(t("\u30c7\u30fc\u30bf\u751f\u6210\u5b8c\u4e86", "Data generated"))
+            except Exception as e:
+                fail(t("\u30c7\u30fc\u30bf\u751f\u6210", "Data generation"), str(e)[:200])
+
+            # Step 3: Enable CDF
+            self._log(t("Change Data Feed \u3092\u6709\u52b9\u5316\u4e2d...", "Enabling Change Data Feed..."))
+            try:
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    core.enable_cdf(token, host, warehouse_id, catalog, schema)
+                output = buf.getvalue()
+                if output.strip():
+                    self._log(output.strip())
+                advance(t("CDF \u6709\u52b9\u5316\u5b8c\u4e86", "CDF enabled"))
+            except Exception as e:
+                fail(t("CDF", "CDF"), str(e)[:200])
+
+            # Step 4: Create Vector Search index
+            vs_index = f"{catalog}.{schema}.policy_docs_index"
+            if vs_endpoint:
+                self._log(t("Vector Search \u30a4\u30f3\u30c7\u30c3\u30af\u30b9\u3092\u4f5c\u6210\u4e2d...", "Creating Vector Search index..."))
+                try:
+                    buf = io.StringIO()
+                    with contextlib.redirect_stdout(buf):
+                        vs_index = core.create_vector_search_index(
+                            token, host, catalog, schema, vs_endpoint)
+                    output = buf.getvalue()
+                    if output.strip():
+                        self._log(output.strip())
+                    s["vs_index"] = vs_index
+                    advance(t(f"VS \u30a4\u30f3\u30c7\u30c3\u30af\u30b9: {vs_index}", f"VS index: {vs_index}"))
+                except Exception as e:
+                    s["vs_index"] = vs_index
+                    fail(t("VS \u30a4\u30f3\u30c7\u30c3\u30af\u30b9", "VS index"), str(e)[:200])
+            else:
+                s["vs_index"] = vs_index
+                self._log(t("\u26a0 VS \u30a8\u30f3\u30c9\u30dd\u30a4\u30f3\u30c8\u672a\u6307\u5b9a\uff08\u30a4\u30f3\u30c7\u30c3\u30af\u30b9\u306f\u624b\u52d5\u4f5c\u6210\u304c\u5fc5\u8981\uff09",
+                           "\u26a0 VS endpoint not specified (manual index creation needed)"))
+                step += 1
+                self._set_progress(step / total_steps)
+
+            # Step 5: Create Genie Space
+            self._log(t("Genie Space \u3092\u4f5c\u6210\u4e2d...", "Creating Genie Space..."))
+            try:
+                tables = ["customers", "products", "stores", "transactions",
+                          "transaction_items", "payment_history"]
+                serialized = core._build_serialized_space(catalog, schema, tables)
+                body = {
+                    "title": "\u30d5\u30ec\u30c3\u30b7\u30e5\u30de\u30fc\u30c8 \u5c0f\u58f2\u30c7\u30fc\u30bf",
+                    "description": "\u30d5\u30ec\u30c3\u30b7\u30e5\u30de\u30fc\u30c8\u306e\u5c0f\u58f2\u30c7\u30fc\u30bf\u306b\u5bfe\u3059\u308b\u81ea\u7136\u8a00\u8a9e\u30af\u30a8\u30ea\u3002",
+                    "warehouse_id": warehouse_id,
+                    "serialized_space": serialized,
+                }
+                result = core.api_post("/api/2.0/genie/spaces", token, host, body)
+                genie_space_id = result.get("space_id", "")
+                if genie_space_id:
+                    s["genie_space_id"] = genie_space_id
+                    advance(t(f"Genie Space \u4f5c\u6210\u5b8c\u4e86 (ID: {genie_space_id})", f"Genie Space created (ID: {genie_space_id})"))
+                else:
+                    err_msg = str(result.get("error", "unknown"))[:100]
+                    fail(t("Genie Space", "Genie Space"), err_msg)
+            except Exception as e:
+                fail(t("Genie Space", "Genie Space"), str(e)[:200])
+
+            # Step 6: Setup Lakebase
+            lakebase_config = None
+            if s.get("lakebase_required") and s.get("lakebase_project"):
+                self._log(t("Lakebase \u3092\u8a2d\u5b9a\u4e2d...", "Setting up Lakebase..."))
+                try:
+                    lb_mode = s.get("lakebase_mode", "new")
+                    if lb_mode == "new":
+                        buf = io.StringIO()
+                        # For GUI, we create the instance programmatically
+                        w = core.get_workspace_client(profile)
+                        if w:
+                            from databricks.sdk.service.postgres import Branch, BranchSpec, Project, ProjectSpec
+                            project_name = s["lakebase_project"]
+                            project_op = w.postgres.create_project(
+                                project=Project(spec=ProjectSpec(display_name=project_name)),
+                                project_id=project_name,
+                            )
+                            project = project_op.wait()
+                            project_short = project.name.removeprefix("projects/")
+
+                            branch_id = f"{project_name}-branch"
+                            branch_op = w.postgres.create_branch(
+                                parent=project.name,
+                                branch=Branch(spec=BranchSpec(no_expiry=True)),
+                                branch_id=branch_id,
+                            )
+                            branch = branch_op.wait()
+                            branch_name = (
+                                branch.name.split("/branches/")[-1]
+                                if "/branches/" in branch.name
+                                else branch_id
+                            )
+                            s["lakebase_project"] = project_short
+                            s["lakebase_branch"] = branch_name
+                            self._log(t(f"  \u30d7\u30ed\u30b8\u30a7\u30af\u30c8\u4f5c\u6210\u5b8c\u4e86: {project_short} / \u30d6\u30e9\u30f3\u30c1: {branch_name}",
+                                         f"  Created project: {project_short} / branch: {branch_name}"))
+
+                    # Validate
+                    buf = io.StringIO()
+                    with contextlib.redirect_stdout(buf):
+                        branch_info = core.validate_lakebase_autoscaling(
+                            profile, s["lakebase_project"], s.get("lakebase_branch", "")
+                        )
+                    output = buf.getvalue()
+                    if output.strip():
+                        self._log(output.strip())
+
+                    if branch_info:
+                        lakebase_config = {
+                            "type": "autoscaling",
+                            "project": s["lakebase_project"],
+                            "branch": s.get("lakebase_branch", ""),
+                            "database_id": branch_info.get("database_id", ""),
+                        }
+                        s["lakebase_config"] = lakebase_config
+                        core.update_env_file("LAKEBASE_AUTOSCALING_PROJECT", lakebase_config["project"])
+                        core.update_env_file("LAKEBASE_AUTOSCALING_BRANCH", lakebase_config["branch"])
+                        pg_host = branch_info.get("host", "")
+                        if pg_host:
+                            core.update_env_file("PGHOST", pg_host)
+                        core.update_env_file("PGUSER", username)
+                        core.update_env_file("PGDATABASE", "databricks_postgres")
+                        advance(t("Lakebase \u8a2d\u5b9a\u5b8c\u4e86", "Lakebase configured"))
+                    else:
+                        fail(t("Lakebase", "Lakebase"), t("\u691c\u8a3c\u306b\u5931\u6557", "Validation failed"))
+                except Exception as e:
+                    fail(t("Lakebase", "Lakebase"), str(e)[:200])
+            else:
+                step += 1
+                self._set_progress(step / total_steps)
+
+            # Step 7: Create MLflow experiments
+            self._log(t("MLflow Experiments \u3092\u8a2d\u5b9a\u4e2d...", "Setting up MLflow Experiments..."))
+            try:
+                if s.get("mlflow_mode") == "new":
+                    base = s.get("mlflow_base_name") or f"/Users/{username}/freshmart-agent"
+                    buf = io.StringIO()
+                    with contextlib.redirect_stdout(buf):
+                        m_name, m_id = core._create_single_experiment(profile, f"{base}-monitoring")
+                        e_name, e_id = core._create_single_experiment(profile, f"{base}-evaluation")
+                    output = buf.getvalue()
+                    if output.strip():
+                        self._log(output.strip())
+                    s["monitoring_name"] = m_name
+                    s["monitoring_id"] = m_id
+                    s["eval_name"] = e_name
+                    s["eval_id"] = e_id
+                # else: IDs already stored from page 8
+                advance(t(f"MLflow Experiments: {s['monitoring_id']} / {s['eval_id']}",
+                           f"MLflow Experiments: {s['monitoring_id']} / {s['eval_id']}"))
+            except Exception as e:
+                fail(t("MLflow", "MLflow"), str(e)[:200])
+
+            # Step 8: Run trace setup
+            if s.get("trace_dest_mode") == "delta" and s.get("trace_dest_schema"):
+                self._log(t("\u30c8\u30ec\u30fc\u30b9\u30c6\u30fc\u30d6\u30eb\u3092\u4f5c\u6210\u4e2d...", "Creating trace tables..."))
+                try:
+                    dest = s["trace_dest_schema"]
+                    core.update_env_file("MLFLOW_TRACING_DESTINATION", dest)
+                    core.update_env_file("MLFLOW_TRACING_SQL_WAREHOUSE_ID", warehouse_id)
+                    core.append_env_to_app_yaml("MLFLOW_TRACING_DESTINATION", dest)
+                    core.append_env_to_app_yaml("MLFLOW_TRACING_SQL_WAREHOUSE_ID", warehouse_id)
+                    if "." in dest:
+                        _cat, _sch = dest.split(".", 1)
+                        buf = io.StringIO()
+                        with contextlib.redirect_stdout(buf):
+                            ok = core.run_trace_setup_on_databricks(
+                                profile_name=profile,
+                                username=username,
+                                catalog=_cat,
+                                schema=_sch,
+                                warehouse_id=warehouse_id,
+                                experiment_id=s["monitoring_id"],
+                            )
+                        output = buf.getvalue()
+                        if output.strip():
+                            self._log(output.strip())
+                        if ok:
+                            advance(t("\u30c8\u30ec\u30fc\u30b9\u30c6\u30fc\u30d6\u30eb\u4f5c\u6210\u5b8c\u4e86", "Trace tables created"))
+                        else:
+                            fail(t("\u30c8\u30ec\u30fc\u30b9\u30c6\u30fc\u30d6\u30eb", "Trace tables"), t("\u81ea\u52d5\u4f5c\u6210\u306b\u5931\u6557", "Auto-creation failed"))
+                    else:
+                        advance(t("\u30c8\u30ec\u30fc\u30b9\u8a2d\u5b9a\u4fdd\u5b58", "Trace config saved"))
+                except Exception as e:
+                    fail(t("\u30c8\u30ec\u30fc\u30b9", "Trace"), str(e)[:200])
+            else:
+                step += 1
+                self._set_progress(step / total_steps)
+
+            # Step 9: Update config files
+            self._log(t("\u8a2d\u5b9a\u30d5\u30a1\u30a4\u30eb\u3092\u66f4\u65b0\u4e2d...", "Updating config files..."))
+            try:
+                monitoring_id = s.get("monitoring_id", "")
+                eval_id = s.get("eval_id", "")
+                genie_space_id = s.get("genie_space_id", "")
+                vs_index_val = s.get("vs_index", "")
+
+                core.update_env_file("MLFLOW_EXPERIMENT_ID", monitoring_id)
+                core.update_env_file("MLFLOW_EVAL_EXPERIMENT_ID", eval_id)
+                core.update_env_file("GENIE_SPACE_ID", genie_space_id)
+                core.update_env_file("VECTOR_SEARCH_INDEX", vs_index_val)
+
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    core.update_databricks_yml_experiment(monitoring_id)
+                    core.update_databricks_yml_resources(genie_space_id, vs_index_val)
+                    if lakebase_config:
+                        core.update_databricks_yml_lakebase(lakebase_config)
+                        core.update_app_yaml_lakebase(lakebase_config)
+
+                # Update workshop_setup.py if it exists
+                setup_notebook = Path("workshop_setup.py")
+                if setup_notebook.exists():
+                    content = setup_notebook.read_text()
+                    replacements = {
+                        '"<CATALOG>"': f'"{catalog}"',
+                        '"<SCHEMA>"': f'"{schema}"',
+                        '"<WAREHOUSE-ID>"': f'"{warehouse_id}"',
+                        '"<MONITORING-EXPERIMENT-ID>"': f'"{monitoring_id}"',
+                        '"<EVAL-EXPERIMENT-ID>"': f'"{eval_id}"',
+                        '"<GENIE-SPACE-ID>"': f'"{genie_space_id}"',
+                        '"<LAKEBASE-PROJECT>"': (
+                            f'"{lakebase_config["project"]}"' if lakebase_config
+                            else '"<LAKEBASE-PROJECT>"'
+                        ),
+                        '"<LAKEBASE-BRANCH>"': (
+                            f'"{lakebase_config["branch"]}"' if lakebase_config
+                            else '"<LAKEBASE-BRANCH>"'
+                        ),
+                    }
+                    for old, new in replacements.items():
+                        content = content.replace(old, new)
+                    setup_notebook.write_text(content)
+
+                output = buf.getvalue()
+                if output.strip():
+                    self._log(output.strip())
+                advance(t("\u8a2d\u5b9a\u30d5\u30a1\u30a4\u30eb\u66f4\u65b0\u5b8c\u4e86", "Config files updated"))
+            except Exception as e:
+                fail(t("\u8a2d\u5b9a\u30d5\u30a1\u30a4\u30eb", "Config files"), str(e)[:200])
+
+            # Step 10: Install dependencies
+            self._log(t("\u4f9d\u5b58\u95a2\u4fc2\u3092\u30a4\u30f3\u30b9\u30c8\u30fc\u30eb\u4e2d...", "Installing dependencies..."))
+            try:
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    core.install_dependencies()
+                output = buf.getvalue()
+                if output.strip():
+                    self._log(output.strip())
+                advance(t("\u4f9d\u5b58\u95a2\u4fc2\u30a4\u30f3\u30b9\u30c8\u30fc\u30eb\u5b8c\u4e86", "Dependencies installed"))
+            except Exception as e:
+                fail(t("\u4f9d\u5b58\u95a2\u4fc2", "Dependencies"), str(e)[:200])
+
+        except Exception as e:
+            self._log(f"\n\u2717 Fatal error: {e}")
+
+        self._log(t("\n\u30bb\u30c3\u30c8\u30a2\u30c3\u30d7\u5b8c\u4e86\uff01", "\nSetup complete!"))
+        self._signal_done()
+
+    # ── Page 12: Complete ───────────────────────────────────────────────
+    def _page_complete(self, frame: customtkinter.CTkFrame):
+        customtkinter.CTkLabel(
+            frame,
+            text=t("\u30bb\u30c3\u30c8\u30a2\u30c3\u30d7\u5b8c\u4e86\uff01", "Setup Complete!"),
+            font=customtkinter.CTkFont(size=22, weight="bold"),
+        ).pack(pady=(15, 5))
+
+        # Show warnings about failed steps
+        failed = self.state.get("setup_failed_steps", [])
+        if failed:
+            customtkinter.CTkLabel(
+                frame,
+                text=t(
+                    f"\u26a0 {len(failed)} \u500b\u306e\u30b9\u30c6\u30c3\u30d7\u304c\u5931\u6557\u3057\u307e\u3057\u305f: {', '.join(failed)}",
+                    f"\u26a0 {len(failed)} step(s) failed: {', '.join(failed)}",
+                ),
+                text_color="orange",
+                wraplength=600,
+            ).pack(pady=(0, 5))
+
+        # Summary of created resources
+        s = self.state
+        summary_lines = [
+            f"{t('\u30ab\u30bf\u30ed\u30b0', 'Catalog')}: {s.get('catalog', '')}",
+            f"{t('\u30b9\u30ad\u30fc\u30de', 'Schema')}: {s.get('catalog', '')}.{s.get('schema', '')}",
+            f"Vector Search: {s.get('vs_index', '')}",
+            f"Genie Space ID: {s.get('genie_space_id', '')}",
+            f"{t('\u30e2\u30cb\u30bf\u30ea\u30f3\u30b0 Exp', 'Monitoring Exp')}: {s.get('monitoring_id', '')}",
+            f"{t('\u8a55\u4fa1 Exp', 'Evaluation Exp')}: {s.get('eval_id', '')}",
+        ]
+        lakebase_config = s.get("lakebase_config")
+        if lakebase_config:
+            summary_lines.append(
+                f"Lakebase: {lakebase_config.get('project', '')} (branch: {lakebase_config.get('branch', '')})"
+            )
+        if s.get("trace_dest_mode") == "delta" and s.get("trace_dest_schema"):
+            summary_lines.append(
+                f"{t('\u30c8\u30ec\u30fc\u30b9\u9001\u4fe1\u5148', 'Trace Dest')}: {s['trace_dest_schema']}"
+            )
+
+        summary_text = "\n".join(summary_lines)
+
+        customtkinter.CTkLabel(
+            frame,
+            text=t("\u4f5c\u6210\u3055\u308c\u305f\u30ea\u30bd\u30fc\u30b9", "Created Resources"),
+            font=customtkinter.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(5, 2), anchor="w", padx=30)
+
+        res_box = customtkinter.CTkTextbox(frame, width=600, height=130)
+        res_box.pack(padx=30, pady=(0, 5))
+        res_box.insert("0.0", summary_text)
+        res_box.configure(state="disabled")
+
+        # Team sharing info
+        customtkinter.CTkLabel(
+            frame,
+            text=t("\u30c1\u30fc\u30e0\u5171\u6709\u60c5\u5831", "Team Sharing Info"),
+            font=customtkinter.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(5, 2), anchor="w", padx=30)
+
+        share_lines = [
+            f"{t('\u30ab\u30bf\u30ed\u30b0\u540d', 'Catalog')}: {s.get('catalog', '')}",
+            f"{t('\u30b9\u30ad\u30fc\u30de\u540d', 'Schema')}: {s.get('schema', '')}",
+            f"{t('VS \u30a8\u30f3\u30c9\u30dd\u30a4\u30f3\u30c8', 'VS Endpoint')}: {s.get('vs_endpoint', '')}",
+            f"Genie Space ID: {s.get('genie_space_id', '')}",
+        ]
+        if lakebase_config:
+            share_lines.append(f"{t('Lakebase \u30d7\u30ed\u30b8\u30a7\u30af\u30c8', 'Lakebase project')}: {lakebase_config.get('project', '')}")
+            share_lines.append(f"{t('Lakebase \u30d6\u30e9\u30f3\u30c1', 'Lakebase branch')}: {lakebase_config.get('branch', '')}")
+        share_lines.append(f"{t('\u30e2\u30cb\u30bf\u30ea\u30f3\u30b0 Exp ID', 'Monitoring Exp ID')}: {s.get('monitoring_id', '')}")
+        share_lines.append(f"{t('\u8a55\u4fa1 Exp ID', 'Evaluation Exp ID')}: {s.get('eval_id', '')}")
+
+        self._share_text = "\n".join(share_lines)
+
+        share_box = customtkinter.CTkTextbox(frame, width=600, height=100)
+        share_box.pack(padx=30, pady=(0, 5))
+        share_box.insert("0.0", self._share_text)
+        share_box.configure(state="disabled")
+
+        btn_frame = customtkinter.CTkFrame(frame, fg_color="transparent")
+        btn_frame.pack(pady=5)
+
+        customtkinter.CTkButton(
+            btn_frame,
+            text=t("\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u306b\u30b3\u30d4\u30fc", "Copy to Clipboard"),
+            width=180,
+            command=self._copy_share_text,
+        ).pack(side="left", padx=10)
+
+        customtkinter.CTkButton(
+            btn_frame,
+            text=t("\u9589\u3058\u308b", "Close"),
+            width=120,
+            command=self.destroy,
+        ).pack(side="left", padx=10)
+
+    def _copy_share_text(self):
+        self.clipboard_clear()
+        self.clipboard_append(self._share_text)
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  Entry point
+# ════════════════════════════════════════════════════════════════════════
+def main():
+    app = QuickstartWizard()
+    app.mainloop()
+
+
+if __name__ == "__main__":
+    main()
