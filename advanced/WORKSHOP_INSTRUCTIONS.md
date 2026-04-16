@@ -59,7 +59,7 @@ uv run grant-team-access member1@company.com member2@company.com
 
 | ツール            | インストール方法                                                             | 確認コマンド                            |
 | -------------- | -------------------------------------------------------------------- | --------------------------------- |
-| Databricks CLI | `brew tap databricks/tap && brew install databricks`                 | `databricks --version`（**v0.295 以上**） |
+| Databricks CLI | `brew tap databricks/tap && brew install databricks`                 | `databricks --version`（**v0.297 以上**） |
 | uv             | [インストールガイド](https://docs.astral.sh/uv/getting-started/installation/) | `uv --version`                    |
 | Node.js 20+    | [nodejs.org](https://nodejs.org) または `nvm install 20`                | `node --version`                  |
 | jq             | `brew install jq`                                                    | `jq --version`                    |
@@ -499,7 +499,7 @@ uv run agent-evaluate-advanced
 ## ステップ 11（オプション）：Databricks Apps へのデプロイ
 
 > **前提条件：**
-> - Databricks CLI **v0.295 以上**（`brew upgrade databricks` で更新）
+> - Databricks CLI **v0.297 以上**（`brew upgrade databricks` で更新）
 > - ワークスペースの Apps 枠に空きがあること
 > - Apps 環境から PyPI と npm レジストリにアクセスできること
 
@@ -557,9 +557,16 @@ echo "MY_EMAIL: $MY_EMAIL"
             securable_full_name: "<CATALOG>.<SCHEMA>.policy_docs_index"  # ← ステップ 4 の値
             securable_type: "TABLE"
             permission: "SELECT"
+        - name: "postgres"
+          postgres:
+            branch: "projects/<PROJECT-NAME>/branches/<BRANCH-NAME>"      # ← ステップ 6 の値
+            database: "projects/<PROJECT-NAME>/branches/<BRANCH-NAME>/databases/databricks_postgres"
+            permission: "CAN_CONNECT_AND_CREATE"
 ```
 
-**Lakebase の環境変数**（リソースバインディング未対応のため `value` で直接指定）：
+> `postgres` リソースバインディングにより、デプロイ時にアプリの SP へ Lakebase の接続権限（CAN_CONNECT_AND_CREATE）が自動付与されます。
+
+**Lakebase の環境変数**（`agent.py` が project/branch 名を直接参照するため `value` で指定）：
 
 ```yaml
           - name: LAKEBASE_AUTOSCALING_PROJECT
@@ -749,9 +756,9 @@ databricks apps deploy $APP_NAME \
 | `relation "store" does not exist` | メモリテーブルが未作成。アプリを再起動すると初回リクエスト時に自動作成されます |
 | API 呼び出しで `302` エラー | PAT ではなく OAuth トークン（`databricks auth token`）を使用 |
 | デプロイ後 502 Bad Gateway | フロントエンドの npm build に時間がかかっている。3〜5 分待ってから再アクセス |
-| `bundle deploy` でリソースエラー | Databricks CLI を v0.295 以上に更新（`brew upgrade databricks`） |
+| `bundle deploy` でリソースエラー | Databricks CLI を v0.297 以上に更新（`brew upgrade databricks`） |
 | Apps の上限エラー | 不要なアプリを削除してから再デプロイ |
-| Apps UI でリソースが空 | CLI が古い。v0.295 以上ならリソースバインディングが正しく反映される |
+| Apps UI でリソースが空 | CLI が古い。v0.297 以上ならリソースバインディングが正しく反映される |
 
 ---
 

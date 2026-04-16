@@ -1117,22 +1117,75 @@ def _replace_lakebase_env_vars(content: str, lakebase_config: dict) -> str:
 
 
 def _replace_lakebase_resource(content: str, lakebase_config: dict) -> str:
-    """Update the Lakebase database resource section in databricks.yml.
+    """Update the Lakebase resource section in databricks.yml.
 
-    For provisioned: uncomments and fills in the database resource block.
-    For autoscaling: removes the commented-out provisioned resource block
-    (autoscaling postgres resource is added via API after deploy).
+    For provisioned: uses 'database' resource with instance_name.
+    For autoscaling: uses 'postgres' resource with project/branch paths.
+    Removes the unused resource type and associated comments.
     """
-    LAKEBASE_COMMENTS = {
-        "autoscaling postgres resource must be added via api after deploy",
-        "see: .claude/skills/add-tools/examples/lakebase-autoscaling.md",
+    # Comment patterns to strip (case-insensitive, prefix-matched after removing '#')
+    LAKEBASE_COMMENT_PREFIXES = [
+        "autoscaling postgres resource",
+        "see: .claude/skills/add-tools/examples/lakebase-autoscaling",
         "use for provisioned lakebase resource",
-    }
+        "provisioned lakebase config",
+        "lakebase:",  # matches "Lakebase: ..." comments (including Japanese)
+    ]
+
+    def is_lakebase_comment(bare_text: str) -> bool:
+        return any(bare_text.startswith(p) for p in LAKEBASE_COMMENT_PREFIXES)
+
+    def _detect_indent(result_lines: list[str]) -> str | None:
+        for prev in reversed(result_lines):
+            m = re.match(r"^(\s+)- name:", prev)
+            if m:
+                return m.group(1)
+        return None
+
+    def _skip_block_uncommented(lines: list[str], i: int) -> int:
+        """Skip subsequent lines of an uncommented resource block."""
+        i += 1
+        while i < len(lines):
+            next_stripped = lines[i].strip()
+            if next_stripped and not next_stripped.startswith("-") and not next_stripped.startswith("#"):
+                i += 1
+            else:
+                break
+        return i
+
+    def _skip_block_commented(lines: list[str], i: int, keywords: set[str]) -> int:
+        """Skip subsequent commented lines of a resource block matching any keyword."""
+        i += 1
+        while i < len(lines):
+            next_stripped = lines[i].strip()
+            if next_stripped.startswith("#") and any(kw in next_stripped for kw in keywords):
+                i += 1
+            else:
+                break
+        return i
+
+    def _build_postgres_block(indent: str, project: str, branch: str) -> list[str]:
+        return [
+            f'{indent}- name: "postgres"',
+            f"{indent}  postgres:",
+            f'{indent}    branch: "projects/{project}/branches/{branch}"',
+            f'{indent}    database: "projects/{project}/branches/{branch}/databases/databricks_postgres"',
+            f"{indent}    permission: \"CAN_CONNECT_AND_CREATE\"",
+        ]
+
+    def _build_database_block(indent: str, instance_name: str) -> list[str]:
+        return [
+            f'{indent}- name: "database"',
+            f"{indent}  database:",
+            f'{indent}    instance_name: "{instance_name}"',
+            f'{indent}    database_name: "databricks_postgres"',
+            f"{indent}    permission: \"CAN_CONNECT_AND_CREATE\"",
+        ]
 
     lines = content.splitlines()
     result = []
     i = 0
-    found_database = False
+    emitted_lakebase_resource = False
     resource_indent = None
 
     while i < len(lines):
@@ -1141,105 +1194,79 @@ def _replace_lakebase_resource(content: str, lakebase_config: dict) -> str:
         bare = stripped.lstrip("#").strip().lower()
 
         # Skip lakebase-related comment lines in the resources section
-        if bare in LAKEBASE_COMMENTS or (bare == "" and stripped == "#"):
-            # Bare "#" line between lakebase resource comments — skip it
-            # But only if we're inside the lakebase resource area (near other lakebase comments)
-            # Check if next or previous lines are lakebase-related
-            is_lakebase_area = False
-            if bare in LAKEBASE_COMMENTS:
-                is_lakebase_area = True
-            elif stripped == "#":
-                # Check surrounding lines for lakebase context
-                for offset in [-1, 1]:
-                    neighbor_idx = i + offset
-                    if 0 <= neighbor_idx < len(lines):
-                        neighbor_bare = lines[neighbor_idx].strip().lstrip("#").strip().lower()
-                        if neighbor_bare in LAKEBASE_COMMENTS or "database" in neighbor_bare:
-                            is_lakebase_area = True
-                            break
-
-            if is_lakebase_area:
-                if resource_indent is None:
-                    for prev in reversed(result):
-                        m = re.match(r"^(\s+)- name:", prev)
-                        if m:
-                            resource_indent = m.group(1)
-                            break
-                i += 1
-                continue
-
-        # Match the commented-out database resource lines
-        if re.match(r"\s*#\s*- name: ['\"]?database['\"]?", stripped):
-            found_database = True
+        if stripped.startswith("#") and is_lakebase_comment(bare):
             if resource_indent is None:
-                for prev in reversed(result):
-                    m = re.match(r"^(\s+)- name:", prev)
-                    if m:
-                        resource_indent = m.group(1)
-                        break
-            # Skip all subsequent commented lines that are part of this block
+                resource_indent = _detect_indent(result)
             i += 1
-            while i < len(lines):
-                next_stripped = lines[i].strip()
-                if next_stripped.startswith("#") and (
-                    "database:" in next_stripped
-                    or "instance_name:" in next_stripped
-                    or "database_name:" in next_stripped
-                    or "permission:" in next_stripped
-                ):
-                    i += 1
-                else:
-                    break
-
-            # For provisioned, insert the uncommented resource block
-            if lakebase_config["type"] == "provisioned":
-                indent = resource_indent or "        "
-                instance_name = lakebase_config["instance_name"]
-                result.append(f"{indent}- name: 'database'")
-                result.append(f"{indent}  database:")
-                result.append(f"{indent}    instance_name: '{instance_name}'")
-                result.append(f"{indent}    database_name: 'databricks_postgres'")
-                result.append(f"{indent}    permission: 'CAN_CONNECT_AND_CREATE'")
             continue
 
-        # Match an uncommented database resource (from a previous provisioned run)
-        if re.match(r"\s*- name: ['\"]?database['\"]?", stripped):
-            found_database = True
+        # --- postgres resource (autoscaling) ---
+
+        # Uncommented postgres resource
+        if re.match(r"\s*- name:\s*['\"]?postgres['\"]?", stripped):
             if resource_indent is None:
                 m = re.match(r"^(\s+)- name:", line)
                 if m:
                     resource_indent = m.group(1)
-            # Skip all subsequent lines that are part of this block
-            i += 1
-            while i < len(lines):
-                next_stripped = lines[i].strip()
-                if next_stripped and not next_stripped.startswith("-") and not next_stripped.startswith("#"):
-                    i += 1
-                else:
-                    break
-
-            # For provisioned, insert the updated resource block
-            if lakebase_config["type"] == "provisioned":
+            i = _skip_block_uncommented(lines, i)
+            if lakebase_config["type"] == "autoscaling" and not emitted_lakebase_resource:
                 indent = resource_indent or "        "
-                instance_name = lakebase_config["instance_name"]
-                result.append(f"{indent}- name: 'database'")
-                result.append(f"{indent}  database:")
-                result.append(f"{indent}    instance_name: '{instance_name}'")
-                result.append(f"{indent}    database_name: 'databricks_postgres'")
-                result.append(f"{indent}    permission: 'CAN_CONNECT_AND_CREATE'")
+                result.extend(_build_postgres_block(
+                    indent, lakebase_config["project"], lakebase_config["branch"]))
+                emitted_lakebase_resource = True
+            continue
+
+        # Commented-out postgres resource
+        if re.match(r"\s*#\s*- name:\s*['\"]?postgres['\"]?", stripped):
+            if resource_indent is None:
+                resource_indent = _detect_indent(result)
+            i = _skip_block_commented(
+                lines, i, {"postgres:", "branch:", "database:", "permission:"})
+            if lakebase_config["type"] == "autoscaling" and not emitted_lakebase_resource:
+                indent = resource_indent or "        "
+                result.extend(_build_postgres_block(
+                    indent, lakebase_config["project"], lakebase_config["branch"]))
+                emitted_lakebase_resource = True
+            continue
+
+        # --- database resource (provisioned) ---
+
+        # Commented-out database resource
+        if re.match(r"\s*#\s*- name:\s*['\"]?database['\"]?", stripped):
+            if resource_indent is None:
+                resource_indent = _detect_indent(result)
+            i = _skip_block_commented(
+                lines, i, {"database:", "instance_name:", "database_name:", "permission:"})
+            if lakebase_config["type"] == "provisioned" and not emitted_lakebase_resource:
+                indent = resource_indent or "        "
+                result.extend(_build_database_block(
+                    indent, lakebase_config["instance_name"]))
+                emitted_lakebase_resource = True
+            continue
+
+        # Uncommented database resource (from a previous provisioned run)
+        if re.match(r"\s*- name:\s*['\"]?database['\"]?", stripped):
+            if resource_indent is None:
+                m = re.match(r"^(\s+)- name:", line)
+                if m:
+                    resource_indent = m.group(1)
+            i = _skip_block_uncommented(lines, i)
+            if lakebase_config["type"] == "provisioned" and not emitted_lakebase_resource:
+                indent = resource_indent or "        "
+                result.extend(_build_database_block(
+                    indent, lakebase_config["instance_name"]))
+                emitted_lakebase_resource = True
             continue
 
         result.append(line)
         i += 1
 
-    # If provisioned but no existing database resource was found (e.g. after autoscaling
-    # removed it), append the resource block after the last resource entry
-    if lakebase_config["type"] == "provisioned" and not found_database:
-        # Find the last "- name:" line in the resources section to insert after
+    # If we didn't emit a lakebase resource yet (e.g. switching types or fresh YAML),
+    # append after the last resource entry
+    if not emitted_lakebase_resource:
         insert_idx = None
         for idx in range(len(result) - 1, -1, -1):
             if re.match(r"\s+- name:", result[idx]):
-                # Find the end of this resource block
                 insert_idx = idx + 1
                 while insert_idx < len(result):
                     next_stripped = result[insert_idx].strip()
@@ -1255,14 +1282,11 @@ def _replace_lakebase_resource(content: str, lakebase_config: dict) -> str:
 
         if insert_idx is not None:
             indent = resource_indent or "        "
-            instance_name = lakebase_config["instance_name"]
-            new_lines = [
-                f"{indent}- name: 'database'",
-                f"{indent}  database:",
-                f"{indent}    instance_name: '{instance_name}'",
-                f"{indent}    database_name: 'databricks_postgres'",
-                f"{indent}    permission: 'CAN_CONNECT_AND_CREATE'",
-            ]
+            if lakebase_config["type"] == "provisioned":
+                new_lines = _build_database_block(indent, lakebase_config["instance_name"])
+            else:
+                new_lines = _build_postgres_block(
+                    indent, lakebase_config["project"], lakebase_config["branch"])
             result = result[:insert_idx] + new_lines + result[insert_idx:]
 
     return "\n".join(result) + "\n"

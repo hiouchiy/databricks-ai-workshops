@@ -98,7 +98,7 @@ advanced/
 - **ローカルツール**：
   - [uv](https://docs.astral.sh/uv/getting-started/installation/)（Python パッケージマネージャー）
   - [nvm](https://github.com/nvm-sh/nvm) + Node.js 20 LTS
-  - [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/install) **v0.295 以上**（Apps デプロイのリソースバインディングに必要）
+  - [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/install) **v0.297 以上**（Apps デプロイのリソースバインディングに必要）
 - **任意**：[Claude Code](https://docs.anthropic.com/en/docs/claude-code)（AI 支援開発用）
 
 ---
@@ -488,7 +488,7 @@ advanced/
 - **Local tools**:
   - [uv](https://docs.astral.sh/uv/getting-started/installation/) (Python package manager)
   - [nvm](https://github.com/nvm-sh/nvm) + Node.js 20 LTS
-  - [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/install) **v0.295+** (required for resource bindings in Apps deployment)
+  - [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/install) **v0.297+** (required for resource bindings in Apps deployment)
 - **Optional**: [Claude Code](https://docs.anthropic.com/en/docs/claude-code) for AI-assisted development
 
 ---
@@ -717,8 +717,8 @@ For detailed deployment instructions, see Step 11 in [WORKSHOP_INSTRUCTIONS.md](
 | `tool_use without tool_result` | Corrupted checkpoint. Auto-recovered by deleting checkpoint and retrying |
 | `302 redirect when querying deployed agent` | Use OAuth token, not PAT. Run `databricks auth token` |
 | 502 Bad Gateway after deploy | Frontend npm build takes 3-5 minutes. Wait and retry |
-| `bundle deploy` resource errors | Update Databricks CLI to v0.295+ (`brew upgrade databricks`) |
-| Apps UI shows empty resources | CLI too old. v0.295+ correctly reflects resource bindings |
+| `bundle deploy` resource errors | Update Databricks CLI to v0.297+ (`brew upgrade databricks`) |
+| Apps UI shows empty resources | CLI too old. v0.297+ correctly reflects resource bindings |
 
 ---
 
