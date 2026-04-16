@@ -23,7 +23,7 @@ from scripts import quickstart_core as core
 customtkinter.set_appearance_mode("dark")
 customtkinter.set_default_color_theme("blue")
 
-TOTAL_PAGES = 12
+TOTAL_PAGES = 13
 
 
 # ── Helper: bilingual text ─────────────────────────────────────────────
@@ -148,9 +148,10 @@ class QuickstartWizard(customtkinter.CTk):
             self._page_lakebase,        # 6 -> Step 7
             self._page_mlflow,          # 7 -> Step 8
             self._page_trace,           # 8 -> Step 9
-            self._page_summary,         # 9 -> Step 10
-            self._page_execute,         # 10 -> Step 11
-            self._page_complete,        # 11 -> Step 12
+            self._page_prompt_registry, # 9 -> Step 10
+            self._page_summary,         # 10 -> Step 11
+            self._page_execute,         # 11 -> Step 12
+            self._page_complete,        # 12 -> Step 13
         ]
 
     def _update_nav(self):
@@ -161,14 +162,14 @@ class QuickstartWizard(customtkinter.CTk):
             text=f"Step {pg + 1} of {TOTAL_PAGES}"
         )
 
-        # Back disabled on page 1, and on pages 11-12
-        if pg == 0 or pg >= 10:
+        # Back disabled on page 1, and on execute/complete pages
+        if pg == 0 or pg >= 11:
             self._back_btn.configure(state="disabled")
         else:
             self._back_btn.configure(state="normal")
 
-        # Next disabled on pages 11-12
-        if pg >= 10:
+        # Next disabled on execute/complete pages
+        if pg >= 11:
             self._next_btn.configure(state="disabled")
         else:
             self._next_btn.configure(state="normal")
@@ -892,7 +893,51 @@ class QuickstartWizard(customtkinter.CTk):
     def _sync_trace_schema(self):
         self.data["trace_dest_schema"] = self._trace_schema_entry.get().strip()
 
-    # ── Page 10: Summary ────────────────────────────────────────────────
+    # ── Page 10: Prompt Registry ──────────────────────────────────────────
+    def _page_prompt_registry(self, frame: customtkinter.CTkFrame):
+        customtkinter.CTkLabel(
+            frame,
+            text="Prompt Registry",
+            font=customtkinter.CTkFont(size=22, weight="bold"),
+        ).pack(pady=(20, 10))
+
+        customtkinter.CTkLabel(
+            frame,
+            text=t(
+                "システムプロンプトの管理方法を選択してください。\n"
+                "Prompt Registry を使用すると、バージョン管理・A/Bテスト・\n"
+                "ロールバックが可能になります。",
+                "Select how to manage system prompts.\n"
+                "Prompt Registry enables version control, A/B testing,\n"
+                "and rollback capabilities."
+            ),
+            wraplength=550,
+            justify="left",
+        ).pack(pady=(0, 15), padx=40, anchor="w")
+
+        self._prompt_registry_var = customtkinter.StringVar(
+            value=self.data.get("use_prompt_registry", "no")
+        )
+
+        customtkinter.CTkRadioButton(
+            frame,
+            text=t("使用しない（ハードコード版、設定不要）",
+                    "Don't use (hardcoded, no setup needed)"),
+            variable=self._prompt_registry_var,
+            value="no",
+            command=lambda: self.data.update({"use_prompt_registry": "no"}),
+        ).pack(pady=5, padx=40, anchor="w")
+
+        customtkinter.CTkRadioButton(
+            frame,
+            text=t("Unity Catalog Prompt Registry を使用",
+                    "Use Unity Catalog Prompt Registry"),
+            variable=self._prompt_registry_var,
+            value="yes",
+            command=lambda: self.data.update({"use_prompt_registry": "yes"}),
+        ).pack(pady=5, padx=40, anchor="w")
+
+    # ── Page 11: Summary ────────────────────────────────────────────────
     def _page_summary(self, frame: customtkinter.CTkFrame):
         customtkinter.CTkLabel(
             frame,
@@ -926,6 +971,11 @@ class QuickstartWizard(customtkinter.CTk):
             lines.append(f"{t('\u30c8\u30ec\u30fc\u30b9\u9001\u4fe1\u5148', 'Trace Dest')}: Delta Table ({self.data.get('trace_dest_schema', '')})")
         else:
             lines.append(f"{t('\u30c8\u30ec\u30fc\u30b9\u9001\u4fe1\u5148', 'Trace Dest')}: MLflow Experiment")
+
+        if self.data.get("use_prompt_registry") == "yes":
+            lines.append(f"Prompt Registry: {t('\u4f7f\u7528\u3059\u308b', 'Enabled')}")
+        else:
+            lines.append(f"Prompt Registry: {t('\u4f7f\u7528\u3057\u306a\u3044', 'Disabled')}")
 
         textbox.insert("0.0", "\n".join(lines))
         textbox.configure(state="disabled")
@@ -1001,7 +1051,7 @@ class QuickstartWizard(customtkinter.CTk):
         schema = s["schema"]
         warehouse_id = s["warehouse_id"]
         vs_endpoint = s["vs_endpoint"]
-        total_steps = 10
+        total_steps = 11
         step = 0
 
         def advance(step_name: str):
@@ -1292,7 +1342,27 @@ class QuickstartWizard(customtkinter.CTk):
             except Exception as e:
                 fail(t("\u8a2d\u5b9a\u30d5\u30a1\u30a4\u30eb", "Config files"), str(e)[:200])
 
-            # Step 10: Install dependencies
+            # Step 10: Prompt Registry (optional)
+            if self.data.get("use_prompt_registry") == "yes":
+                self._log(t("Prompt Registry に登録中...", "Registering to Prompt Registry..."))
+                try:
+                    prompt_name = f"{self.data['catalog']}.{self.data['schema']}.freshmart_system_prompt"
+                    result = subprocess.run(
+                        ["uv", "run", "register-prompt", "--name", prompt_name],
+                        capture_output=True, text=True,
+                    )
+                    if result.returncode == 0:
+                        core.update_env_file("PROMPT_REGISTRY_NAME", prompt_name)
+                        core.append_env_to_app_yaml("PROMPT_REGISTRY_NAME", prompt_name)
+                        advance(f"Prompt Registry: {prompt_name}")
+                    else:
+                        fail("Prompt Registry", result.stderr[-200:] if result.stderr else "Unknown error")
+                except Exception as e:
+                    fail("Prompt Registry", str(e)[:200])
+            else:
+                advance(t("Prompt Registry: スキップ", "Prompt Registry: Skipped"))
+
+            # Step 11: Install dependencies
             self._log(t("\u4f9d\u5b58\u95a2\u4fc2\u3092\u30a4\u30f3\u30b9\u30c8\u30fc\u30eb\u4e2d...", "Installing dependencies..."))
             try:
                 buf = io.StringIO()
@@ -1311,7 +1381,7 @@ class QuickstartWizard(customtkinter.CTk):
         self._log(t("\n\u30bb\u30c3\u30c8\u30a2\u30c3\u30d7\u5b8c\u4e86\uff01", "\nSetup complete!"))
         self._signal_done()
 
-    # ── Page 12: Complete ───────────────────────────────────────────────
+    # ── Page 13: Complete ───────────────────────────────────────────────
     def _page_complete(self, frame: customtkinter.CTkFrame):
         customtkinter.CTkLabel(
             frame,
