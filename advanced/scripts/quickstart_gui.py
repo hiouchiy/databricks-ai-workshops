@@ -206,18 +206,29 @@ class QuickstartWizard(customtkinter.CTk):
                 ))
                 return False
         elif pg == 2:
-            if not self.data.get("catalog", "").strip():
+            catalog_name = self.data.get("catalog", "").strip()
+            if not catalog_name:
                 self._show_error(t(
-                    "\u30ab\u30bf\u30ed\u30b0\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                    "カタログ名を入力してください。",
                     "Please enter a catalog name."
                 ))
                 return False
+            if self.data.get("_catalog_mode") == "new":
+                valid, msg = self._validate_uc_name(catalog_name)
+                if not valid:
+                    self._show_error(msg)
+                    return False
         elif pg == 3:
-            if not self.data.get("schema", "").strip():
+            schema_name = self.data.get("schema", "").strip()
+            if not schema_name:
                 self._show_error(t(
-                    "\u30b9\u30ad\u30fc\u30de\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                    "スキーマ名を入力してください。",
                     "Please enter a schema name."
                 ))
+                return False
+            valid, msg = self._validate_uc_name(schema_name)
+            if not valid:
+                self._show_error(msg)
                 return False
         elif pg == 4:
             if not self.data.get("warehouse_id", "").strip():
@@ -232,23 +243,32 @@ class QuickstartWizard(customtkinter.CTk):
                 pass
         elif pg == 6:
             mode = self.data.get("lakebase_mode", "new")
+            project_name = self.data.get("lakebase_project", "").strip()
             if mode == "new":
-                if not self.data.get("lakebase_project", "").strip():
+                if not project_name:
                     self._show_error(t(
-                        "\u30d7\u30ed\u30b8\u30a7\u30af\u30c8\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                        "プロジェクト名を入力してください。",
                         "Please enter a project name."
                     ))
                     return False
+                valid, msg = self._validate_lakebase_name(project_name)
+                if not valid:
+                    self._show_error(msg)
+                    return False
             else:
-                if not self.data.get("lakebase_project", "").strip():
+                if not project_name:
                     self._show_error(t(
-                        "\u30d7\u30ed\u30b8\u30a7\u30af\u30c8\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                        "プロジェクト名を入力してください。",
                         "Please enter a project name."
                     ))
+                    return False
+                valid, msg = self._validate_lakebase_name(project_name)
+                if not valid:
+                    self._show_error(msg)
                     return False
                 if not self.data.get("lakebase_branch", "").strip():
                     self._show_error(t(
-                        "\u30d6\u30e9\u30f3\u30c1\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                        "ブランチ名を入力してください。",
                         "Please enter a branch name."
                     ))
                     return False
@@ -295,6 +315,52 @@ class QuickstartWizard(customtkinter.CTk):
         customtkinter.CTkButton(
             dialog, text="OK", width=80, command=dialog.destroy
         ).pack(pady=(0, 15))
+
+    # ── Naming validators ─────────────────────────────────────────────
+    def _validate_uc_name(self, name: str) -> tuple[bool, str]:
+        """Validate a Unity Catalog identifier (catalog/schema name).
+
+        Rules:
+        - Must not be empty
+        - Max 255 characters
+        - Can contain letters (including Unicode/Japanese), digits, underscores
+        - Must start with a letter or underscore
+        - No spaces, hyphens, dots, or special characters
+        """
+        import re
+        if not name:
+            return False, t("名前を入力してください", "Name is required")
+        if len(name) > 255:
+            return False, t("255文字以内で入力してください", "Must be 255 characters or fewer")
+        if not re.match(r'^[a-zA-Z_\u3000-\u9fff\uf900-\ufaff]', name):
+            return False, t("先頭は英字またはアンダースコアで始めてください", "Must start with a letter or underscore")
+        if not re.match(r'^[a-zA-Z0-9_\u3000-\u9fff\uf900-\ufaff]+$', name):
+            return False, t(
+                "使用できない文字が含まれています（英数字・アンダースコアのみ）",
+                "Contains invalid characters (only letters, digits, underscores allowed)"
+            )
+        return True, ""
+
+    def _validate_lakebase_name(self, name: str) -> tuple[bool, str]:
+        """Validate a Lakebase project/branch name.
+
+        Rules:
+        - Must not be empty
+        - Can contain lowercase letters, digits, hyphens
+        - Must start with a letter
+        - No underscores, uppercase, spaces, or special characters
+        """
+        import re
+        if not name:
+            return False, t("名前を入力してください", "Name is required")
+        if not re.match(r'^[a-z]', name):
+            return False, t("先頭は英小文字で始めてください", "Must start with a lowercase letter")
+        if not re.match(r'^[a-z0-9-]+$', name):
+            return False, t(
+                "英小文字・数字・ハイフンのみ使用できます",
+                "Only lowercase letters, digits, and hyphens allowed"
+            )
+        return True, ""
 
     # ════════════════════════════════════════════════════════════════════
     #  PAGE BUILDERS
@@ -471,35 +537,141 @@ class QuickstartWizard(customtkinter.CTk):
             text_color="green",
         )
 
-    # ── Page 3: Catalog Name ────────────────────────────────────────────
+    # ── Page 3: Catalog ───────────────────────────────────────────────
     def _page_catalog(self, frame: customtkinter.CTkFrame):
         customtkinter.CTkLabel(
             frame,
-            text=t("\u30ab\u30bf\u30ed\u30b0\u540d", "Catalog Name"),
+            text=t("カタログ", "Catalog"),
             font=customtkinter.CTkFont(size=22, weight="bold"),
         ).pack(pady=(20, 10))
 
-        customtkinter.CTkLabel(
-            frame,
-            text=t(
-                "\u30c7\u30fc\u30bf\u3092\u683c\u7d0d\u3059\u308b Unity Catalog \u30ab\u30bf\u30ed\u30b0\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
-                "Enter the Unity Catalog catalog name where data will be stored.",
-            ),
-            wraplength=500,
-        ).pack(pady=(0, 10))
-
-        # Try to pre-fill from .env
-        env_val = core.get_env_value("CATALOG") or self.data.get("catalog", "")
-
-        self._catalog_entry = customtkinter.CTkEntry(
-            frame, width=400, placeholder_text="e.g. my_catalog"
+        self._catalog_mode_var = customtkinter.StringVar(
+            value=self.data.get("_catalog_mode", "existing")
         )
-        self._catalog_entry.pack(pady=10, padx=40)
-        if env_val:
-            self._catalog_entry.insert(0, env_val)
 
-        # Sync on key release
-        self._catalog_entry.bind("<KeyRelease>", lambda _: self._sync_catalog())
+        customtkinter.CTkRadioButton(
+            frame,
+            text=t("既存のカタログから選択", "Select from existing"),
+            variable=self._catalog_mode_var,
+            value="existing",
+            command=self._rebuild_catalog_fields,
+        ).pack(pady=5, padx=40, anchor="w")
+
+        customtkinter.CTkRadioButton(
+            frame,
+            text=t("新規作成", "Create new"),
+            variable=self._catalog_mode_var,
+            value="new",
+            command=self._rebuild_catalog_fields,
+        ).pack(pady=5, padx=40, anchor="w")
+
+        self._catalog_fields_frame = customtkinter.CTkFrame(frame)
+        self._catalog_fields_frame.pack(fill="x", padx=40, pady=10)
+
+        self._rebuild_catalog_fields()
+
+    def _rebuild_catalog_fields(self):
+        for w in self._catalog_fields_frame.winfo_children():
+            w.destroy()
+
+        mode = self._catalog_mode_var.get()
+        self.data["_catalog_mode"] = mode
+
+        if mode == "existing":
+            # Fetch catalogs via SQL API
+            token = self.data.get("token", "")
+            host = self.data.get("host", "")
+            warehouse_id = self.data.get("warehouse_id", "")
+            catalogs: list[str] = []
+            if token and host and warehouse_id:
+                try:
+                    result = core.run_sql_statement("SHOW CATALOGS", token, host, warehouse_id)
+                    if result.get("status", {}).get("state") == "SUCCEEDED":
+                        data_array = result.get("result", {}).get("data_array", [])
+                        catalogs = [row[0] for row in data_array if row]
+                except Exception:
+                    pass
+
+            if not catalogs:
+                customtkinter.CTkLabel(
+                    self._catalog_fields_frame,
+                    text=t(
+                        "カタログを取得できませんでした。\n認証とウェアハウスの設定を確認してください。",
+                        "Could not fetch catalogs.\nPlease check authentication and warehouse settings.",
+                    ),
+                    text_color="orange",
+                    wraplength=400,
+                ).pack(pady=10)
+                return
+
+            customtkinter.CTkLabel(
+                self._catalog_fields_frame,
+                text=t("カタログを選択:", "Select catalog:"),
+            ).pack(anchor="w", pady=(5, 2))
+
+            # Pre-select: current value, env value, or first
+            env_val = core.get_env_value("CATALOG") or self.data.get("catalog", "")
+            default = catalogs[0]
+            if env_val in catalogs:
+                default = env_val
+
+            self._catalog_dropdown_var = customtkinter.StringVar(value=default)
+            customtkinter.CTkOptionMenu(
+                self._catalog_fields_frame,
+                variable=self._catalog_dropdown_var,
+                values=catalogs,
+                width=400,
+                command=self._on_catalog_dropdown_change,
+            ).pack(pady=(0, 5))
+
+            # Store initial selection
+            self.data["catalog"] = default
+
+        else:
+            # New catalog
+            customtkinter.CTkLabel(
+                self._catalog_fields_frame,
+                text=t("カタログ名:", "Catalog name:"),
+            ).pack(anchor="w", pady=(5, 2))
+
+            env_val = core.get_env_value("CATALOG") or self.data.get("catalog", "")
+
+            self._catalog_entry = customtkinter.CTkEntry(
+                self._catalog_fields_frame, width=400,
+                placeholder_text="e.g. my_catalog",
+            )
+            self._catalog_entry.pack(pady=(0, 5))
+            if env_val:
+                self._catalog_entry.insert(0, env_val)
+
+            self._catalog_validation_label = customtkinter.CTkLabel(
+                self._catalog_fields_frame, text="", wraplength=400,
+            )
+            self._catalog_validation_label.pack(anchor="w")
+
+            self._catalog_entry.bind("<KeyRelease>", lambda _: self._on_catalog_entry_change())
+
+            # Run initial validation if there's a pre-filled value
+            if env_val:
+                self._on_catalog_entry_change()
+
+    def _on_catalog_dropdown_change(self, selection: str):
+        self.data["catalog"] = selection
+
+    def _on_catalog_entry_change(self):
+        name = self._catalog_entry.get().strip()
+        self.data["catalog"] = name
+        valid, msg = self._validate_uc_name(name)
+        if valid:
+            self._catalog_validation_label.configure(
+                text=t("✓ 有効な名前です", "✓ Valid name"),
+                text_color="green",
+            )
+        else:
+            self._catalog_validation_label.configure(
+                text=msg,
+                text_color="red",
+            )
 
     def _sync_catalog(self):
         self.data["catalog"] = self._catalog_entry.get().strip()
@@ -508,14 +680,14 @@ class QuickstartWizard(customtkinter.CTk):
     def _page_schema(self, frame: customtkinter.CTkFrame):
         customtkinter.CTkLabel(
             frame,
-            text=t("\u30b9\u30ad\u30fc\u30de\u540d", "Schema Name"),
+            text=t("スキーマ名", "Schema Name"),
             font=customtkinter.CTkFont(size=22, weight="bold"),
         ).pack(pady=(20, 10))
 
         customtkinter.CTkLabel(
             frame,
             text=t(
-                "\u30c7\u30fc\u30bf\u3092\u683c\u7d0d\u3059\u308b\u30b9\u30ad\u30fc\u30de\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                "データを格納するスキーマ名を入力してください。",
                 "Enter the schema name where data will be stored.",
             ),
             wraplength=500,
@@ -530,7 +702,31 @@ class QuickstartWizard(customtkinter.CTk):
         if env_val:
             self._schema_entry.insert(0, env_val)
 
-        self._schema_entry.bind("<KeyRelease>", lambda _: self._sync_schema())
+        self._schema_validation_label = customtkinter.CTkLabel(
+            frame, text="", wraplength=400,
+        )
+        self._schema_validation_label.pack(padx=40, anchor="w")
+
+        self._schema_entry.bind("<KeyRelease>", lambda _: self._on_schema_entry_change())
+
+        # Run initial validation if there's a pre-filled value
+        if env_val:
+            self._on_schema_entry_change()
+
+    def _on_schema_entry_change(self):
+        name = self._schema_entry.get().strip()
+        self.data["schema"] = name
+        valid, msg = self._validate_uc_name(name)
+        if valid:
+            self._schema_validation_label.configure(
+                text=t("✓ 有効な名前です", "✓ Valid name"),
+                text_color="green",
+            )
+        else:
+            self._schema_validation_label.configure(
+                text=msg,
+                text_color="red",
+            )
 
     def _sync_schema(self):
         self.data["schema"] = self._schema_entry.get().strip()
@@ -712,7 +908,7 @@ class QuickstartWizard(customtkinter.CTk):
         if mode == "new":
             customtkinter.CTkLabel(
                 self._lb_fields_frame,
-                text=t("\u30d7\u30ed\u30b8\u30a7\u30af\u30c8\u540d:", "Project name:"),
+                text=t("プロジェクト名:", "Project name:"),
             ).pack(anchor="w", pady=(5, 2))
             self._lb_proj_entry = customtkinter.CTkEntry(
                 self._lb_fields_frame, width=400,
@@ -721,12 +917,22 @@ class QuickstartWizard(customtkinter.CTk):
             self._lb_proj_entry.pack(pady=(0, 5))
             if self.data.get("lakebase_project"):
                 self._lb_proj_entry.insert(0, self.data["lakebase_project"])
-            self._lb_proj_entry.bind("<KeyRelease>", lambda _: self._sync_lb_project())
+
+            self._lb_proj_validation_label = customtkinter.CTkLabel(
+                self._lb_fields_frame, text="", wraplength=400,
+            )
+            self._lb_proj_validation_label.pack(anchor="w")
+
+            self._lb_proj_entry.bind("<KeyRelease>", lambda _: self._on_lb_proj_change())
+
+            # Run initial validation if there's a pre-filled value
+            if self.data.get("lakebase_project"):
+                self._on_lb_proj_change()
 
             customtkinter.CTkLabel(
                 self._lb_fields_frame,
                 text=t(
-                    "\u203b \u5b9f\u969b\u306e\u4f5c\u6210\u306f\u30bb\u30c3\u30c8\u30a2\u30c3\u30d7\u5b9f\u884c\u6642 (Step 11) \u306b\u884c\u308f\u308c\u307e\u3059\u3002",
+                    "※ 実際の作成はセットアップ実行時 (Step 11) に行われます。",
                     "* Actual creation happens during setup execution (Step 11).",
                 ),
                 text_color="gray",
@@ -735,7 +941,7 @@ class QuickstartWizard(customtkinter.CTk):
         else:
             customtkinter.CTkLabel(
                 self._lb_fields_frame,
-                text=t("\u30d7\u30ed\u30b8\u30a7\u30af\u30c8\u540d:", "Project name:"),
+                text=t("プロジェクト名:", "Project name:"),
             ).pack(anchor="w", pady=(5, 2))
             self._lb_proj_entry = customtkinter.CTkEntry(
                 self._lb_fields_frame, width=400,
@@ -743,11 +949,21 @@ class QuickstartWizard(customtkinter.CTk):
             self._lb_proj_entry.pack(pady=(0, 5))
             if self.data.get("lakebase_project"):
                 self._lb_proj_entry.insert(0, self.data["lakebase_project"])
-            self._lb_proj_entry.bind("<KeyRelease>", lambda _: self._sync_lb_project())
+
+            self._lb_proj_validation_label = customtkinter.CTkLabel(
+                self._lb_fields_frame, text="", wraplength=400,
+            )
+            self._lb_proj_validation_label.pack(anchor="w")
+
+            self._lb_proj_entry.bind("<KeyRelease>", lambda _: self._on_lb_proj_change())
+
+            # Run initial validation if there's a pre-filled value
+            if self.data.get("lakebase_project"):
+                self._on_lb_proj_change()
 
             customtkinter.CTkLabel(
                 self._lb_fields_frame,
-                text=t("\u30d6\u30e9\u30f3\u30c1\u540d:", "Branch name:"),
+                text=t("ブランチ名:", "Branch name:"),
             ).pack(anchor="w", pady=(5, 2))
             self._lb_branch_entry = customtkinter.CTkEntry(
                 self._lb_fields_frame, width=400,
@@ -756,6 +972,21 @@ class QuickstartWizard(customtkinter.CTk):
             if self.data.get("lakebase_branch"):
                 self._lb_branch_entry.insert(0, self.data["lakebase_branch"])
             self._lb_branch_entry.bind("<KeyRelease>", lambda _: self._sync_lb_branch())
+
+    def _on_lb_proj_change(self):
+        name = self._lb_proj_entry.get().strip()
+        self.data["lakebase_project"] = name
+        valid, msg = self._validate_lakebase_name(name)
+        if valid:
+            self._lb_proj_validation_label.configure(
+                text=t("✓ 有効な名前です", "✓ Valid name"),
+                text_color="green",
+            )
+        else:
+            self._lb_proj_validation_label.configure(
+                text=msg,
+                text_color="red",
+            )
 
     def _sync_lb_project(self):
         self.data["lakebase_project"] = self._lb_proj_entry.get().strip()
