@@ -44,7 +44,7 @@ class QuickstartWizard(customtkinter.CTk):
         self._center_window(700, 550)
 
         # ── State ───────────────────────────────────────────────────────
-        self.state: dict = {
+        self.data: dict = {
             "lang": "ja",
             # Auth
             "profile_name": "",
@@ -187,76 +187,76 @@ class QuickstartWizard(customtkinter.CTk):
     def _validate_current_page(self) -> bool:
         pg = self.current_page
         if pg == 1:
-            if not self.state.get("auth_ok"):
+            if not self.data.get("auth_ok"):
                 self._show_error(t(
                     "\u5148\u306b\u300c\u63a5\u7d9a\u300d\u3092\u30af\u30ea\u30c3\u30af\u3057\u3066\u8a8d\u8a3c\u3092\u5b8c\u4e86\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
                     "Please click 'Connect' to complete authentication first."
                 ))
                 return False
         elif pg == 2:
-            if not self.state.get("catalog", "").strip():
+            if not self.data.get("catalog", "").strip():
                 self._show_error(t(
                     "\u30ab\u30bf\u30ed\u30b0\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
                     "Please enter a catalog name."
                 ))
                 return False
         elif pg == 3:
-            if not self.state.get("schema", "").strip():
+            if not self.data.get("schema", "").strip():
                 self._show_error(t(
                     "\u30b9\u30ad\u30fc\u30de\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
                     "Please enter a schema name."
                 ))
                 return False
         elif pg == 4:
-            if not self.state.get("warehouse_id", "").strip():
+            if not self.data.get("warehouse_id", "").strip():
                 self._show_error(t(
                     "\u30a6\u30a7\u30a2\u30cf\u30a6\u30b9\u3092\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
                     "Please select a warehouse."
                 ))
                 return False
         elif pg == 5:
-            if not self.state.get("vs_endpoint", "").strip():
+            if not self.data.get("vs_endpoint", "").strip():
                 # Allow empty with warning
                 pass
         elif pg == 6:
-            mode = self.state.get("lakebase_mode", "new")
+            mode = self.data.get("lakebase_mode", "new")
             if mode == "new":
-                if not self.state.get("lakebase_project", "").strip():
+                if not self.data.get("lakebase_project", "").strip():
                     self._show_error(t(
                         "\u30d7\u30ed\u30b8\u30a7\u30af\u30c8\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
                         "Please enter a project name."
                     ))
                     return False
             else:
-                if not self.state.get("lakebase_project", "").strip():
+                if not self.data.get("lakebase_project", "").strip():
                     self._show_error(t(
                         "\u30d7\u30ed\u30b8\u30a7\u30af\u30c8\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
                         "Please enter a project name."
                     ))
                     return False
-                if not self.state.get("lakebase_branch", "").strip():
+                if not self.data.get("lakebase_branch", "").strip():
                     self._show_error(t(
                         "\u30d6\u30e9\u30f3\u30c1\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
                         "Please enter a branch name."
                     ))
                     return False
         elif pg == 7:
-            mode = self.state.get("mlflow_mode", "new")
+            mode = self.data.get("mlflow_mode", "new")
             if mode == "new":
-                if not self.state.get("mlflow_base_name", "").strip():
+                if not self.data.get("mlflow_base_name", "").strip():
                     self._show_error(t(
                         "\u30d9\u30fc\u30b9\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
                         "Please enter a base name."
                     ))
                     return False
             else:
-                if not self.state.get("monitoring_id", "").strip():
+                if not self.data.get("monitoring_id", "").strip():
                     self._show_error(t(
                         "\u30e2\u30cb\u30bf\u30ea\u30f3\u30b0 Experiment ID \u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
                         "Please enter a Monitoring Experiment ID."
                     ))
                     return False
-                if not self.state.get("eval_id", "").strip():
+                if not self.data.get("eval_id", "").strip():
                     self._show_error(t(
                         "\u8a55\u4fa1 Experiment ID \u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
                         "Please enter an Evaluation Experiment ID."
@@ -304,7 +304,7 @@ class QuickstartWizard(customtkinter.CTk):
             wraplength=500,
         ).pack(pady=(0, 20))
 
-        self._lang_var = customtkinter.StringVar(value=self.state["lang"])
+        self._lang_var = customtkinter.StringVar(value=self.data["lang"])
 
         customtkinter.CTkRadioButton(
             frame,
@@ -326,7 +326,7 @@ class QuickstartWizard(customtkinter.CTk):
 
     def _on_lang_change(self):
         lang = self._lang_var.get()
-        self.state["lang"] = lang
+        self.data["lang"] = lang
         core.set_language(lang)
         # Rebuild current page to refresh labels
         self.show_page(self.current_page)
@@ -359,7 +359,7 @@ class QuickstartWizard(customtkinter.CTk):
         ).pack(pady=(5, 2), anchor="w", padx=40)
 
         self._profile_var = customtkinter.StringVar(
-            value=self.state.get("profile_name") or (profile_names[0] if profile_names else "")
+            value=self.data.get("profile_name") or (profile_names[0] if profile_names else "")
         )
         customtkinter.CTkOptionMenu(
             frame,
@@ -379,11 +379,11 @@ class QuickstartWizard(customtkinter.CTk):
         self._auth_status.pack(pady=5)
 
         # Show previously successful auth
-        if self.state.get("auth_ok"):
+        if self.data.get("auth_ok"):
             self._auth_status.configure(
                 text=t(
-                    f"\u2713 \u8a8d\u8a3cOK: {self.state['username']} @ {self.state['host']}",
-                    f"\u2713 Authenticated: {self.state['username']} @ {self.state['host']}",
+                    f"\u2713 \u8a8d\u8a3cOK: {self.data['username']} @ {self.data['host']}",
+                    f"\u2713 Authenticated: {self.data['username']} @ {self.data['host']}",
                 ),
                 text_color="green",
             )
@@ -396,7 +396,7 @@ class QuickstartWizard(customtkinter.CTk):
         self.update_idletasks()
 
         if not core.validate_profile(profile):
-            self.state["auth_ok"] = False
+            self.data["auth_ok"] = False
             self._auth_status.configure(
                 text=t(
                     f"\u2717 \u30d7\u30ed\u30d5\u30a1\u30a4\u30eb '{profile}' \u306e\u8a8d\u8a3c\u306b\u5931\u6557\u3002\n`databricks auth login --profile {profile}` \u3092\u5b9f\u884c\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
@@ -406,10 +406,10 @@ class QuickstartWizard(customtkinter.CTk):
             )
             return
 
-        self.state["profile_name"] = profile
-        self.state["host"] = core.get_databricks_host(profile)
+        self.data["profile_name"] = profile
+        self.data["host"] = core.get_databricks_host(profile)
         try:
-            self.state["username"] = core.get_databricks_username(profile)
+            self.data["username"] = core.get_databricks_username(profile)
         except SystemExit:
             self._auth_status.configure(
                 text=t("\u2717 \u30e6\u30fc\u30b6\u30fc\u540d\u306e\u53d6\u5f97\u306b\u5931\u6557", "\u2717 Failed to get username"),
@@ -417,7 +417,7 @@ class QuickstartWizard(customtkinter.CTk):
             )
             return
         try:
-            self.state["token"] = core.get_auth_token(profile)
+            self.data["token"] = core.get_auth_token(profile)
         except Exception:
             self._auth_status.configure(
                 text=t("\u2717 \u30c8\u30fc\u30af\u30f3\u306e\u53d6\u5f97\u306b\u5931\u6557", "\u2717 Failed to get token"),
@@ -425,21 +425,21 @@ class QuickstartWizard(customtkinter.CTk):
             )
             return
 
-        self.state["auth_ok"] = True
-        self.state["lakebase_required"] = core.check_lakebase_required()
+        self.data["auth_ok"] = True
+        self.data["lakebase_required"] = core.check_lakebase_required()
 
         # Pre-fill defaults
-        if not self.state["catalog"]:
-            self.state["catalog"] = self.state["username"].split("@")[0].replace(".", "_")
-        if not self.state["schema"]:
-            self.state["schema"] = "retail_agent"
-        if not self.state["mlflow_base_name"]:
-            self.state["mlflow_base_name"] = f"/Users/{self.state['username']}/freshmart-agent"
+        if not self.data["catalog"]:
+            self.data["catalog"] = self.data["username"].split("@")[0].replace(".", "_")
+        if not self.data["schema"]:
+            self.data["schema"] = "retail_agent"
+        if not self.data["mlflow_base_name"]:
+            self.data["mlflow_base_name"] = f"/Users/{self.data['username']}/freshmart-agent"
 
         self._auth_status.configure(
             text=t(
-                f"\u2713 \u8a8d\u8a3cOK: {self.state['username']} @ {self.state['host']}",
-                f"\u2713 Authenticated: {self.state['username']} @ {self.state['host']}",
+                f"\u2713 \u8a8d\u8a3cOK: {self.data['username']} @ {self.data['host']}",
+                f"\u2713 Authenticated: {self.data['username']} @ {self.data['host']}",
             ),
             text_color="green",
         )
@@ -462,7 +462,7 @@ class QuickstartWizard(customtkinter.CTk):
         ).pack(pady=(0, 10))
 
         # Try to pre-fill from .env
-        env_val = core.get_env_value("CATALOG") or self.state.get("catalog", "")
+        env_val = core.get_env_value("CATALOG") or self.data.get("catalog", "")
 
         self._catalog_entry = customtkinter.CTkEntry(
             frame, width=400, placeholder_text="e.g. my_catalog"
@@ -475,7 +475,7 @@ class QuickstartWizard(customtkinter.CTk):
         self._catalog_entry.bind("<KeyRelease>", lambda _: self._sync_catalog())
 
     def _sync_catalog(self):
-        self.state["catalog"] = self._catalog_entry.get().strip()
+        self.data["catalog"] = self._catalog_entry.get().strip()
 
     # ── Page 4: Schema Name ─────────────────────────────────────────────
     def _page_schema(self, frame: customtkinter.CTkFrame):
@@ -494,7 +494,7 @@ class QuickstartWizard(customtkinter.CTk):
             wraplength=500,
         ).pack(pady=(0, 10))
 
-        env_val = core.get_env_value("SCHEMA") or self.state.get("schema", "")
+        env_val = core.get_env_value("SCHEMA") or self.data.get("schema", "")
 
         self._schema_entry = customtkinter.CTkEntry(
             frame, width=400, placeholder_text="e.g. retail_agent"
@@ -506,7 +506,7 @@ class QuickstartWizard(customtkinter.CTk):
         self._schema_entry.bind("<KeyRelease>", lambda _: self._sync_schema())
 
     def _sync_schema(self):
-        self.state["schema"] = self._schema_entry.get().strip()
+        self.data["schema"] = self._schema_entry.get().strip()
 
     # ── Page 5: SQL Warehouse ───────────────────────────────────────────
     def _page_warehouse(self, frame: customtkinter.CTkFrame):
@@ -519,7 +519,7 @@ class QuickstartWizard(customtkinter.CTk):
         # Fetch warehouses
         try:
             result = core.run_command(
-                ["databricks", "warehouses", "list", "-p", self.state["profile_name"], "-o", "json"],
+                ["databricks", "warehouses", "list", "-p", self.data["profile_name"], "-o", "json"],
                 check=True,
             )
             self._warehouses = json.loads(result.stdout)
@@ -565,8 +565,8 @@ class QuickstartWizard(customtkinter.CTk):
         for w in self._warehouses:
             label = f"{w.get('name', '?')} ({w.get('id', '?')}) [{w.get('state', '?')}]"
             if label == selection:
-                self.state["warehouse_id"] = w["id"]
-                self.state["warehouse_name"] = w.get("name", "")
+                self.data["warehouse_id"] = w["id"]
+                self.data["warehouse_name"] = w.get("name", "")
                 break
 
     # ── Page 6: Vector Search Endpoint ──────────────────────────────────
@@ -578,8 +578,8 @@ class QuickstartWizard(customtkinter.CTk):
         ).pack(pady=(20, 10))
 
         # Fetch endpoints
-        token = self.state.get("token", "")
-        host = self.state.get("host", "")
+        token = self.data.get("token", "")
+        host = self.data.get("host", "")
         if token and host:
             data = core.api_get("/api/2.0/vector-search/endpoints", token, host)
             self._vs_endpoints = data.get("endpoints", [])
@@ -628,7 +628,7 @@ class QuickstartWizard(customtkinter.CTk):
         for e in self._vs_endpoints:
             label = f"{e.get('name', '?')} [{e.get('endpoint_status', {}).get('state', '?')}]"
             if label == selection:
-                self.state["vs_endpoint"] = e["name"]
+                self.data["vs_endpoint"] = e["name"]
                 break
 
     # ── Page 7: Lakebase Setup ──────────────────────────────────────────
@@ -639,7 +639,7 @@ class QuickstartWizard(customtkinter.CTk):
             font=customtkinter.CTkFont(size=22, weight="bold"),
         ).pack(pady=(20, 10))
 
-        if not self.state.get("lakebase_required"):
+        if not self.data.get("lakebase_required"):
             customtkinter.CTkLabel(
                 frame,
                 text=t(
@@ -651,7 +651,7 @@ class QuickstartWizard(customtkinter.CTk):
             return
 
         self._lb_mode_var = customtkinter.StringVar(
-            value=self.state.get("lakebase_mode", "new")
+            value=self.data.get("lakebase_mode", "new")
         )
 
         customtkinter.CTkRadioButton(
@@ -680,7 +680,7 @@ class QuickstartWizard(customtkinter.CTk):
             w.destroy()
 
         mode = self._lb_mode_var.get()
-        self.state["lakebase_mode"] = mode
+        self.data["lakebase_mode"] = mode
 
         if mode == "new":
             customtkinter.CTkLabel(
@@ -692,8 +692,8 @@ class QuickstartWizard(customtkinter.CTk):
                 placeholder_text="e.g. freshmart-lakebase",
             )
             self._lb_proj_entry.pack(pady=(0, 5))
-            if self.state.get("lakebase_project"):
-                self._lb_proj_entry.insert(0, self.state["lakebase_project"])
+            if self.data.get("lakebase_project"):
+                self._lb_proj_entry.insert(0, self.data["lakebase_project"])
             self._lb_proj_entry.bind("<KeyRelease>", lambda _: self._sync_lb_project())
 
             customtkinter.CTkLabel(
@@ -714,8 +714,8 @@ class QuickstartWizard(customtkinter.CTk):
                 self._lb_fields_frame, width=400,
             )
             self._lb_proj_entry.pack(pady=(0, 5))
-            if self.state.get("lakebase_project"):
-                self._lb_proj_entry.insert(0, self.state["lakebase_project"])
+            if self.data.get("lakebase_project"):
+                self._lb_proj_entry.insert(0, self.data["lakebase_project"])
             self._lb_proj_entry.bind("<KeyRelease>", lambda _: self._sync_lb_project())
 
             customtkinter.CTkLabel(
@@ -726,15 +726,15 @@ class QuickstartWizard(customtkinter.CTk):
                 self._lb_fields_frame, width=400,
             )
             self._lb_branch_entry.pack(pady=(0, 5))
-            if self.state.get("lakebase_branch"):
-                self._lb_branch_entry.insert(0, self.state["lakebase_branch"])
+            if self.data.get("lakebase_branch"):
+                self._lb_branch_entry.insert(0, self.data["lakebase_branch"])
             self._lb_branch_entry.bind("<KeyRelease>", lambda _: self._sync_lb_branch())
 
     def _sync_lb_project(self):
-        self.state["lakebase_project"] = self._lb_proj_entry.get().strip()
+        self.data["lakebase_project"] = self._lb_proj_entry.get().strip()
 
     def _sync_lb_branch(self):
-        self.state["lakebase_branch"] = self._lb_branch_entry.get().strip()
+        self.data["lakebase_branch"] = self._lb_branch_entry.get().strip()
 
     # ── Page 8: MLflow Experiment ───────────────────────────────────────
     def _page_mlflow(self, frame: customtkinter.CTkFrame):
@@ -745,7 +745,7 @@ class QuickstartWizard(customtkinter.CTk):
         ).pack(pady=(20, 10))
 
         self._mlflow_mode_var = customtkinter.StringVar(
-            value=self.state.get("mlflow_mode", "new")
+            value=self.data.get("mlflow_mode", "new")
         )
 
         customtkinter.CTkRadioButton(
@@ -774,7 +774,7 @@ class QuickstartWizard(customtkinter.CTk):
             w.destroy()
 
         mode = self._mlflow_mode_var.get()
-        self.state["mlflow_mode"] = mode
+        self.data["mlflow_mode"] = mode
 
         if mode == "new":
             customtkinter.CTkLabel(
@@ -787,8 +787,8 @@ class QuickstartWizard(customtkinter.CTk):
                 placeholder_text="e.g. /Users/you/freshmart-agent",
             )
             self._mlflow_base_entry.pack(pady=(0, 5))
-            if self.state.get("mlflow_base_name"):
-                self._mlflow_base_entry.insert(0, self.state["mlflow_base_name"])
+            if self.data.get("mlflow_base_name"):
+                self._mlflow_base_entry.insert(0, self.data["mlflow_base_name"])
             self._mlflow_base_entry.bind("<KeyRelease>", lambda _: self._sync_mlflow_base())
 
             customtkinter.CTkLabel(
@@ -809,8 +809,8 @@ class QuickstartWizard(customtkinter.CTk):
                 self._mlflow_fields_frame, width=400,
             )
             self._mon_id_entry.pack(pady=(0, 5))
-            if self.state.get("monitoring_id"):
-                self._mon_id_entry.insert(0, self.state["monitoring_id"])
+            if self.data.get("monitoring_id"):
+                self._mon_id_entry.insert(0, self.data["monitoring_id"])
             self._mon_id_entry.bind("<KeyRelease>", lambda _: self._sync_mon_id())
 
             customtkinter.CTkLabel(
@@ -821,18 +821,18 @@ class QuickstartWizard(customtkinter.CTk):
                 self._mlflow_fields_frame, width=400,
             )
             self._eval_id_entry.pack(pady=(0, 5))
-            if self.state.get("eval_id"):
-                self._eval_id_entry.insert(0, self.state["eval_id"])
+            if self.data.get("eval_id"):
+                self._eval_id_entry.insert(0, self.data["eval_id"])
             self._eval_id_entry.bind("<KeyRelease>", lambda _: self._sync_eval_id())
 
     def _sync_mlflow_base(self):
-        self.state["mlflow_base_name"] = self._mlflow_base_entry.get().strip()
+        self.data["mlflow_base_name"] = self._mlflow_base_entry.get().strip()
 
     def _sync_mon_id(self):
-        self.state["monitoring_id"] = self._mon_id_entry.get().strip()
+        self.data["monitoring_id"] = self._mon_id_entry.get().strip()
 
     def _sync_eval_id(self):
-        self.state["eval_id"] = self._eval_id_entry.get().strip()
+        self.data["eval_id"] = self._eval_id_entry.get().strip()
 
     # ── Page 9: Trace Destination ───────────────────────────────────────
     def _page_trace(self, frame: customtkinter.CTkFrame):
@@ -843,7 +843,7 @@ class QuickstartWizard(customtkinter.CTk):
         ).pack(pady=(20, 10))
 
         self._trace_mode_var = customtkinter.StringVar(
-            value=self.state.get("trace_dest_mode", "mlflow")
+            value=self.data.get("trace_dest_mode", "mlflow")
         )
 
         customtkinter.CTkRadioButton(
@@ -872,10 +872,10 @@ class QuickstartWizard(customtkinter.CTk):
             w.destroy()
 
         mode = self._trace_mode_var.get()
-        self.state["trace_dest_mode"] = mode
+        self.data["trace_dest_mode"] = mode
 
         if mode == "delta":
-            default_schema = f"{self.state.get('catalog', '')}.{self.state.get('schema', '')}"
+            default_schema = f"{self.data.get('catalog', '')}.{self.data.get('schema', '')}"
             customtkinter.CTkLabel(
                 self._trace_fields_frame,
                 text=t("\u9001\u4fe1\u5148\u30b9\u30ad\u30fc\u30de:", "Destination schema:"),
@@ -884,13 +884,13 @@ class QuickstartWizard(customtkinter.CTk):
                 self._trace_fields_frame, width=400,
             )
             self._trace_schema_entry.pack(pady=(0, 5))
-            val = self.state.get("trace_dest_schema") or default_schema
+            val = self.data.get("trace_dest_schema") or default_schema
             if val:
                 self._trace_schema_entry.insert(0, val)
             self._trace_schema_entry.bind("<KeyRelease>", lambda _: self._sync_trace_schema())
 
     def _sync_trace_schema(self):
-        self.state["trace_dest_schema"] = self._trace_schema_entry.get().strip()
+        self.data["trace_dest_schema"] = self._trace_schema_entry.get().strip()
 
     # ── Page 10: Summary ────────────────────────────────────────────────
     def _page_summary(self, frame: customtkinter.CTkFrame):
@@ -904,26 +904,26 @@ class QuickstartWizard(customtkinter.CTk):
         textbox.pack(padx=20, pady=5)
 
         lines = [
-            f"{t('\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb', 'Profile')}: {self.state.get('profile_name', '')}",
-            f"{t('\u30ef\u30fc\u30af\u30b9\u30da\u30fc\u30b9', 'Workspace')}: {self.state.get('host', '')}",
-            f"{t('\u30e6\u30fc\u30b6\u30fc', 'User')}: {self.state.get('username', '')}",
-            f"{t('\u30ab\u30bf\u30ed\u30b0', 'Catalog')}: {self.state.get('catalog', '')}",
-            f"{t('\u30b9\u30ad\u30fc\u30de', 'Schema')}: {self.state.get('schema', '')}",
-            f"{t('\u30a6\u30a7\u30a2\u30cf\u30a6\u30b9', 'Warehouse')}: {self.state.get('warehouse_name', '')} ({self.state.get('warehouse_id', '')})",
-            f"{t('VS \u30a8\u30f3\u30c9\u30dd\u30a4\u30f3\u30c8', 'VS Endpoint')}: {self.state.get('vs_endpoint', '') or t('\u306a\u3057', 'None')}",
+            f"{t('\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb', 'Profile')}: {self.data.get('profile_name', '')}",
+            f"{t('\u30ef\u30fc\u30af\u30b9\u30da\u30fc\u30b9', 'Workspace')}: {self.data.get('host', '')}",
+            f"{t('\u30e6\u30fc\u30b6\u30fc', 'User')}: {self.data.get('username', '')}",
+            f"{t('\u30ab\u30bf\u30ed\u30b0', 'Catalog')}: {self.data.get('catalog', '')}",
+            f"{t('\u30b9\u30ad\u30fc\u30de', 'Schema')}: {self.data.get('schema', '')}",
+            f"{t('\u30a6\u30a7\u30a2\u30cf\u30a6\u30b9', 'Warehouse')}: {self.data.get('warehouse_name', '')} ({self.data.get('warehouse_id', '')})",
+            f"{t('VS \u30a8\u30f3\u30c9\u30dd\u30a4\u30f3\u30c8', 'VS Endpoint')}: {self.data.get('vs_endpoint', '') or t('\u306a\u3057', 'None')}",
         ]
 
-        if self.state.get("lakebase_required"):
-            mode_label = t("\u65b0\u898f\u4f5c\u6210", "Create new") if self.state.get("lakebase_mode") == "new" else t("\u65e2\u5b58", "Existing")
-            lines.append(f"Lakebase: {mode_label} - {self.state.get('lakebase_project', '')} / {self.state.get('lakebase_branch', '')}")
+        if self.data.get("lakebase_required"):
+            mode_label = t("\u65b0\u898f\u4f5c\u6210", "Create new") if self.data.get("lakebase_mode") == "new" else t("\u65e2\u5b58", "Existing")
+            lines.append(f"Lakebase: {mode_label} - {self.data.get('lakebase_project', '')} / {self.data.get('lakebase_branch', '')}")
 
-        if self.state.get("mlflow_mode") == "new":
-            lines.append(f"MLflow: {t('\u65b0\u898f\u4f5c\u6210', 'Create new')} ({self.state.get('mlflow_base_name', '')})")
+        if self.data.get("mlflow_mode") == "new":
+            lines.append(f"MLflow: {t('\u65b0\u898f\u4f5c\u6210', 'Create new')} ({self.data.get('mlflow_base_name', '')})")
         else:
-            lines.append(f"MLflow: {t('\u65e2\u5b58 ID', 'Existing IDs')} ({self.state.get('monitoring_id', '')} / {self.state.get('eval_id', '')})")
+            lines.append(f"MLflow: {t('\u65e2\u5b58 ID', 'Existing IDs')} ({self.data.get('monitoring_id', '')} / {self.data.get('eval_id', '')})")
 
-        if self.state.get("trace_dest_mode") == "delta":
-            lines.append(f"{t('\u30c8\u30ec\u30fc\u30b9\u9001\u4fe1\u5148', 'Trace Dest')}: Delta Table ({self.state.get('trace_dest_schema', '')})")
+        if self.data.get("trace_dest_mode") == "delta":
+            lines.append(f"{t('\u30c8\u30ec\u30fc\u30b9\u9001\u4fe1\u5148', 'Trace Dest')}: Delta Table ({self.data.get('trace_dest_schema', '')})")
         else:
             lines.append(f"{t('\u30c8\u30ec\u30fc\u30b9\u9001\u4fe1\u5148', 'Trace Dest')}: MLflow Experiment")
 
@@ -947,10 +947,10 @@ class QuickstartWizard(customtkinter.CTk):
         self._exec_textbox.configure(state="disabled")
 
         # Auto-start execution
-        if not self._exec_running and not self.state.get("setup_complete"):
+        if not self._exec_running and not self.data.get("setup_complete"):
             self._exec_running = True
-            self.state["setup_log"] = []
-            self.state["setup_failed_steps"] = []
+            self.data["setup_log"] = []
+            self.data["setup_failed_steps"] = []
             thread = threading.Thread(target=self._run_setup, daemon=True)
             thread.start()
             self.after(100, self._check_progress)
@@ -980,7 +980,7 @@ class QuickstartWizard(customtkinter.CTk):
                     self._exec_progress.set(data)
                 elif kind == "done":
                     self._exec_running = False
-                    self.state["setup_complete"] = True
+                    self.data["setup_complete"] = True
                     # Auto-advance to page 12
                     self.after(500, lambda: self.show_page(11))
                     return
@@ -992,7 +992,7 @@ class QuickstartWizard(customtkinter.CTk):
 
     def _run_setup(self):
         """Execute all setup steps in a background thread."""
-        s = self.state
+        s = self.data
         token = s["token"]
         host = s["host"]
         profile = s["profile_name"]
@@ -1320,7 +1320,7 @@ class QuickstartWizard(customtkinter.CTk):
         ).pack(pady=(15, 5))
 
         # Show warnings about failed steps
-        failed = self.state.get("setup_failed_steps", [])
+        failed = self.data.get("setup_failed_steps", [])
         if failed:
             customtkinter.CTkLabel(
                 frame,
@@ -1333,7 +1333,7 @@ class QuickstartWizard(customtkinter.CTk):
             ).pack(pady=(0, 5))
 
         # Summary of created resources
-        s = self.state
+        s = self.data
         summary_lines = [
             f"{t('\u30ab\u30bf\u30ed\u30b0', 'Catalog')}: {s.get('catalog', '')}",
             f"{t('\u30b9\u30ad\u30fc\u30de', 'Schema')}: {s.get('catalog', '')}.{s.get('schema', '')}",
