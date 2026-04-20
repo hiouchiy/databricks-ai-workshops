@@ -1562,18 +1562,46 @@ def run_trace_setup_on_databricks(
         return False
 
     # 1. Generate notebook content
+    # 新しい API: UnityCatalog(catalog_name, schema_name, table_prefix) を使用
+    # UCSchemaLocation は廃止されサーバー側で拒否される
+    # table_prefix は experiment_id をデフォルトで使用（MLflow のドキュメントに従う）
     notebook_content = f"""# Databricks notebook source
+# MAGIC %pip install --upgrade mlflow>=3.10.0
+
+# COMMAND ----------
+
+dbutils.library.restartPython()
+
+# COMMAND ----------
+
 import os
 os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "{warehouse_id}"
 
 import mlflow
-from mlflow.entities import UCSchemaLocation
+mlflow.set_tracking_uri("databricks")
 
-mlflow.tracing.set_experiment_trace_location(
-    location=UCSchemaLocation(catalog_name="{catalog}", schema_name="{schema}"),
-    experiment_id="{experiment_id}",
-)
-print("Trace location set successfully.")
+# 新旧 API 両対応: 新しい UnityCatalog を試し、なければ UCSchemaLocation にフォールバック
+try:
+    from mlflow.entities.trace_location import UnityCatalog
+    experiment = mlflow.set_experiment(experiment_id="{experiment_id}")
+    exp_name = experiment.name
+    mlflow.set_experiment(
+        experiment_name=exp_name,
+        trace_location=UnityCatalog(
+            catalog_name="{catalog}",
+            schema_name="{schema}",
+            table_prefix="{experiment_id}",
+        ),
+    )
+    print("Trace location set successfully (UnityCatalog API).")
+except ImportError:
+    # 古い MLflow: UCSchemaLocation フォールバック
+    from mlflow.entities import UCSchemaLocation
+    mlflow.tracing.set_experiment_trace_location(
+        location=UCSchemaLocation(catalog_name="{catalog}", schema_name="{schema}"),
+        experiment_id="{experiment_id}",
+    )
+    print("Trace location set successfully (legacy UCSchemaLocation API).")
 """
 
     # 2. Upload temporary notebook
