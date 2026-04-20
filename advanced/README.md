@@ -100,7 +100,7 @@ advanced/
 - **ローカルツール**：
   - [uv](https://docs.astral.sh/uv/getting-started/installation/)（Python パッケージマネージャー）
   - [nvm](https://github.com/nvm-sh/nvm) + Node.js 20 LTS
-  - [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/install) **v0.297 以上**（Apps デプロイのリソースバインディングに必要）
+  - [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/install) **v0.297.2 以上**（Apps デプロイのリソースバインディングに必要）
 - **任意**：[Claude Code](https://docs.anthropic.com/en/docs/claude-code)（AI 支援開発用）
 
 ---
@@ -389,8 +389,9 @@ databricks apps start $APP_NAME --profile DEFAULT
 | `tool_use without tool_result` | チェックポイント破損。自動でチェックポイント削除＆リトライされる |
 | `302 redirect when querying deployed agent` | PAT ではなく OAuth トークンを使用。`databricks auth token` を実行 |
 | 502 Bad Gateway（デプロイ後） | フロントエンドの npm build に 3〜5 分かかる。待ってからリトライ |
-| `bundle deploy` リソースエラー | Databricks CLI を v0.297 以上に更新（`brew upgrade databricks`） |
-| Apps UI でリソースが空表示 | CLI が古い。v0.297 以上ならリソースバインディングが正しく反映される |
+| `bundle deploy` リソースエラー | Databricks CLI を v0.297.2 以上に更新（`brew upgrade databricks`） |
+| `bundle deploy` で `openpgp: key expired` | Terraform 署名鍵の期限切れ。CLI を v0.297.2 以上に更新（`brew upgrade databricks`）で解消 |
+| Apps UI でリソースが空表示 | CLI が古い。v0.297.2 以上ならリソースバインディングが正しく反映される |
 
 ---
 
@@ -535,7 +536,7 @@ advanced/
 - **Local tools**:
   - [uv](https://docs.astral.sh/uv/getting-started/installation/) (Python package manager)
   - [nvm](https://github.com/nvm-sh/nvm) + Node.js 20 LTS
-  - [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/install) **v0.297+** (required for resource bindings in Apps deployment)
+  - [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/install) **v0.297.2+** (required for resource bindings in Apps deployment)
 - **Optional**: [Claude Code](https://docs.anthropic.com/en/docs/claude-code) for AI-assisted development
 
 ---
@@ -825,8 +826,9 @@ For detailed deployment instructions, see [Step 11](WORKSHOP_INSTRUCTIONS.md#ste
 | `tool_use without tool_result` | Corrupted checkpoint. Auto-recovered by deleting checkpoint and retrying |
 | `302 redirect when querying deployed agent` | Use OAuth token, not PAT. Run `databricks auth token` |
 | 502 Bad Gateway after deploy | Frontend npm build takes 3-5 minutes. Wait and retry |
-| `bundle deploy` resource errors | Update Databricks CLI to v0.297+ (`brew upgrade databricks`) |
-| Apps UI shows empty resources | CLI too old. v0.297+ correctly reflects resource bindings |
+| `bundle deploy` resource errors | Update Databricks CLI to v0.297.2+ (`brew upgrade databricks`) |
+| `bundle deploy` fails with `openpgp: key expired` | Terraform signing key expired. Update CLI to v0.297.2+ (`brew upgrade databricks`) to fix |
+| Apps UI shows empty resources | CLI too old. v0.297.2+ correctly reflects resource bindings |
 
 ---
 

@@ -97,7 +97,7 @@ uv run quickstart --catalog <CATALOG> --schema <SCHEMA> \
 
 | ツール            | インストール方法                                                             | 確認コマンド                            |
 | -------------- | -------------------------------------------------------------------- | --------------------------------- |
-| Databricks CLI | `brew tap databricks/tap && brew install databricks`                 | `databricks --version`（**v0.297 以上**） |
+| Databricks CLI | `brew tap databricks/tap && brew install databricks`                 | `databricks --version`（**v0.297.2 以上**） |
 | uv             | [インストールガイド](https://docs.astral.sh/uv/getting-started/installation/) | `uv --version`                    |
 | Node.js 20+    | [nodejs.org](https://nodejs.org) または `nvm install 20`                | `node --version`                  |
 | jq             | `brew install jq`                                                    | `jq --version`                    |
@@ -537,7 +537,7 @@ uv run agent-evaluate-advanced
 ## ステップ 11（オプション）：Databricks Apps へのデプロイ
 
 > **前提条件：**
-> - Databricks CLI **v0.297 以上**（`brew upgrade databricks` で更新）
+> - Databricks CLI **v0.297.2 以上**（`brew upgrade databricks` で更新）
 > - ワークスペースの Apps 枠に空きがあること
 > - Apps 環境から PyPI と npm レジストリにアクセスできること
 
@@ -815,9 +815,10 @@ databricks apps deploy $APP_NAME \
 | `relation "store" does not exist` | メモリテーブルが未作成。アプリを再起動すると初回リクエスト時に自動作成されます |
 | API 呼び出しで `302` エラー | PAT ではなく OAuth トークン（`databricks auth token`）を使用 |
 | デプロイ後 502 Bad Gateway | フロントエンドの npm build に時間がかかっている。3〜5 分待ってから再アクセス |
-| `bundle deploy` でリソースエラー | Databricks CLI を v0.297 以上に更新（`brew upgrade databricks`） |
+| `bundle deploy` でリソースエラー | Databricks CLI を v0.297.2 以上に更新（`brew upgrade databricks`） |
+| `bundle deploy` で `openpgp: key expired` | Terraform 署名鍵の期限切れ。CLI を v0.297.2 以上に更新（`brew upgrade databricks`）で解消 |
 | Apps の上限エラー | 不要なアプリを削除してから再デプロイ |
-| Apps UI でリソースが空 | CLI が古い。v0.297 以上ならリソースバインディングが正しく反映される |
+| Apps UI でリソースが空 | CLI が古い。v0.297.2 以上ならリソースバインディングが正しく反映される |
 
 ---
 
@@ -907,7 +908,7 @@ Install the following tools and verify they work correctly.
 
 | Tool           | Installation                                                                | Verification Command                        |
 | -------------- | --------------------------------------------------------------------------- | ------------------------------------------- |
-| Databricks CLI | `brew tap databricks/tap && brew install databricks`                        | `databricks --version` (**v0.297 or later**) |
+| Databricks CLI | `brew tap databricks/tap && brew install databricks`                        | `databricks --version` (**v0.297.2 or later**) |
 | uv             | [Installation Guide](https://docs.astral.sh/uv/getting-started/installation/) | `uv --version`                              |
 | Node.js 20+    | [nodejs.org](https://nodejs.org) or `nvm install 20`                        | `node --version`                            |
 | jq             | `brew install jq`                                                           | `jq --version`                              |
@@ -1347,7 +1348,7 @@ Results can be viewed in the MLflow Experiments UI under the **freshmart-agent-e
 ## Step 11 (Optional): Deploying to Databricks Apps
 
 > **Prerequisites:**
-> - Databricks CLI **v0.297 or later** (update with `brew upgrade databricks`)
+> - Databricks CLI **v0.297.2 or later** (update with `brew upgrade databricks`)
 > - Available Apps slot in the workspace
 > - PyPI and npm registry access from the Apps environment
 
@@ -1625,9 +1626,10 @@ databricks apps deploy $APP_NAME \
 | `relation "store" does not exist` | Memory tables not created. Restart the app; they are auto-created on the first request |
 | `302` error on API calls | Use OAuth token (`databricks auth token`) instead of PAT |
 | 502 Bad Gateway after deployment | Frontend npm build is still in progress. Wait 3-5 minutes and try again |
-| Resource error during `bundle deploy` | Update Databricks CLI to v0.297 or later (`brew upgrade databricks`) |
+| Resource error during `bundle deploy` | Update Databricks CLI to v0.297.2 or later (`brew upgrade databricks`) |
+| `bundle deploy` fails with `openpgp: key expired` | Terraform signing key expired. Update CLI to v0.297.2 or later (`brew upgrade databricks`) to fix |
 | Apps limit error | Delete unused apps before redeploying |
-| Resources empty in Apps UI | CLI is outdated. Resource bindings are correctly reflected with v0.297 or later |
+| Resources empty in Apps UI | CLI is outdated. Resource bindings are correctly reflected with v0.297.2 or later |
 
 ---
 
