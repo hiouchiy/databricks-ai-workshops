@@ -1717,9 +1717,11 @@ class QuickstartWizard(customtkinter.CTk):
                     if _vs_was_new:
                         s["created_resources"]["vs_index"] = vs_index
                     advance(t(f"VS \u30a4\u30f3\u30c7\u30c3\u30af\u30b9: {vs_index}", f"VS index: {vs_index}"))
+                except _AbortSetup:
+                    raise
                 except Exception as e:
                     s["vs_index"] = vs_index
-                    fail(t("VS \u30a4\u30f3\u30c7\u30c3\u30af\u30b9", "VS index"), str(e)[:200])
+                    fail(t("VS \u30a4\u30f3\u30c7\u30c3\u30af\u30b9", "VS index"), str(e)[:200], fatal=True)
             else:
                 s["vs_index"] = vs_index
                 self._log(t("\u26a0 VS \u30a8\u30f3\u30c9\u30dd\u30a4\u30f3\u30c8\u672a\u6307\u5b9a\uff08\u30a4\u30f3\u30c7\u30c3\u30af\u30b9\u306f\u624b\u52d5\u4f5c\u6210\u304c\u5fc5\u8981\uff09",

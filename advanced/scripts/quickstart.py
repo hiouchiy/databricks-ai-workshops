@@ -326,9 +326,14 @@ def main():
             _vs_name = f"{catalog}.{schema}.policy_docs_index"
             _existing = api_get(f"/api/2.0/vector-search/indexes/{_vs_name}", token, host)
             _vs_was_new = "error" in _existing
-            vs_index = create_vector_search_index(token, host, catalog, schema, vs_endpoint)
-            if vs_index and _vs_was_new:
-                created_resources["vs_index"] = vs_index
+            try:
+                vs_index = create_vector_search_index(token, host, catalog, schema, vs_endpoint)
+                if vs_index and _vs_was_new:
+                    created_resources["vs_index"] = vs_index
+            except Exception as e:
+                print_error(t(f"VS インデックス作成失敗（ロールバック開始）: {str(e)[:200]}",
+                               f"VS Index creation failed (rolling back): {str(e)[:200]}"))
+                raise AbortSetup("Vector Search Index") from e
         else:
             vs_index = f"{catalog}.{schema}.policy_docs_index"
             print(t("  ⚠ VS エンドポイント未指定。インデックスは手動で作成してください。",

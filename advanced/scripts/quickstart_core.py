@@ -1959,9 +1959,8 @@ def create_vector_search_index(token: str, host: str, catalog: str, schema: str,
         else:
             print_error(t(f"インデックス作成失敗: {result['error']}",
                            f"Index creation failed: {result['error']}"))
-            print(t("  手動で Databricks UI から作成してください。",
-                     "  Please create it manually from the Databricks UI."))
-            return index_name
+            # 失敗を呼び出し側に伝える（ロールバック用）
+            raise RuntimeError(f"VS Index creation failed: {result['error'][:300]}")
     else:
         print_success(t("インデックス作成開始", "Index creation started"))
 
