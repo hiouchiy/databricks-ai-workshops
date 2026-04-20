@@ -267,11 +267,20 @@ def main():
     print()
 
     # ── 1. Unity Catalog データスキーマ権限（UC Permissions API、ウェアハウス不要）──
+    # Prompt Registry を使う場合、get_prompt_version_by_alias などで
+    # CREATE_FUNCTION / EXECUTE / MANAGE / APPLY_TAG が必要となるため
+    # 常時付与しておく（使わない場合も害はない）
     print("=== 1. Unity Catalog データスキーマ権限 ===")
     grant_uc_permissions(token, host, "catalog", catalog, sp_id, ["USE_CATALOG"])
     grant_uc_permissions(token, host, "schema", f"{catalog}.{schema}", sp_id,
-                         ["USE_SCHEMA", "SELECT"])
-    print_success(f"データスキーマ: USE_CATALOG, USE_SCHEMA, SELECT on {catalog}.{schema}")
+                         ["USE_SCHEMA", "SELECT", "MODIFY",
+                          "CREATE_FUNCTION", "EXECUTE", "APPLY_TAG"])
+    # MANAGE は他の権限と一緒に付与すると API が拒否することがあるので単独で付与
+    grant_uc_permissions(token, host, "schema", f"{catalog}.{schema}", sp_id, ["MANAGE"])
+    print_success(
+        f"データスキーマ: USE_CATALOG, USE_SCHEMA, SELECT, MODIFY, "
+        f"CREATE_FUNCTION, EXECUTE, APPLY_TAG, MANAGE on {catalog}.{schema}"
+    )
 
     # トレーススキーマ権限
     print("\n=== 2. Unity Catalog トレーススキーマ権限 ===")
@@ -287,13 +296,10 @@ def main():
     if tc != catalog or ts != schema:
         grant_uc_permissions(token, host, "schema", f"{tc}.{ts}", sp_id,
                              ["USE_SCHEMA", "SELECT", "MODIFY"])
-    else:
-        grant_uc_permissions(token, host, "schema", f"{tc}.{ts}", sp_id, ["MODIFY"])
-
-    if tc == catalog and ts == schema:
-        print_success(f"トレーススキーマ（同一）: MODIFY on {tc}.{ts}")
-    else:
         print_success(f"トレーススキーマ: USE_CATALOG, USE_SCHEMA, SELECT, MODIFY on {tc}.{ts}")
+    else:
+        # 同一スキーマの場合、MODIFY は既にデータスキーマ権限で付与済み
+        print_success(f"トレーススキーマ（データスキーマと同一、権限付与済み）: {tc}.{ts}")
 
     # ── 3. Lakebase PostgreSQL 権限 ──
     print("\n=== 3. Lakebase PostgreSQL 権限 ===")

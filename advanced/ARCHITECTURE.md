@@ -594,6 +594,55 @@ MCP 経由で Vector Search を呼ぶと、MLflow のスパンタイプが `TOOL
 
 ---
 
+## Unity Catalog 権限の全体像
+
+SP（アプリ実行者）が必要とする Unity Catalog の権限は、アプリが利用する機能によって異なります。`grant_sp_permissions.py` はワークショップで使う全機能分を一括付与します。
+
+### 権限一覧（データスキーマ）
+
+| 権限 | 必要な機能 | 付与理由 |
+|------|---------|---------|
+| `USE_CATALOG` / `USE_SCHEMA` | すべて | スキーマへのアクセスに必須 |
+| `SELECT` | Genie、Vector Search 結果の参照 | テーブル読み取り |
+| `MODIFY` | トレース（同一スキーマ配置時） | OTEL テーブルへの書き込み |
+| `CREATE_FUNCTION` | Prompt Registry | プロンプトは UC Function として格納される |
+| `EXECUTE` | Prompt Registry | 格納されたプロンプトの読み出し |
+| `APPLY_TAG` | Prompt Registry | `@production` などの alias 適用 |
+| `MANAGE` | Prompt Registry | `get_prompt_version_by_alias` などの内部操作 |
+
+### Prompt Registry が UC Function として実装されている
+
+MLflow 3 の Prompt Registry は Unity Catalog を永続化レイヤーとして利用し、プロンプト本体を **UC Function のボディ** として格納します。このため、通常のテーブル権限（`SELECT` + `MODIFY`）だけでは動作せず、UDF 系権限（`CREATE_FUNCTION` + `EXECUTE` + `MANAGE` + `APPLY_TAG`）が必須です。
+
+### 紛らわしいエラー: 「Lakebase 接続失敗」に見える UC 権限エラー
+
+`agent_server/agent.py` の `init_agent()` は Lakebase 接続と `load_system_prompt()` を近い順序で呼び出すため、**Prompt Registry 側の `PERMISSION_DENIED` が Lakebase 接続エラーとしてラップされて返る**ことがあります。
+
+```
+503 レスポンス例:
+  "Failed to connect to Lakebase instance 'fresh-mart-0420/...'"
+
+実際のログ:
+  PERMISSION_DENIED: Permission denied to update/create prompt
+  in schema fresh_mart_0420
+```
+
+503 でこのメッセージを見ても、**Lakebase 側ではなく UC スキーマへの `CREATE_FUNCTION` / `EXECUTE` / `MANAGE` / `APPLY_TAG` 不足を疑う**こと。`grant_sp_permissions.py` を再実行すれば解決します。
+
+### MANAGE を単独で付与している理由
+
+UC Permissions API に `MANAGE` を他の権限と同一リクエストで送信すると拒否されるケースがあるため、`grant_sp_permissions.py` では `MANAGE` を別の API コールに分離しています：
+
+```python
+grant_uc_permissions(token, host, "schema", f"{catalog}.{schema}", sp_id,
+                     ["USE_SCHEMA", "SELECT", "MODIFY",
+                      "CREATE_FUNCTION", "EXECUTE", "APPLY_TAG"])
+# MANAGE は単独で付与
+grant_uc_permissions(token, host, "schema", f"{catalog}.{schema}", sp_id, ["MANAGE"])
+```
+
+---
+
 ## Lakebase 権限の全体像
 
 Lakebase には **2層の権限** があり、それぞれ別の仕組みで付与されます。
