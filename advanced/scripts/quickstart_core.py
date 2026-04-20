@@ -1562,9 +1562,12 @@ def run_trace_setup_on_databricks(
         return False
 
     # 1. Generate notebook content
-    # 新しい API: UnityCatalog(catalog_name, schema_name, table_prefix) を使用
-    # UCSchemaLocation は廃止されサーバー側で拒否される
-    # table_prefix は experiment_id をデフォルトで使用（MLflow のドキュメントに従う）
+    # UCSchemaLocation は廃止 → UnityCatalog に移行
+    # table_prefix に "mlflow_experiment_trace" を指定することで、
+    # 従来の UCSchemaLocation が作成していたテーブル名と互換性を保つ：
+    #   mlflow_experiment_trace_otel_spans
+    #   mlflow_experiment_trace_otel_logs
+    # これにより MLflow ランタイムがこれらのテーブルに書き込める。
     notebook_content = f"""# Databricks notebook source
 # MAGIC %pip install --upgrade mlflow>=3.10.0
 
@@ -1590,7 +1593,7 @@ try:
         trace_location=UnityCatalog(
             catalog_name="{catalog}",
             schema_name="{schema}",
-            table_prefix="{experiment_id}",
+            table_prefix="mlflow_experiment_trace",
         ),
     )
     print("Trace location set successfully (UnityCatalog API).")

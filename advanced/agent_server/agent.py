@@ -72,6 +72,12 @@ logging.getLogger("mlflow.utils.autologging_utils").setLevel(logging.ERROR)
 logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 mlflow.langchain.autolog(run_tracer_inline=True)
 
+# LangGraph の AsyncCheckpointSaver.setup() は並行実行時に競合する
+# （checkpoint_migrations テーブルへの INSERT が UniqueViolation で失敗）。
+# モジュールレベルの asyncio.Lock で setup() を直列化することで回避する。
+import asyncio as _asyncio
+_SETUP_LOCK = _asyncio.Lock()
+
 # トレース送信先の切り替え
 # MLFLOW_TRACING_DESTINATION が設定されていれば Unity Catalog Delta Table に送信
 # 未設定（デフォルト）の場合は MLflow Experiment に記録
@@ -127,6 +133,54 @@ if not _LAKEBASE_INSTANCE_NAME_RAW and not _has_autoscaling:
     )
 
 LAKEBASE_INSTANCE_NAME = resolve_lakebase_instance_name(_LAKEBASE_INSTANCE_NAME_RAW) if _LAKEBASE_INSTANCE_NAME_RAW else None
+
+
+# ────────────────────────────────────────────────────────────────────────
+# Lakebase の初回マイグレーションをモジュールロード時に 1 回だけ実行
+# ────────────────────────────────────────────────────────────────────────
+# LangGraph の AsyncCheckpointSaver.setup() は複数並行呼び出し時に
+# checkpoint_migrations テーブルの INSERT で UniqueViolation になる。
+# 初回セットアップが済めば setup() は no-op になる（migrations の
+# 現バージョン読み取りで skip される）。したがってモジュールロード時に
+# 1 回だけ setup() を同期実行しておけば以降の並行リクエストは安全。
+def _preinit_lakebase() -> None:
+    """起動時に Lakebase テーブルを一度だけ初期化する（race 防止）。"""
+    async def _run():
+        try:
+            async with AsyncCheckpointSaver(
+                instance_name=LAKEBASE_INSTANCE_NAME,
+                project=LAKEBASE_AUTOSCALING_PROJECT,
+                branch=LAKEBASE_AUTOSCALING_BRANCH,
+            ):
+                pass  # __aenter__ で setup が走る
+            async with AsyncDatabricksStore(
+                instance_name=LAKEBASE_INSTANCE_NAME,
+                project=LAKEBASE_AUTOSCALING_PROJECT,
+                branch=LAKEBASE_AUTOSCALING_BRANCH,
+                embedding_endpoint=EMBEDDING_ENDPOINT,
+                embedding_dims=EMBEDDING_DIMS,
+            ) as store:
+                try:
+                    await store.setup()
+                except Exception as e:
+                    if "UniqueViolation" not in type(e).__name__:
+                        raise
+            logger.info("Lakebase pre-init: migrations complete")
+        except Exception as e:
+            # 既にセットアップ済みの場合は無視、それ以外はログのみ（サーバー起動は続行）
+            if "UniqueViolation" in type(e).__name__ or "already exists" in str(e).lower():
+                logger.info("Lakebase pre-init: already initialized")
+            else:
+                logger.warning(f"Lakebase pre-init failed (will retry on first request): {e}")
+
+    try:
+        _asyncio.run(_run())
+    except RuntimeError:
+        # すでに event loop が走っている場合（稀）はスキップして初回リクエストに任せる
+        logger.info("Lakebase pre-init skipped (event loop active)")
+
+
+_preinit_lakebase()
 
 
 class StatefulAgentState(TypedDict, total=False):
