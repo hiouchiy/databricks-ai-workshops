@@ -149,8 +149,6 @@ uv run start-app
 
 チャット UI は **http://localhost:3000** 、API は **http://localhost:8000** でアクセスできます。
 
-> **次のステップ：** アプリが動作したら、**[ステップ 10：エージェントの評価](WORKSHOP_INSTRUCTIONS.md#ステップ-10オプションエージェントの評価)** に進んでください。評価・トレース設定・Databricks Apps へのデプロイの手順が記載されています。
-
 #### Delta Table トレースを選択した場合
 
 クイックスタートで「Unity Catalog Delta Table にトレースを送信する」を選択した場合、トレーステーブルの初期作成が **クイックスタート内で自動実行** されます（Databricks 上でサーバーレスの one-time run を使用）。手動でノートブックを開く必要はありません。
@@ -203,6 +201,10 @@ uv run quickstart --catalog <CATALOG> --schema <SCHEMA> \
 詳細は [WORKSHOP_INSTRUCTIONS.md の「チーム利用時の権限共有」](WORKSHOP_INSTRUCTIONS.md#チーム利用時の権限共有代表者が実施) を参照してください。
 
 > **重要**: Lakebase の PostgreSQL テーブルはアプリ初回起動時にマイグレーションで作成されます。代表者は `uv run quickstart` 実行時に `init_lakebase_tables` フェーズで自動的にテーブルが作成されます。`grant-team-access` 実行後に各メンバーのアプリ起動によってテーブルが作成されるため、テーブル権限の完全付与には **代表者のクイックスタート後に `grant-team-access` を実行** することで完結します。
+
+---
+
+> **次のステップ：** アプリが動作したら、**[ステップ 10：エージェントの評価](WORKSHOP_INSTRUCTIONS.md#ステップ-10オプションエージェントの評価)** に進んでください。評価・トレース設定・Databricks Apps へのデプロイの手順が記載されています。
 
 ### 方法 2：手動セットアップ
 
@@ -582,8 +584,6 @@ uv run start-app
 
 The chat UI will be available at **http://localhost:3000** and the API at **http://localhost:8000**.
 
-> **Next step:** Once the app is running, proceed to **[Step 10: Agent Evaluation](WORKSHOP_INSTRUCTIONS.md#step-10-optional-agent-evaluation)** for evaluation, trace configuration, and Databricks Apps deployment instructions.
-
 #### If you selected Delta Table tracing
 
 If you chose to send traces to a Unity Catalog Delta Table, the quickstart will **automatically create the trace tables** by running a serverless one-time job on Databricks. No manual notebook execution is required.
@@ -634,6 +634,10 @@ uv run quickstart --catalog <CATALOG> --schema <SCHEMA> \
 ```
 
 > **Important**: Lakebase PostgreSQL tables are created during app startup via migrations. The representative's `uv run quickstart` includes an `init_lakebase_tables` phase that triggers table creation. Run `grant-team-access` AFTER the rep's quickstart completes so table-level permissions are fully granted.
+
+---
+
+> **Next step:** Once the app is running, proceed to **[Step 10: Agent Evaluation](WORKSHOP_INSTRUCTIONS.md#step-10-optional-agent-evaluation)** for evaluation, trace configuration, and Databricks Apps deployment instructions.
 
 ### Option 2: Manual Setup
 
