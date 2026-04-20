@@ -135,10 +135,10 @@ def main():
     else:
         select_language()
 
-    # 全 CLI 引数が揃っていれば非対話モード
+    # 主要 CLI 引数が揃っていれば非対話モード（branch は省略可：自動生成）
     non_interactive = all([
         args.profile, args.catalog, args.schema, args.vs_endpoint,
-        args.lakebase_autoscaling_project, args.lakebase_autoscaling_branch,
+        args.lakebase_autoscaling_project,
     ])
 
     try:
@@ -283,37 +283,71 @@ def main():
         )
         if lakebase_required:
             if non_interactive and args.lakebase_autoscaling_project:
-                # 非対話: バリデーション → 失敗ならプロジェクト+ブランチ自動作成
                 project = args.lakebase_autoscaling_project
                 branch = args.lakebase_autoscaling_branch
-                print_step(t(f"Lakebase を検証/作成中: {project}/{branch}",
-                              f"Validating/creating Lakebase: {project}/{branch}"))
-                branch_info = validate_lakebase_autoscaling(profile_name, project, branch)
-                if not branch_info:
-                    # プロジェクトが存在しない → SDK で直接作成
-                    print(t("  プロジェクトを自動作成中...", "  Auto-creating project..."))
+
+                # プロジェクト存在確認
+                proj_check = run_command(
+                    ["databricks", "api", "get", f"/api/2.0/postgres/projects/{project}",
+                     "-p", profile_name, "-o", "json"],
+                    check=False,
+                )
+                project_exists = (proj_check.returncode == 0)
+
+                # ブランチ名の自動生成（既存プロジェクト + ブランチ未指定）
+                if project_exists and not branch:
+                    user_slug = username.split("@")[0].replace(".", "-").lower()
+                    branch = f"{project}-{user_slug}"
+                    print_step(t(
+                        f"既存プロジェクト {project} に個人ブランチ {branch} を作成/使用",
+                        f"Using per-member branch {branch} in existing project {project}"))
+
+                # ブランチ存在確認（input() を避けるため API で直接チェック）
+                branch_check = run_command(
+                    ["databricks", "api", "get",
+                     f"/api/2.0/postgres/projects/{project}/branches/{branch}",
+                     "-p", profile_name, "-o", "json"],
+                    check=False,
+                )
+                branch_exists = (branch_check.returncode == 0)
+
+                # 不在のリソースを SDK で作成
+                if not project_exists or not branch_exists:
                     try:
                         w = get_workspace_client(profile_name)
                         from databricks.sdk.service.postgres import Branch, BranchSpec, Project, ProjectSpec
-                        proj_op = w.postgres.create_project(
-                            project=Project(spec=ProjectSpec(display_name=project)),
-                            project_id=project,
-                        )
-                        created_proj = proj_op.wait()
-                        print_success(t(f"プロジェクト作成完了: {project}",
-                                         f"Project created: {project}"))
-                        branch_op = w.postgres.create_branch(
-                            parent=created_proj.name,
-                            branch=Branch(spec=BranchSpec(no_expiry=True)),
-                            branch_id=branch,
-                        )
-                        created_branch = branch_op.wait()
-                        branch = created_branch.name.split("/branches/")[-1] if "/branches/" in created_branch.name else branch
-                        print_success(t(f"ブランチ作成完了: {branch}",
-                                         f"Branch created: {branch}"))
+
+                        if not project_exists:
+                            print(t("  プロジェクトを自動作成中...", "  Auto-creating project..."))
+                            proj_op = w.postgres.create_project(
+                                project=Project(spec=ProjectSpec(display_name=project)),
+                                project_id=project,
+                            )
+                            created_proj = proj_op.wait()
+                            print_success(t(f"プロジェクト作成完了: {project}",
+                                             f"Project created: {project}"))
+                            parent_name = created_proj.name
+                        else:
+                            parent_name = f"projects/{project}"
+
+                        if not branch_exists:
+                            print(t(f"  ブランチ {branch} を作成中...",
+                                     f"  Creating branch {branch}..."))
+                            branch_op = w.postgres.create_branch(
+                                parent=parent_name,
+                                branch=Branch(spec=BranchSpec(no_expiry=True)),
+                                branch_id=branch,
+                            )
+                            created_branch = branch_op.wait()
+                            branch = created_branch.name.split("/branches/")[-1] if "/branches/" in created_branch.name else branch
+                            print_success(t(f"ブランチ作成完了: {branch}",
+                                             f"Branch created: {branch}"))
                     except Exception as e:
                         print_error(f"Lakebase auto-create failed: {str(e)[:200]}")
-                    branch_info = validate_lakebase_autoscaling(profile_name, project, branch)
+
+                print_step(t(f"Lakebase を検証中: {project}/{branch}",
+                              f"Validating Lakebase: {project}/{branch}"))
+                branch_info = validate_lakebase_autoscaling(profile_name, project, branch)
                 if branch_info:
                     update_env_file("LAKEBASE_AUTOSCALING_PROJECT", project)
                     update_env_file("LAKEBASE_AUTOSCALING_BRANCH", branch)

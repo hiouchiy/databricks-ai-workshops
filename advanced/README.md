@@ -159,23 +159,50 @@ uv run start-app
 
 #### チームでハンズオンを実施する場合
 
-代表者がクイックスタートでリソースを作成した後、チームメンバーにリソースを共有して使わせたい場合は、ローカルから以下を実行してください：
+代表者がクイックスタートでリソースを作成した後、チームメンバーにリソースを共有する2つの方法があります。
+
+**推奨: Databricks アカウントレベルグループを使用（新規メンバー追加で再実行不要）**
 
 ```bash
-uv run grant-team-access member1@company.com member2@company.com
+# 事前: Admin がアカウントレベルグループ（例: workshop-members）を作成し、
+#       参加メンバーをそのグループに追加しておく
+uv run grant-team-access --group workshop-members
 ```
 
-Unity Catalog、MLflow Experiment、Genie Space、Lakebase、SQL Warehouse への権限が一括で付与されます。後からメンバーを追加する場合も同じコマンドを再実行するだけで OK です（べき等）。
+**個別指定（従来方式、新規メンバー追加時は再実行が必要）**
+
+```bash
+uv run grant-team-access alice@company.com bob@company.com
+```
+
+付与される権限（両方式とも共通）:
+- **Unity Catalog**: USE_CATALOG, USE_SCHEMA, SELECT, MODIFY（REST API、ウェアハウス不要）
+- **MLflow Experiment**: CAN_MANAGE（モニタリング + 評価）
+- **Genie Space**: CAN_RUN
+- **Lakebase プロジェクト（層1）**: CAN_USE
+- **Lakebase PostgreSQL（層2）**: ロール作成 + スキーマ権限 + テーブル権限
+- **SQL Warehouse**: CAN_USE
+
+**メンバーごとの Lakebase ブランチ（自動）**
+
+メンバーがクイックスタートで代表者の既存プロジェクトを指定すると、**自動的に `{project}-{username}` という個人ブランチが作成されます**。各メンバーは自分専用ブランチを持つため、他メンバーとデータが混ざらず、Lakebase の高速ブランチング機能を体験できます。
 
 実行後、メンバーに以下の情報を共有してください（コマンド実行後にまとめて表示されます）：
 - カタログ名・スキーマ名
 - Genie Space ID
-- Lakebase プロジェクト名・ブランチ名
+- Lakebase プロジェクト名（ブランチは不要、各自自動生成）
 - MLflow Experiment ID（モニタリング + 評価）
 
-メンバーはクイックスタートを実行し、MLflow Experiment の設定で「既存の ID を入力」を選択すれば、すぐにステップ 9（ローカル実行）から始められます。
+メンバーはクイックスタートを実行する際、以下のコマンドで始められます：
+```bash
+uv run quickstart --catalog <CATALOG> --schema <SCHEMA> \
+  --vs-endpoint <VS-ENDPOINT> --lakebase-autoscaling-project <PROJECT>
+# ブランチ名は指定不要（個人ブランチが自動作成される）
+```
 
 詳細は [WORKSHOP_INSTRUCTIONS.md の「チーム利用時の権限共有」](WORKSHOP_INSTRUCTIONS.md#チーム利用時の権限共有代表者が実施) を参照してください。
+
+> **重要**: Lakebase の PostgreSQL テーブルはアプリ初回起動時にマイグレーションで作成されます。代表者は `uv run quickstart` 実行時に `init_lakebase_tables` フェーズで自動的にテーブルが作成されます。`grant-team-access` 実行後に各メンバーのアプリ起動によってテーブルが作成されるため、テーブル権限の完全付与には **代表者のクイックスタート後に `grant-team-access` を実行** することで完結します。
 
 ### 方法 2：手動セットアップ
 
@@ -565,21 +592,48 @@ If you chose to send traces to a Unity Catalog Delta Table, the quickstart will 
 
 #### Team workshop setup
 
-If running the workshop as a team, the representative should run:
+If running the workshop as a team, the representative has two options.
+
+**Recommended: Use a Databricks account-level group (no re-run needed for new members)**
 
 ```bash
-uv run grant-team-access member1@company.com member2@company.com
+# Prerequisite: Admin creates an account-level group (e.g., workshop-members)
+#               and adds participants to it
+uv run grant-team-access --group workshop-members
 ```
 
-This grants access to Unity Catalog, MLflow Experiments, Genie Space, Lakebase, and SQL Warehouse. Members can be added later by re-running the same command (idempotent).
+**Per-user (traditional, needs re-run when adding new members)**
 
-After running the command, share the following info with team members (displayed at the end of the command output):
+```bash
+uv run grant-team-access alice@company.com bob@company.com
+```
+
+Both approaches grant:
+- **Unity Catalog**: USE_CATALOG, USE_SCHEMA, SELECT, MODIFY (REST API, no warehouse needed)
+- **MLflow Experiment**: CAN_MANAGE (monitoring + evaluation)
+- **Genie Space**: CAN_RUN
+- **Lakebase project (Layer 1)**: CAN_USE
+- **Lakebase PostgreSQL (Layer 2)**: role creation + schema + table privileges
+- **SQL Warehouse**: CAN_USE
+
+**Per-member Lakebase branch (automatic)**
+
+When a member specifies the rep's existing project in quickstart, a personal branch `{project}-{username}` is **automatically created for them**. Each member gets their own isolated branch, showcasing Lakebase's fast branching feature.
+
+After running grant-team-access, share this info with members:
 - Catalog name and schema name
 - Genie Space ID
-- Lakebase project name and branch name
+- Lakebase project name (branch is auto-generated per member)
 - MLflow Experiment IDs (monitoring + evaluation)
 
-Team members then run quickstart, select "use existing Experiment ID", and start from Step 9.
+Team members run quickstart with:
+```bash
+uv run quickstart --catalog <CATALOG> --schema <SCHEMA> \
+  --vs-endpoint <VS-ENDPOINT> --lakebase-autoscaling-project <PROJECT>
+# No branch needed — personal branch auto-created
+```
+
+> **Important**: Lakebase PostgreSQL tables are created during app startup via migrations. The representative's `uv run quickstart` includes an `init_lakebase_tables` phase that triggers table creation. Run `grant-team-access` AFTER the rep's quickstart completes so table-level permissions are fully granted.
 
 ### Option 2: Manual Setup
 
