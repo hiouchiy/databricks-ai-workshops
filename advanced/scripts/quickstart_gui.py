@@ -448,15 +448,57 @@ class QuickstartWizard(customtkinter.CTk):
         profile_names = [p["name"] for p in profiles]
 
         if not profile_names:
+            # 初回ユーザー: OAuth ログインフロー
             customtkinter.CTkLabel(
                 frame,
                 text=t(
-                    "Databricks \u30d7\u30ed\u30d5\u30a1\u30a4\u30eb\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3002\n\u5148\u306b `databricks auth login` \u3092\u5b9f\u884c\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
-                    "No Databricks profiles found.\nPlease run `databricks auth login` first.",
+                    "Databricks プロファイルが見つかりません。\n初回ログインをセットアップします。",
+                    "No Databricks profiles found.\nLet's set up your first login.",
                 ),
                 text_color="orange",
-                wraplength=500,
-            ).pack(pady=20)
+                wraplength=550,
+            ).pack(pady=(10, 5))
+
+            customtkinter.CTkLabel(
+                frame,
+                text=t("Databricks ワークスペース URL:",
+                         "Databricks workspace URL:"),
+            ).pack(pady=(5, 2), anchor="w", padx=40)
+
+            self._host_entry = customtkinter.CTkEntry(
+                frame, width=480,
+                placeholder_text="https://your-workspace.cloud.databricks.com",
+            )
+            self._host_entry.pack(pady=(0, 5), padx=40)
+
+            self._new_profile_entry_label = customtkinter.CTkLabel(
+                frame, text=t("プロファイル名 [DEFAULT]:",
+                                "Profile name [DEFAULT]:"),
+            )
+            self._new_profile_entry_label.pack(pady=(5, 2), anchor="w", padx=40)
+
+            self._new_profile_entry = customtkinter.CTkEntry(
+                frame, width=480, placeholder_text="DEFAULT",
+            )
+            self._new_profile_entry.pack(pady=(0, 10), padx=40)
+
+            self._login_button = customtkinter.CTkButton(
+                frame,
+                text=t("ブラウザでログイン", "Log in via browser"),
+                width=220,
+                command=self._on_first_login,
+            )
+            self._login_button.pack(pady=5)
+
+            self._auth_status = customtkinter.CTkLabel(
+                frame, text=t(
+                    "💡 ボタンを押すとブラウザが開き、Databricks にログインします。",
+                    "💡 Clicking the button will open your browser to log in to Databricks.",
+                ),
+                text_color="gray",
+                wraplength=540,
+            )
+            self._auth_status.pack(pady=5)
             return
 
         customtkinter.CTkLabel(
@@ -492,6 +534,90 @@ class QuickstartWizard(customtkinter.CTk):
                 ),
                 text_color="green",
             )
+
+    def _on_first_login(self):
+        """First-time user: run `databricks auth login` with host."""
+        host = self._host_entry.get().strip()
+        profile = self._new_profile_entry.get().strip() or "DEFAULT"
+
+        if not host:
+            self._auth_status.configure(
+                text=t("✗ ホスト URL を入力してください", "✗ Please enter a host URL"),
+                text_color="red",
+            )
+            return
+        if not host.startswith("http"):
+            host = f"https://{host}"
+
+        self._login_button.configure(
+            state="disabled",
+            text=t("ブラウザでログイン中...", "Logging in via browser..."),
+        )
+        self._auth_status.configure(
+            text=t(
+                "ブラウザが開きます。ログインが完了したらターミナルも確認してください。",
+                "Your browser will open. Check the terminal too after you finish logging in.",
+            ),
+            text_color="yellow",
+        )
+        self.update_idletasks()
+
+        def _run_login():
+            try:
+                result = subprocess.run(
+                    ["databricks", "auth", "login",
+                     "--profile", profile, "--host", host],
+                    timeout=300,
+                )
+                self._login_result_queue.put(("done", result.returncode, profile))
+            except Exception as e:
+                self._login_result_queue.put(("error", str(e), profile))
+
+        if not hasattr(self, "_login_result_queue"):
+            import queue as _q
+            self._login_result_queue = _q.Queue()
+        import threading
+        threading.Thread(target=_run_login, daemon=True).start()
+        self.after(500, self._check_login_result)
+
+    def _check_login_result(self):
+        import queue as _q
+        try:
+            kind, *rest = self._login_result_queue.get_nowait()
+            if kind == "done":
+                rc, profile = rest
+                if rc == 0:
+                    self._auth_status.configure(
+                        text=t(f"✓ ログイン成功。プロファイル '{profile}' を保存しました。",
+                                 f"✓ Login succeeded. Profile '{profile}' saved."),
+                        text_color="green",
+                    )
+                    # プロファイル一覧を再読み込み → 画面を再描画
+                    self.after(1000, lambda: self.show_page(self.current_page))
+                else:
+                    self._login_button.configure(
+                        state="normal",
+                        text=t("ブラウザでログイン", "Log in via browser"),
+                    )
+                    self._auth_status.configure(
+                        text=t(f"✗ ログイン失敗 (exit {rc})",
+                                 f"✗ Login failed (exit {rc})"),
+                        text_color="red",
+                    )
+            else:  # error
+                err_msg = rest[0]
+                self._login_button.configure(
+                    state="normal",
+                    text=t("ブラウザでログイン", "Log in via browser"),
+                )
+                self._auth_status.configure(
+                    text=t(f"✗ エラー: {err_msg[:200]}",
+                             f"✗ Error: {err_msg[:200]}"),
+                    text_color="red",
+                )
+        except _q.Empty:
+            # まだ結果なし → 再度チェック
+            self.after(500, self._check_login_result)
 
     def _on_connect(self):
         profile = self._profile_var.get()
@@ -1485,6 +1611,19 @@ class QuickstartWizard(customtkinter.CTk):
         total_steps = 11
         step = 0
 
+        # ロールバック用: 作成したリソースを記録
+        s["created_resources"] = {
+            "genie_space_id": None,
+            "vs_index": None,
+            "lakebase_branch": None,
+            "lakebase_project": None,
+            "monitoring_id": None,
+            "eval_id": None,
+        }
+
+        class _AbortSetup(Exception):
+            pass
+
         def advance(step_name: str):
             nonlocal step
             step += 1
@@ -1492,13 +1631,19 @@ class QuickstartWizard(customtkinter.CTk):
             self._log(f"\u2713 {step_name}")
             s["setup_log"].append(f"\u2713 {step_name}")
 
-        def fail(step_name: str, err: str):
+        def fail(step_name: str, err: str, fatal: bool = False):
             self._log(f"\u2717 {step_name}: {err}")
             s["setup_failed_steps"].append({"name": step_name, "error": err})
             s["setup_log"].append(f"\u2717 {step_name}: {err}")
             nonlocal step
             step += 1
             self._set_progress(step / total_steps)
+            if fatal:
+                self._log(t(
+                    "\n⛔ 致命的なエラーのためセットアップを中断し、ロールバックを開始します...",
+                    "\n⛔ Fatal error — aborting setup and rolling back...",
+                ))
+                raise _AbortSetup(step_name)
 
         try:
             self._log(t("セットアップを開始します...", "Starting setup..."))
@@ -1554,6 +1699,11 @@ class QuickstartWizard(customtkinter.CTk):
             vs_index = f"{catalog}.{schema}.policy_docs_index"
             if vs_endpoint:
                 self._log(t("Vector Search \u30a4\u30f3\u30c7\u30c3\u30af\u30b9\u3092\u4f5c\u6210\u4e2d...", "Creating Vector Search index..."))
+                # 既存かどうかを事前チェック（ロールバック対象外判定）
+                _vs_name = f"{catalog}.{schema}.policy_docs_index"
+                _existing_vs = core.api_get(
+                    f"/api/2.0/vector-search/indexes/{_vs_name}", token, host)
+                _vs_was_new = "error" in _existing_vs
                 try:
                     buf = io.StringIO()
                     with contextlib.redirect_stdout(buf):
@@ -1563,6 +1713,9 @@ class QuickstartWizard(customtkinter.CTk):
                     if output.strip():
                         self._log(output.strip())
                     s["vs_index"] = vs_index
+                    # 既存だった場合はロールバック対象外
+                    if _vs_was_new:
+                        s["created_resources"]["vs_index"] = vs_index
                     advance(t(f"VS \u30a4\u30f3\u30c7\u30c3\u30af\u30b9: {vs_index}", f"VS index: {vs_index}"))
                 except Exception as e:
                     s["vs_index"] = vs_index
@@ -1608,6 +1761,7 @@ class QuickstartWizard(customtkinter.CTk):
                     genie_space_id = result.get("space_id", "")
                     if genie_space_id:
                         s["genie_space_id"] = genie_space_id
+                        s["created_resources"]["genie_space_id"] = genie_space_id
                         advance(t(f"Genie Space 作成完了 (ID: {genie_space_id})",
                                    f"Genie Space created (ID: {genie_space_id})"))
                     else:
@@ -1683,6 +1837,9 @@ class QuickstartWizard(customtkinter.CTk):
                             if "/branches/" in created_branch.name
                             else branch_name
                         )
+                        # ロールバック用に記録
+                        s["created_resources"]["lakebase_project"] = project_name
+                        s["created_resources"]["lakebase_branch"] = branch_name
                         self._log(t(f"  ブランチ作成完了: {branch_name}",
                                      f"  Branch created: {branch_name}"))
 
@@ -1732,9 +1889,11 @@ class QuickstartWizard(customtkinter.CTk):
                         advance(t(f"Lakebase 設定完了 ({kind_label})",
                                    f"Lakebase configured ({kind_label})"))
                     else:
-                        fail("Lakebase", t("検証に失敗", "Validation failed"))
+                        fail("Lakebase", t("検証に失敗", "Validation failed"), fatal=True)
+                except _AbortSetup:
+                    raise
                 except Exception as e:
-                    fail("Lakebase", str(e)[:200])
+                    fail("Lakebase", str(e)[:200], fatal=True)
             else:
                 step += 1
                 self._set_progress(step / total_steps)
@@ -1755,6 +1914,9 @@ class QuickstartWizard(customtkinter.CTk):
                     s["monitoring_id"] = m_id
                     s["eval_name"] = e_name
                     s["eval_id"] = e_id
+                    # ロールバック用に記録（新規作成時のみ）
+                    s["created_resources"]["monitoring_id"] = m_id
+                    s["created_resources"]["eval_id"] = e_id
                 # else: IDs already stored from page 8
                 advance(t(f"MLflow Experiments: {s['monitoring_id']} / {s['eval_id']}",
                            f"MLflow Experiments: {s['monitoring_id']} / {s['eval_id']}"))
@@ -1892,13 +2054,116 @@ class QuickstartWizard(customtkinter.CTk):
             except Exception as e:
                 fail(t("\u4f9d\u5b58\u95a2\u4fc2", "Dependencies"), str(e)[:200])
 
+        except _AbortSetup as ae:
+            s["aborted_at"] = str(ae)
+            self._rollback(s.get("created_resources", {}))
         except Exception as e:
             import traceback
             self._log(f"\n✗ Fatal error: {e}")
             self._log(traceback.format_exc())
         finally:
-            self._log(t("\nセットアップ完了！", "\nSetup complete!"))
+            if s.get("aborted_at"):
+                self._log(t(
+                    f"\n⛔ セットアップは「{s['aborted_at']}」で中断されました。",
+                    f"\n⛔ Setup aborted at step: {s['aborted_at']}",
+                ))
+            else:
+                self._log(t("\nセットアップ完了！", "\nSetup complete!"))
             self._signal_done()
+
+    def _rollback(self, created: dict) -> None:
+        """フェータルエラー時に作成済みリソースを削除する。
+
+        カタログ、スキーマ、ウェアハウス、VS エンドポイントは削除しない。
+        削除対象: Genie Space、Lakebase ブランチ、VS インデックス、MLflow Experiments。
+        """
+        self._log(t("\n🔄 ロールバック開始...", "\n🔄 Rollback starting..."))
+        profile = self.data.get("profile_name", "")
+        token = self.data.get("token", "")
+        host = self.data.get("host", "")
+
+        # 1. Genie Space
+        gs = created.get("genie_space_id")
+        if gs:
+            try:
+                core.api_post(f"/api/2.0/genie/spaces/{gs}/delete", token, host, {}) \
+                    if hasattr(core, "api_delete") is False else None
+                # Try DELETE method via api_get fallback
+                result = subprocess.run(
+                    ["databricks", "api", "delete", f"/api/2.0/genie/spaces/{gs}",
+                     "-p", profile],
+                    capture_output=True, text=True,
+                )
+                if result.returncode == 0:
+                    self._log(t(f"  ✓ Genie Space 削除: {gs}",
+                                 f"  ✓ Genie Space deleted: {gs}"))
+                else:
+                    self._log(t(f"  ⚠ Genie Space 削除失敗: {result.stderr[:100]}",
+                                 f"  ⚠ Genie Space delete failed: {result.stderr[:100]}"))
+            except Exception as e:
+                self._log(f"  ⚠ Genie Space delete error: {str(e)[:100]}")
+
+        # 2. VS Index
+        vs = created.get("vs_index")
+        if vs:
+            try:
+                result = subprocess.run(
+                    ["databricks", "api", "delete",
+                     f"/api/2.0/vector-search/indexes/{vs}", "-p", profile],
+                    capture_output=True, text=True,
+                )
+                if result.returncode == 0:
+                    self._log(t(f"  ✓ VS インデックス削除: {vs}",
+                                 f"  ✓ VS index deleted: {vs}"))
+                else:
+                    self._log(t(f"  ⚠ VS インデックス削除失敗: {result.stderr[:100]}",
+                                 f"  ⚠ VS index delete failed: {result.stderr[:100]}"))
+            except Exception as e:
+                self._log(f"  ⚠ VS index delete error: {str(e)[:100]}")
+
+        # 3. Lakebase branch (project は削除しない — ワークスペース制限に引っかかる場合がある)
+        lb_project = created.get("lakebase_project")
+        lb_branch = created.get("lakebase_branch")
+        if lb_project and lb_branch:
+            try:
+                result = subprocess.run(
+                    ["databricks", "api", "delete",
+                     f"/api/2.0/postgres/projects/{lb_project}/branches/{lb_branch}",
+                     "-p", profile],
+                    capture_output=True, text=True,
+                )
+                if result.returncode == 0:
+                    self._log(t(f"  ✓ Lakebase ブランチ削除: {lb_branch}",
+                                 f"  ✓ Lakebase branch deleted: {lb_branch}"))
+                else:
+                    self._log(t(f"  ⚠ Lakebase ブランチ削除失敗: {result.stderr[:100]}",
+                                 f"  ⚠ Lakebase branch delete failed: {result.stderr[:100]}"))
+            except Exception as e:
+                self._log(f"  ⚠ Lakebase branch delete error: {str(e)[:100]}")
+
+        # 4. MLflow Experiments
+        for key in ("monitoring_id", "eval_id"):
+            exp_id = created.get(key)
+            if exp_id:
+                try:
+                    result = subprocess.run(
+                        ["databricks", "experiments", "delete-experiment", exp_id,
+                         "-p", profile],
+                        capture_output=True, text=True,
+                    )
+                    if result.returncode == 0:
+                        self._log(t(f"  ✓ MLflow Experiment 削除: {exp_id}",
+                                     f"  ✓ MLflow Experiment deleted: {exp_id}"))
+                    else:
+                        self._log(t(f"  ⚠ MLflow Experiment 削除失敗: {exp_id}",
+                                     f"  ⚠ MLflow Experiment delete failed: {exp_id}"))
+                except Exception as e:
+                    self._log(f"  ⚠ MLflow delete error: {str(e)[:100]}")
+
+        self._log(t(
+            "\n✓ ロールバック完了。カタログ・スキーマ・ウェアハウス・VS エンドポイントは保持しています。",
+            "\n✓ Rollback complete. Catalog, schema, warehouse, VS endpoint are preserved.",
+        ))
 
     # ── Page 13: Complete ───────────────────────────────────────────────
     def _page_complete(self, frame: customtkinter.CTkFrame):

@@ -141,6 +141,84 @@ def main():
         args.lakebase_autoscaling_project,
     ])
 
+    # ロールバック用に作成したリソースを記録
+    created_resources = {
+        "genie_space_id": None,
+        "vs_index": None,
+        "lakebase_project": None,
+        "lakebase_branch": None,
+        "monitoring_id": None,
+        "eval_id": None,
+    }
+
+    class AbortSetup(Exception):
+        pass
+
+    def rollback():
+        """Lakebase 失敗など致命的エラー時にリソースをロールバック。
+
+        カタログ、スキーマ、ウェアハウス、VS エンドポイントは保持する。
+        """
+        print()
+        print_header(t("🔄 ロールバック開始", "🔄 Rollback starting"))
+
+        # 1. Genie Space
+        gs = created_resources.get("genie_space_id")
+        if gs:
+            r = run_command(
+                ["databricks", "api", "delete", f"/api/2.0/genie/spaces/{gs}",
+                 "-p", args.profile or "DEFAULT"], check=False)
+            if r.returncode == 0:
+                print_success(t(f"Genie Space 削除: {gs}",
+                                 f"Genie Space deleted: {gs}"))
+            else:
+                print(t(f"  ⚠ Genie Space 削除失敗: {gs}",
+                         f"  ⚠ Genie Space delete failed: {gs}"))
+
+        # 2. VS Index
+        vs = created_resources.get("vs_index")
+        if vs:
+            r = run_command(
+                ["databricks", "api", "delete",
+                 f"/api/2.0/vector-search/indexes/{vs}",
+                 "-p", args.profile or "DEFAULT"], check=False)
+            if r.returncode == 0:
+                print_success(t(f"VS インデックス削除: {vs}",
+                                 f"VS index deleted: {vs}"))
+            else:
+                print(t(f"  ⚠ VS インデックス削除失敗: {vs}",
+                         f"  ⚠ VS index delete failed: {vs}"))
+
+        # 3. Lakebase branch
+        lp = created_resources.get("lakebase_project")
+        lb = created_resources.get("lakebase_branch")
+        if lp and lb:
+            r = run_command(
+                ["databricks", "api", "delete",
+                 f"/api/2.0/postgres/projects/{lp}/branches/{lb}",
+                 "-p", args.profile or "DEFAULT"], check=False)
+            if r.returncode == 0:
+                print_success(t(f"Lakebase ブランチ削除: {lb}",
+                                 f"Lakebase branch deleted: {lb}"))
+            else:
+                print(t(f"  ⚠ Lakebase ブランチ削除失敗: {lb}",
+                         f"  ⚠ Lakebase branch delete failed: {lb}"))
+
+        # 4. MLflow experiments
+        for key in ("monitoring_id", "eval_id"):
+            eid = created_resources.get(key)
+            if eid:
+                r = run_command(
+                    ["databricks", "experiments", "delete-experiment", eid,
+                     "-p", args.profile or "DEFAULT"], check=False)
+                if r.returncode == 0:
+                    print_success(t(f"MLflow Experiment 削除: {eid}",
+                                     f"MLflow Experiment deleted: {eid}"))
+
+        print()
+        print(t("✓ ロールバック完了。カタログ・スキーマ・ウェアハウス・VS エンドポイントは保持しています。",
+                 "✓ Rollback complete. Catalog, schema, warehouse, VS endpoint preserved."))
+
     try:
         print_header(t("フレッシュマート AI エージェント - クイックスタートセットアップ",
                         "FreshMart AI Agent - Quickstart Setup"))
@@ -244,7 +322,13 @@ def main():
         # 4-5: Vector Search Index
         vs_index = ""
         if vs_endpoint:
+            # 既存かどうかを事前チェック（ロールバック対象外にするため）
+            _vs_name = f"{catalog}.{schema}.policy_docs_index"
+            _existing = api_get(f"/api/2.0/vector-search/indexes/{_vs_name}", token, host)
+            _vs_was_new = "error" in _existing
             vs_index = create_vector_search_index(token, host, catalog, schema, vs_endpoint)
+            if vs_index and _vs_was_new:
+                created_resources["vs_index"] = vs_index
         else:
             vs_index = f"{catalog}.{schema}.policy_docs_index"
             print(t("  ⚠ VS エンドポイント未指定。インデックスは手動で作成してください。",
@@ -266,6 +350,7 @@ def main():
             result = api_post("/api/2.0/genie/spaces", token, host, body)
             genie_space_id = result.get("space_id", "")
             if genie_space_id:
+                created_resources["genie_space_id"] = genie_space_id
                 print_success(t(f"Genie Space 作成完了 (ID: {genie_space_id})",
                                  f"Genie Space created (ID: {genie_space_id})"))
             else:
@@ -340,10 +425,13 @@ def main():
                             )
                             created_branch = branch_op.wait()
                             branch = created_branch.name.split("/branches/")[-1] if "/branches/" in created_branch.name else branch
+                            created_resources["lakebase_project"] = project
+                            created_resources["lakebase_branch"] = branch
                             print_success(t(f"ブランチ作成完了: {branch}",
                                              f"Branch created: {branch}"))
                     except Exception as e:
                         print_error(f"Lakebase auto-create failed: {str(e)[:200]}")
+                        raise AbortSetup("Lakebase") from e
 
                 print_step(t(f"Lakebase を検証中: {project}/{branch}",
                               f"Validating Lakebase: {project}/{branch}"))
@@ -379,6 +467,7 @@ def main():
                                      f"Lakebase: {project} (branch: {branch})"))
                 else:
                     print_error(t("Lakebase セットアップに失敗", "Lakebase setup failed"))
+                    raise AbortSetup("Lakebase")
             else:
                 lakebase_config = setup_lakebase(
                     profile_name, username,
@@ -398,6 +487,10 @@ def main():
             monitoring_name, monitoring_id, eval_name, eval_id = create_mlflow_experiment(
                 profile_name, username
             )
+        if monitoring_id:
+            created_resources["monitoring_id"] = monitoring_id
+        if eval_id:
+            created_resources["eval_id"] = eval_id
 
         # ── Phase 5: .env 更新 ──
         print_step(t("[5/8] 環境設定 (.env)", "[5/8] Environment configuration (.env)"))
@@ -703,6 +796,11 @@ def main():
         print(f"  uv run grant-team-access member1@company.com member2@company.com")
         print("=" * 60)
 
+    except AbortSetup as ae:
+        print_error(t(f"\n⛔ 致命的なエラーのため「{ae}」でセットアップを中断しました。",
+                       f"\n⛔ Aborted setup at step '{ae}' due to fatal error."))
+        rollback()
+        sys.exit(1)
     except KeyboardInterrupt:
         print(t("\n\nセットアップが中断されました。",
                  "\n\nSetup was interrupted."))
