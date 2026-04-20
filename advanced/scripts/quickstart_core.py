@@ -781,9 +781,12 @@ def select_lakebase_interactive(profile_name: str) -> dict:
     1. New or existing?
     2. New -> Create autoscaling project + branch
     3. Existing -> Enter project + branch names
+       - ブランチ名を空 Enter でユーザー個別ブランチ（{project}-{username}）を自動作成
+       - 入力した名前が既存なら使用、存在しなければ新規作成
 
     Returns:
-        Dict with {"type": "autoscaling", "project": str, "branch": str}
+        Dict with {"type": "autoscaling", "project": str, "branch": str,
+                   "branch_kind": "personal" | "entered-new" | "entered-existing"}
     """
     print(t("\nLakebase セットアップ", "\nLakebase Setup"))
     print(t("  1) 新しい Lakebase インスタンスを作成",
@@ -811,14 +814,73 @@ def select_lakebase_interactive(profile_name: str) -> dict:
                        "Project name is required"))
         sys.exit(1)
 
-    branch = input(t("ブランチ名を入力: ",
-                      "Enter the branch name: ")).strip()
-    if not branch:
-        print_error(t("ブランチ名は必須です",
-                       "Branch name is required"))
-        sys.exit(1)
+    # ユーザー名ベースの個人ブランチ名を計算
+    username = get_databricks_username(profile_name)
+    user_slug = username.split("@")[0].replace(".", "-").lower()
+    default_branch = f"{project}-{user_slug}"
 
-    return {"type": "autoscaling", "project": project, "branch": branch}
+    print(t(
+        f"\n💡 Lakebase の特徴である高速ブランチングを活用します。",
+        f"\n💡 Leveraging Lakebase's fast branching feature."))
+    print(t(
+        f"   デフォルトでメンバー個別のブランチ（{default_branch}）を作成します。",
+        f"   Default: creates a personal branch ({default_branch})."))
+    print(t(
+        f"   既存ブランチを使いたい場合は、その名前を入力してください。",
+        f"   To use an existing branch, enter its name."))
+
+    branch = input(t(
+        f"\nブランチ名 [{default_branch}]: ",
+        f"\nBranch name [{default_branch}]: ")).strip() or default_branch
+
+    # ブランチ存在確認
+    result = run_command(
+        ["databricks", "api", "get",
+         f"/api/2.0/postgres/projects/{project}/branches/{branch}",
+         "-p", profile_name, "-o", "json"],
+        check=False,
+    )
+    branch_exists = (result.returncode == 0)
+
+    if branch_exists:
+        kind = "personal" if branch == default_branch else "entered-existing"
+        print_success(t(f"既存ブランチを使用: {branch}",
+                         f"Using existing branch: {branch}"))
+        if kind == "entered-existing":
+            print(t(
+                "  ⚠ このブランチは他のユーザーが所有している可能性があります。",
+                "  ⚠ This branch may be owned by another user."))
+            print(t(
+                "  代表者が `grant-team-access` であなたに権限を付与済みか確認してください。",
+                "  Ensure the representative has run `grant-team-access` for you."))
+    else:
+        # 存在しないブランチ → 新規作成
+        kind = "personal" if branch == default_branch else "entered-new"
+        print(t(f"ブランチ {branch} を新規作成中（production から fork）...",
+                 f"Creating branch {branch} (forked from production)..."))
+        try:
+            w = get_workspace_client(profile_name)
+            from databricks.sdk.service.postgres import Branch, BranchSpec
+            branch_op = w.postgres.create_branch(
+                parent=f"projects/{project}",
+                branch=Branch(spec=BranchSpec(no_expiry=True)),
+                branch_id=branch,
+            )
+            created = branch_op.wait()
+            branch = created.name.split("/branches/")[-1] if "/branches/" in created.name else branch
+            print_success(t(f"ブランチ作成完了: {branch}",
+                             f"Branch created: {branch}"))
+        except Exception as e:
+            print_error(t(f"ブランチ作成失敗: {str(e)[:200]}",
+                           f"Branch creation failed: {str(e)[:200]}"))
+            sys.exit(1)
+
+    return {
+        "type": "autoscaling",
+        "project": project,
+        "branch": branch,
+        "branch_kind": kind,
+    }
 
 
 def validate_lakebase_autoscaling(profile_name: str, project: str, branch: str) -> dict | None:

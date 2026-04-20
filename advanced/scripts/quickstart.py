@@ -356,11 +356,24 @@ def main():
                         update_env_file("PGHOST", pg_host)
                     update_env_file("PGUSER", username)
                     update_env_file("PGDATABASE", "databricks_postgres")
+                    # branch_kind: 非対話モードで自動生成した personal か、明示指定した既存か
+                    user_slug = username.split("@")[0].replace(".", "-").lower()
+                    expected_personal = f"{project}-{user_slug}"
+                    if branch == expected_personal:
+                        bk = "personal"
+                    elif not args.lakebase_autoscaling_branch:
+                        # 明示指定なしで自動作成された
+                        bk = "personal"
+                    elif branch_exists:
+                        bk = "entered-existing"
+                    else:
+                        bk = "entered-new"
                     lakebase_config = {
                         "type": "autoscaling",
                         "project": project,
                         "branch": branch,
                         "database_id": branch_info.get("database_id", ""),
+                        "branch_kind": bk,
                     }
                     print_success(t(f"Lakebase: {project} (branch: {branch})",
                                      f"Lakebase: {project} (branch: {branch})"))
@@ -650,15 +663,43 @@ def main():
         if lakebase_config:
             print(t(f"  Lakebase プロジェクト:  {lakebase_config['project']}",
                      f"  Lakebase project:      {lakebase_config['project']}"))
-            print(t(f"  Lakebase ブランチ:      {lakebase_config['branch']}",
-                     f"  Lakebase branch:       {lakebase_config['branch']}"))
+            branch_kind = lakebase_config.get("branch_kind", "")
+            if branch_kind == "personal":
+                print(t(f"  Lakebase ブランチ:      {lakebase_config['branch']} (自動生成の個人ブランチ)",
+                         f"  Lakebase branch:       {lakebase_config['branch']} (auto-generated personal)"))
+            else:
+                print(t(f"  Lakebase ブランチ:      {lakebase_config['branch']}",
+                         f"  Lakebase branch:       {lakebase_config['branch']}"))
         print(t(f"  モニタリング Exp ID:   {monitoring_id}",
                  f"  Monitoring Exp ID:     {monitoring_id}"))
         print(t(f"  評価 Exp ID:           {eval_id}",
                  f"  Evaluation Exp ID:     {eval_id}"))
         print()
-        print(t("メンバーの権限付与は以下で実行できます：",
-                 "Grant permissions to members with:"))
+
+        # 共有ブランチを使用している場合の警告
+        if lakebase_config and lakebase_config.get("branch_kind") == "entered-existing":
+            print(t("⚠ Lakebase 権限について:", "⚠ Lakebase permissions:"))
+            print(t(
+                "  既存の共有ブランチを指定しました。このブランチへのアクセスには、",
+                "  You specified an existing shared branch. Access to this branch requires"))
+            print(t(
+                "  代表者（ブランチ作成者）が grant-team-access を実行済みである必要があります。",
+                "  the representative to have run grant-team-access for your identity."))
+            print(t(
+                "  権限エラーが出る場合は代表者に依頼してください:",
+                "  If you get permission errors, ask the representative to run:"))
+            print(f"    uv run grant-team-access --group <group-name>")
+            print(t(f"    または uv run grant-team-access {username}",
+                     f"    or uv run grant-team-access {username}"))
+            print()
+
+        print(t("メンバーの権限付与は以下で実行できます（代表者のみ）:",
+                 "Grant permissions to members (representative only):"))
+        print(t("  # 推奨: アカウントレベルグループを使用（新規追加時は再実行不要）",
+                 "  # Recommended: use account-level group (no re-run for new members)"))
+        print(f"  uv run grant-team-access --group <group-name>")
+        print(t("  # または個別指定",
+                 "  # or individual users"))
         print(f"  uv run grant-team-access member1@company.com member2@company.com")
         print("=" * 60)
 

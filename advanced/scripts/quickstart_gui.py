@@ -1052,15 +1052,35 @@ class QuickstartWizard(customtkinter.CTk):
 
             customtkinter.CTkLabel(
                 self._lb_fields_frame,
-                text=t("ブランチ名:", "Branch name:"),
+                text=t("ブランチ名（空欄で個人ブランチ自動作成）:",
+                         "Branch name (leave empty for auto-generated personal branch):"),
             ).pack(anchor="w", pady=(5, 2))
+
+            # デフォルト値: {project}-{username-slug}
+            username = self.data.get("username", "")
+            user_slug = username.split("@")[0].replace(".", "-").lower() if username else "member"
+            project = self.data.get("lakebase_project", "")
+            default_branch = f"{project}-{user_slug}" if project else ""
+
             self._lb_branch_entry = customtkinter.CTkEntry(
                 self._lb_fields_frame, width=400,
+                placeholder_text=default_branch or "e.g. fresh-mart-alice",
             )
             self._lb_branch_entry.pack(pady=(0, 5))
-            if self.data.get("lakebase_branch"):
-                self._lb_branch_entry.insert(0, self.data["lakebase_branch"])
+            existing = self.data.get("lakebase_branch") or default_branch
+            if existing:
+                self._lb_branch_entry.insert(0, existing)
+                self.data["lakebase_branch"] = existing
             self._lb_branch_entry.bind("<KeyRelease>", lambda _: self._sync_lb_branch())
+
+            customtkinter.CTkLabel(
+                self._lb_fields_frame,
+                text=t(
+                    "💡 存在しないブランチ名なら新規作成、既存なら使用（要権限）",
+                    "💡 Non-existing name → creates new branch; existing → uses it (requires permissions)"),
+                text_color="gray",
+                wraplength=400,
+            ).pack(anchor="w", pady=(3, 0))
 
     def _on_lb_proj_change(self):
         name = self._lb_proj_entry.get().strip()
