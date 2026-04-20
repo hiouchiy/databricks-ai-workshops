@@ -1968,6 +1968,10 @@ class QuickstartWizard(customtkinter.CTk):
                 except Exception as e:
                     fail(t("\u30c8\u30ec\u30fc\u30b9", "Trace"), str(e)[:200])
             else:
+                # Delta Table を使わない選択 → 前回のランで残った設定を削除
+                core.update_env_file("MLFLOW_TRACING_DESTINATION", "")
+                core.remove_env_from_app_yaml("MLFLOW_TRACING_DESTINATION")
+                core.remove_env_from_app_yaml("MLFLOW_TRACING_SQL_WAREHOUSE_ID")
                 step += 1
                 self._set_progress(step / total_steps)
 
@@ -2041,6 +2045,9 @@ class QuickstartWizard(customtkinter.CTk):
                 except Exception as e:
                     fail("Prompt Registry", str(e)[:200])
             else:
+                # 前回のランで設定された PROMPT_REGISTRY_NAME を削除
+                core.update_env_file("PROMPT_REGISTRY_NAME", "")
+                core.remove_env_from_app_yaml("PROMPT_REGISTRY_NAME")
                 advance(t("Prompt Registry: スキップ", "Prompt Registry: Skipped"))
 
             # Step 11: Install dependencies

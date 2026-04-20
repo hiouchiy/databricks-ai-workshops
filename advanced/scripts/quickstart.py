@@ -67,6 +67,7 @@ from scripts.quickstart_core import (
     update_databricks_yml_lakebase,
     update_app_yaml_lakebase,
     append_env_to_app_yaml,
+    remove_env_from_app_yaml,
     update_databricks_yml_experiment,
     update_databricks_yml_resources,
     get_auth_token,
@@ -538,6 +539,10 @@ def main():
             print_success(t(f"トレース送信先: Unity Catalog ({tracing_dest})（既存 Experiment から検出）",
                              f"Trace destination: Unity Catalog ({tracing_dest}) (detected from existing Experiment)"))
         elif non_interactive:
+            # 前回のランで設定された MLFLOW_TRACING_DESTINATION を削除
+            update_env_file("MLFLOW_TRACING_DESTINATION", "")
+            remove_env_from_app_yaml("MLFLOW_TRACING_DESTINATION")
+            remove_env_from_app_yaml("MLFLOW_TRACING_SQL_WAREHOUSE_ID")
             print_success(t("トレース送信先: MLflow Experiment（デフォルト）",
                              "Trace destination: MLflow Experiment (default)"))
             use_delta = "n"
@@ -617,6 +622,10 @@ def main():
                     print(")")
                     print("```")
             else:
+                # 前回のランで設定された MLFLOW_TRACING_DESTINATION を削除
+                update_env_file("MLFLOW_TRACING_DESTINATION", "")
+                remove_env_from_app_yaml("MLFLOW_TRACING_DESTINATION")
+                remove_env_from_app_yaml("MLFLOW_TRACING_SQL_WAREHOUSE_ID")
                 print_success(t("トレース送信先: MLflow Experiment（デフォルト）",
                                  "Trace destination: MLflow Experiment (default)"))
 
@@ -658,6 +667,9 @@ def main():
                 print(t("  ハードコード版を使用します。",
                          "  Using hardcoded version."))
         else:
+            # 前回のランで設定された PROMPT_REGISTRY_NAME を .env / app.yaml から削除
+            update_env_file("PROMPT_REGISTRY_NAME", "")
+            remove_env_from_app_yaml("PROMPT_REGISTRY_NAME")
             print_success(t("Prompt Registry: 使用しない（ハードコード版）",
                              "Prompt Registry: Not used (hardcoded version)"))
 

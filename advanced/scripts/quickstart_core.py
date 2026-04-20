@@ -1405,6 +1405,22 @@ def append_env_to_app_yaml(name: str, value: str) -> None:
     app_yaml_path.write_text(content)
 
 
+def remove_env_from_app_yaml(name: str) -> None:
+    """app.yaml の env セクションから指定された環境変数の定義を削除する。"""
+    app_yaml_path = Path("app.yaml")
+    if not app_yaml_path.exists():
+        return
+
+    content = app_yaml_path.read_text()
+    # - name: KEY\n    value: "..." のペア（+ 後続改行）を削除
+    pattern = rf'\s*- name: {re.escape(name)}\n\s+(?:value|valueFrom):[^\n]*\n?'
+    new_content = re.sub(pattern, "\n", content, flags=re.MULTILINE)
+    # 連続改行を整理
+    new_content = re.sub(r"\n{3,}", "\n\n", new_content)
+    if new_content != content:
+        app_yaml_path.write_text(new_content)
+
+
 def update_databricks_yml_experiment(experiment_id: str) -> None:
     """Update databricks.yml to set the experiment ID in the app resource."""
     yml_path = Path("databricks.yml")
