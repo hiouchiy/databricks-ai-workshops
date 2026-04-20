@@ -1619,45 +1619,89 @@ class QuickstartWizard(customtkinter.CTk):
             # Step 6: Setup Lakebase
             lakebase_config = None
             if s.get("lakebase_required") and s.get("lakebase_project"):
-                self._log(t("Lakebase \u3092\u8a2d\u5b9a\u4e2d...", "Setting up Lakebase..."))
+                self._log(t("Lakebase を設定中...", "Setting up Lakebase..."))
                 try:
                     lb_mode = s.get("lakebase_mode", "new")
-                    if lb_mode == "new":
-                        buf = io.StringIO()
-                        # For GUI, we create the instance programmatically
-                        w = core.get_workspace_client(profile)
-                        if w:
-                            from databricks.sdk.service.postgres import Branch, BranchSpec, Project, ProjectSpec
-                            project_name = s["lakebase_project"]
-                            project_op = w.postgres.create_project(
-                                project=Project(spec=ProjectSpec(display_name=project_name)),
-                                project_id=project_name,
-                            )
-                            project = project_op.wait()
-                            project_short = project.name.removeprefix("projects/")
+                    project_name = s["lakebase_project"]
+                    branch_name = s.get("lakebase_branch", "").strip()
 
-                            branch_id = f"{project_name}-branch"
-                            branch_op = w.postgres.create_branch(
-                                parent=project.name,
-                                branch=Branch(spec=BranchSpec(no_expiry=True)),
-                                branch_id=branch_id,
-                            )
-                            branch = branch_op.wait()
-                            branch_name = (
-                                branch.name.split("/branches/")[-1]
-                                if "/branches/" in branch.name
-                                else branch_id
-                            )
-                            s["lakebase_project"] = project_short
-                            s["lakebase_branch"] = branch_name
-                            self._log(t(f"  \u30d7\u30ed\u30b8\u30a7\u30af\u30c8\u4f5c\u6210\u5b8c\u4e86: {project_short} / \u30d6\u30e9\u30f3\u30c1: {branch_name}",
-                                         f"  Created project: {project_short} / branch: {branch_name}"))
+                    # 入力ブランチが空ならデフォルト（個人ブランチ）を計算
+                    user_slug = username.split("@")[0].replace(".", "-").lower()
+                    default_branch = f"{project_name}-{user_slug}"
+                    if not branch_name:
+                        branch_name = default_branch
+
+                    from databricks.sdk.service.postgres import (
+                        Branch, BranchSpec, Project, ProjectSpec,
+                    )
+                    w = core.get_workspace_client(profile)
+
+                    # プロジェクト存在確認
+                    proj_check = core.api_get(
+                        f"/api/2.0/postgres/projects/{project_name}", token, host,
+                    )
+                    project_exists = "error" not in proj_check
+
+                    # ブランチ存在確認
+                    branch_exists = False
+                    if project_exists:
+                        br_check = core.api_get(
+                            f"/api/2.0/postgres/projects/{project_name}/branches/{branch_name}",
+                            token, host,
+                        )
+                        branch_exists = "error" not in br_check
+
+                    # 必要に応じて作成
+                    if not project_exists and lb_mode == "new":
+                        self._log(t(f"  プロジェクト {project_name} を作成中...",
+                                     f"  Creating project {project_name}..."))
+                        project_op = w.postgres.create_project(
+                            project=Project(spec=ProjectSpec(display_name=project_name)),
+                            project_id=project_name,
+                        )
+                        created_proj = project_op.wait()
+                        parent_name = created_proj.name
+                        project_exists = True
+                    elif project_exists:
+                        parent_name = f"projects/{project_name}"
+                    else:
+                        fail("Lakebase", t(f"プロジェクト {project_name} が存在しません",
+                                            f"Project {project_name} does not exist"))
+                        raise RuntimeError("project missing")
+
+                    if not branch_exists:
+                        self._log(t(f"  ブランチ {branch_name} を作成中（production から fork）...",
+                                     f"  Creating branch {branch_name} (forked from production)..."))
+                        branch_op = w.postgres.create_branch(
+                            parent=parent_name,
+                            branch=Branch(spec=BranchSpec(no_expiry=True)),
+                            branch_id=branch_name,
+                        )
+                        created_branch = branch_op.wait()
+                        branch_name = (
+                            created_branch.name.split("/branches/")[-1]
+                            if "/branches/" in created_branch.name
+                            else branch_name
+                        )
+                        self._log(t(f"  ブランチ作成完了: {branch_name}",
+                                     f"  Branch created: {branch_name}"))
+
+                    s["lakebase_project"] = project_name
+                    s["lakebase_branch"] = branch_name
+
+                    # branch_kind 検出
+                    if branch_name == default_branch:
+                        branch_kind = "personal"
+                    elif branch_exists:
+                        branch_kind = "entered-existing"
+                    else:
+                        branch_kind = "entered-new"
 
                     # Validate
                     buf = io.StringIO()
                     with contextlib.redirect_stdout(buf):
                         branch_info = core.validate_lakebase_autoscaling(
-                            profile, s["lakebase_project"], s.get("lakebase_branch", "")
+                            profile, project_name, branch_name
                         )
                     output = buf.getvalue()
                     if output.strip():
@@ -1666,23 +1710,31 @@ class QuickstartWizard(customtkinter.CTk):
                     if branch_info:
                         lakebase_config = {
                             "type": "autoscaling",
-                            "project": s["lakebase_project"],
-                            "branch": s.get("lakebase_branch", ""),
+                            "project": project_name,
+                            "branch": branch_name,
                             "database_id": branch_info.get("database_id", ""),
+                            "branch_kind": branch_kind,
                         }
                         s["lakebase_config"] = lakebase_config
-                        core.update_env_file("LAKEBASE_AUTOSCALING_PROJECT", lakebase_config["project"])
-                        core.update_env_file("LAKEBASE_AUTOSCALING_BRANCH", lakebase_config["branch"])
+                        core.update_env_file("LAKEBASE_AUTOSCALING_PROJECT", project_name)
+                        core.update_env_file("LAKEBASE_AUTOSCALING_BRANCH", branch_name)
                         pg_host = branch_info.get("host", "")
                         if pg_host:
                             core.update_env_file("PGHOST", pg_host)
                         core.update_env_file("PGUSER", username)
                         core.update_env_file("PGDATABASE", "databricks_postgres")
-                        advance(t("Lakebase \u8a2d\u5b9a\u5b8c\u4e86", "Lakebase configured"))
+
+                        kind_label = {
+                            "personal": t("個人ブランチ（自動生成）", "personal branch (auto-generated)"),
+                            "entered-existing": t("既存の共有ブランチ", "existing shared branch"),
+                            "entered-new": t("新規作成したブランチ", "newly-created branch"),
+                        }.get(branch_kind, "")
+                        advance(t(f"Lakebase 設定完了 ({kind_label})",
+                                   f"Lakebase configured ({kind_label})"))
                     else:
-                        fail(t("Lakebase", "Lakebase"), t("\u691c\u8a3c\u306b\u5931\u6557", "Validation failed"))
+                        fail("Lakebase", t("検証に失敗", "Validation failed"))
                 except Exception as e:
-                    fail(t("Lakebase", "Lakebase"), str(e)[:200])
+                    fail("Lakebase", str(e)[:200])
             else:
                 step += 1
                 self._set_progress(step / total_steps)
@@ -1892,12 +1944,18 @@ class QuickstartWizard(customtkinter.CTk):
         ]
         lakebase_config = s.get("lakebase_config")
         if lakebase_config:
+            bk = lakebase_config.get("branch_kind", "")
+            bk_label = {
+                "personal": t(" (個人ブランチ)", " (personal)"),
+                "entered-existing": t(" (既存共有ブランチ)", " (existing shared)"),
+                "entered-new": t(" (新規作成)", " (newly created)"),
+            }.get(bk, "")
             summary_lines.append(
-                f"Lakebase: {lakebase_config.get('project', '')} (branch: {lakebase_config.get('branch', '')})"
+                f"Lakebase: {lakebase_config.get('project', '')} / {lakebase_config.get('branch', '')}{bk_label}"
             )
         if s.get("trace_dest_mode") == "delta" and s.get("trace_dest_schema"):
             summary_lines.append(
-                f"{t('\u30c8\u30ec\u30fc\u30b9\u9001\u4fe1\u5148', 'Trace Dest')}: {s['trace_dest_schema']}"
+                f"{t('トレース送信先', 'Trace Dest')}: {s['trace_dest_schema']}"
             )
 
         summary_text = "\n".join(summary_lines)
@@ -1912,6 +1970,29 @@ class QuickstartWizard(customtkinter.CTk):
         res_box.pack(padx=30, pady=(0, 5))
         res_box.insert("0.0", summary_text)
         res_box.configure(state="disabled")
+
+        # 共有ブランチ警告（entered-existing の場合のみ）
+        if lakebase_config and lakebase_config.get("branch_kind") == "entered-existing":
+            warn_text = t(
+                "⚠ Lakebase 権限について:\n"
+                "既存の共有ブランチを指定しました。このブランチへのアクセスには、代表者が\n"
+                "grant-team-access であなた（またはグループ）に権限を付与済みである必要があります。\n"
+                "権限エラーが出る場合は代表者に以下を依頼してください:\n"
+                "  uv run grant-team-access --group <group-name>\n"
+                f"  または uv run grant-team-access {s.get('username', '')}",
+                "⚠ Lakebase permissions:\n"
+                "You selected an existing shared branch. Access requires the representative\n"
+                "to have run grant-team-access for you (or your group). If you hit permission\n"
+                "errors, ask the rep to run:\n"
+                "  uv run grant-team-access --group <group-name>\n"
+                f"  or uv run grant-team-access {s.get('username', '')}",
+            )
+            warn_box = customtkinter.CTkTextbox(
+                frame, width=600, height=95, text_color="orange"
+            )
+            warn_box.pack(padx=30, pady=(0, 5))
+            warn_box.insert("0.0", warn_text)
+            warn_box.configure(state="disabled")
 
         # Team sharing info
         customtkinter.CTkLabel(
