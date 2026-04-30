@@ -2019,7 +2019,9 @@ def _get_table_columns(token: str, host: str, warehouse_id: str, full_table_name
 def _build_serialized_space(catalog: str, schema: str, tables: list[str]) -> str:
     """serialized_space の JSON 文字列を生成。
 
-    version "1" のシンプルな形式を使用。テーブルは identifier でアルファベット順ソート必須。
+    Genie API は version 2 (integer) を要求する。version 1 を送ると
+    "The export format has changed since this export was taken" の 409 が返る。
+    テーブルは identifier でアルファベット順ソート必須。
     """
     data_sources_tables = [
         {"identifier": f"{catalog}.{schema}.{t}"}
@@ -2027,7 +2029,7 @@ def _build_serialized_space(catalog: str, schema: str, tables: list[str]) -> str
     ]
 
     space_config = {
-        "version": "1",
+        "version": 2,
         "config": {},
         "data_sources": {"tables": data_sources_tables},
     }
