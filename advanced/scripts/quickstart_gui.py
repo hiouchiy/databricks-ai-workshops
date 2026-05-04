@@ -627,16 +627,77 @@ class QuickstartWizard(customtkinter.CTk):
         self.update_idletasks()
 
         if not core.validate_profile(profile):
-            self.data["auth_ok"] = False
-            self._auth_status.configure(
-                text=t(
-                    f"\u2717 \u30d7\u30ed\u30d5\u30a1\u30a4\u30eb '{profile}' \u306e\u8a8d\u8a3c\u306b\u5931\u6557\u3002\n`databricks auth login --profile {profile}` \u3092\u5b9f\u884c\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
-                    f"\u2717 Profile '{profile}' is not authenticated.\nRun `databricks auth login --profile {profile}`.",
-                ),
-                text_color="red",
-            )
+            # \u30c8\u30fc\u30af\u30f3\u671f\u9650\u5207\u308c\u7b49\u3067\u691c\u8a3c\u5931\u6557 \u2192 \u81ea\u52d5\u7684\u306b\u518d\u30ed\u30b0\u30a4\u30f3\u3092\u5b9f\u884c
+            # \uff08\u30e6\u30fc\u30b6\u30fc\u306b\u30bf\u30fc\u30df\u30ca\u30eb\u3067\u30b3\u30de\u30f3\u30c9\u3092\u6253\u305f\u305b\u306a\u3044\uff09
+            self._start_relogin(profile)
             return
 
+        self._finalize_auth(profile)
+
+    def _start_relogin(self, profile: str):
+        """\u65e2\u5b58\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb\u306e\u30c8\u30fc\u30af\u30f3\u304c\u5207\u308c\u3066\u3044\u308b\u5834\u5408\u306b
+        `databricks auth login --profile <profile>` \u3092\u81ea\u52d5\u3067\u5b9f\u884c\u3059\u308b\u3002"""
+        self._auth_status.configure(
+            text=t(
+                f"\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb '{profile}' \u306e\u30c8\u30fc\u30af\u30f3\u304c\u5207\u308c\u3066\u3044\u308b\u53ef\u80fd\u6027\u304c\u3042\u308a\u307e\u3059\u3002\n"
+                "\u30d6\u30e9\u30a6\u30b6\u3092\u958b\u3044\u3066\u518d\u30ed\u30b0\u30a4\u30f3\u3057\u307e\u3059...",
+                f"Profile '{profile}' token may be expired.\n"
+                "Opening browser to re-authenticate...",
+            ),
+            text_color="yellow",
+        )
+        self.update_idletasks()
+
+        if not hasattr(self, "_login_result_queue"):
+            import queue as _q
+            self._login_result_queue = _q.Queue()
+
+        def _run_relogin():
+            try:
+                result = subprocess.run(
+                    ["databricks", "auth", "login", "--profile", profile],
+                    timeout=300,
+                )
+                self._login_result_queue.put(("relogin_done", result.returncode, profile))
+            except Exception as e:
+                self._login_result_queue.put(("relogin_error", str(e), profile))
+
+        import threading
+        threading.Thread(target=_run_relogin, daemon=True).start()
+        self.after(500, self._check_relogin_result)
+
+    def _check_relogin_result(self):
+        import queue as _q
+        try:
+            kind, *rest = self._login_result_queue.get_nowait()
+        except _q.Empty:
+            self.after(500, self._check_relogin_result)
+            return
+
+        if kind == "relogin_done":
+            rc, profile = rest
+            if rc == 0 and core.validate_profile(profile):
+                self._finalize_auth(profile)
+            else:
+                self.data["auth_ok"] = False
+                msg_jp = (f"\u2717 \u518d\u30ed\u30b0\u30a4\u30f3\u306b\u5931\u6557\u3057\u307e\u3057\u305f (exit {rc})\u3002"
+                          f"\u5225\u306e\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb\u3092\u9078\u629e\u3059\u308b\u304b\u3001"
+                          f"`databricks auth login --profile {profile}` \u3092\u30bf\u30fc\u30df\u30ca\u30eb\u3067\u5b9f\u884c\u3057\u3066\u304f\u3060\u3055\u3044\u3002")
+                msg_en = (f"\u2717 Re-login failed (exit {rc}). "
+                          f"Try another profile or run "
+                          f"`databricks auth login --profile {profile}` in your terminal.")
+                self._auth_status.configure(text=t(msg_jp, msg_en), text_color="red")
+        elif kind == "relogin_error":
+            err_msg = rest[0]
+            self.data["auth_ok"] = False
+            self._auth_status.configure(
+                text=t(f"\u2717 \u518d\u30ed\u30b0\u30a4\u30f3\u4e2d\u306b\u30a8\u30e9\u30fc: {err_msg[:200]}",
+                       f"\u2717 Error during re-login: {err_msg[:200]}"),
+                text_color="red",
+            )
+
+    def _finalize_auth(self, profile: str):
+        """\u691c\u8a3c\u6210\u529f\u5f8c\u306e\u5171\u901a\u51e6\u7406: data \u66f4\u65b0 + \u30c7\u30d5\u30a9\u30eb\u30c8\u5024\u30d7\u30ec\u30d5\u30a3\u30eb + \u30b9\u30c6\u30fc\u30bf\u30b9\u8868\u793a\u3002"""
         self.data["profile_name"] = profile
         self.data["host"] = core.get_databricks_host(profile)
         try:
