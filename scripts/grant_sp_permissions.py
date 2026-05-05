@@ -4,8 +4,7 @@
 ノートブック（workshop_setup.py）を開かずに、ローカルから全権限を付与できます。
 
 Usage:
-    uv run grant-sp-permissions                          # アプリ名は databricks.yml から自動取得
-    uv run grant-sp-permissions --app-name my-agent      # アプリ名を指定
+    uv run grant-sp-permissions --app-name <名前>        # アプリ名を明示指定（推奨）
     uv run grant-sp-permissions --sp-client-id <UUID>    # SP Client ID を直接指定
 
 付与される権限:
@@ -16,7 +15,6 @@ Usage:
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 import urllib.error
@@ -107,20 +105,21 @@ def get_sp_client_id(app_name: str, profile: str) -> str:
     return sp_id
 
 
-def get_app_name_from_yml() -> str | None:
-    """databricks.yml からアプリ名を取得する。"""
-    from pathlib import Path
-    yml = Path("databricks.yml")
-    if not yml.exists():
-        return None
-    content = yml.read_text()
-    # dev target の name: を探す（最初の name: がアプリ名）
-    m = re.search(r'^\s+name:\s*["\']?([^"\'#\n]+)', content, re.MULTILINE)
-    return m.group(1).strip() if m else None
-
-
 def grant_lakebase_permissions(sp_id: str):
-    """Lakebase PostgreSQL 内部権限を付与する。"""
+    """Lakebase PostgreSQL 内部権限を付与する。
+
+    所有権の規則：
+      - quickstart の init_lakebase_tables() でテーブルが事前作成された場合、
+        テーブルはこの関数を実行している USER の所有 → SP に GRANT が必要（このスクリプトの主目的）。
+      - 事前作成されない場合、初回 app 起動時に SP がテーブルを作成し SP が所有する
+        → 明示的な GRANT 不要（OWNER は全権限を持つ）。
+
+    したがって、推奨フローは：
+      1. quickstart で `init_lakebase_tables()` を実行（USER がテーブル作成）
+      2. `databricks bundle deploy`（アプリ + SP 作成）
+      3. このスクリプト（USER のテーブルを SP に GRANT）
+      4. アプリ起動 — SP は既に必要権限を持つので permission denied は出ない。再起動不要。
+    """
     project = os.getenv("LAKEBASE_AUTOSCALING_PROJECT", "")
     branch = os.getenv("LAKEBASE_AUTOSCALING_BRANCH", "")
     instance_name = os.getenv("LAKEBASE_INSTANCE_NAME", "")
@@ -135,6 +134,7 @@ def grant_lakebase_permissions(sp_id: str):
             SchemaPrivilege,
             TablePrivilege,
         )
+        from psycopg import sql
     except ImportError:
         print_warn("databricks-ai-bridge がインストールされていません。Lakebase 権限はスキップします。")
         return
@@ -157,60 +157,58 @@ def grant_lakebase_permissions(sp_id: str):
             return
 
     schema_privs = [SchemaPrivilege.USAGE, SchemaPrivilege.CREATE]
-    table_privs = [TablePrivilege.SELECT, TablePrivilege.INSERT, TablePrivilege.UPDATE, TablePrivilege.DELETE]
-
-    # Short-term memory (LangGraph checkpointer)
-    short_term_tables = [
-        "checkpoint_migrations", "checkpoint_writes", "checkpoints", "checkpoint_blobs",
+    seq_privs_str = "USAGE, SELECT, UPDATE"
+    table_privs = [
+        TablePrivilege.SELECT, TablePrivilege.INSERT,
+        TablePrivilege.UPDATE, TablePrivilege.DELETE,
     ]
-    # Long-term memory (DatabricksStore)
-    long_term_tables = [
-        "store_migrations", "store", "store_vectors", "vector_migrations",
-    ]
-    # Frontend (Express chat history)
-    frontend_schemas = {
-        "ai_chatbot": ["Chat", "Message", "User", "Vote"],
-        "drizzle": ["__drizzle_migrations"],
-    }
 
-    # 全スキーマをまとめて処理
-    all_schemas = {
-        "public": short_term_tables + long_term_tables,
-        **frontend_schemas,
-    }
+    # `public` は標準スキーマで常に存在し、LangGraph (short_term + long_term) のテーブルが作られる場所。
+    # `ai_chatbot` / `drizzle` はフロントエンド (Express + Drizzle) が初回起動時に作成するスキーマ。
+    # SP がそれらを作る場合は SP が所有者となるため明示的な GRANT は不要（スキップ）。
+    target_schemas = ["public", "ai_chatbot", "drizzle"]
 
-    for schema_name, tables in all_schemas.items():
-        # スキーマ権限
+    for schema_name in target_schemas:
+        # 1. スキーマ権限
         try:
             client.grant_schema(grantee=sp_id, schemas=[schema_name], privileges=schema_privs)
         except Exception as e:
             if "does not exist" in str(e).lower():
-                print_warn(f"Lakebase {schema_name} スキーマ未作成（初回起動後に再実行してください）")
+                if schema_name != "public":
+                    print_warn(
+                        f"Lakebase {schema_name} スキーマ未作成（SP がアプリ起動時に作成し所有 → GRANT 不要）"
+                    )
+                else:
+                    print_error(f"Lakebase public スキーマが存在しません: {str(e)[:200]}")
                 continue
             else:
                 print_error(f"Lakebase {schema_name} スキーマ権限付与失敗: {str(e)[:200]}")
                 continue
 
-        # テーブル権限（1テーブルずつ、存在しないテーブルはスキップ）
-        granted = 0
-        skipped = 0
-        for table in tables:
-            try:
-                client.grant_table(grantee=sp_id, tables=[f"{schema_name}.{table}"], privileges=table_privs)
-                granted += 1
-            except Exception as e:
-                if "does not exist" in str(e).lower():
-                    skipped += 1
-                else:
-                    print_error(f"  {schema_name}.{table}: {str(e)[:150]}")
+        # 2. 既存の全テーブル / シーケンスへ GRANT（0 件でもエラーにならない）
+        try:
+            client.grant_all_tables_in_schema(
+                grantee=sp_id, schemas=[schema_name], privileges=table_privs
+            )
+        except Exception as e:
+            print_error(f"Lakebase {schema_name} 既存テーブル GRANT 失敗: {str(e)[:200]}")
+            continue
 
-        if granted > 0:
-            msg = f"Lakebase {schema_name}: {granted} テーブル権限付与"
-            if skipped > 0:
-                msg += f"（{skipped} テーブル未作成 — 初回起動後に再実行）"
-            print_success(msg)
-        elif skipped > 0:
-            print_warn(f"Lakebase {schema_name}: 全 {skipped} テーブル未作成（初回起動後に再実行してください）")
+        try:
+            seq_grant = sql.SQL(
+                "GRANT " + seq_privs_str + " ON ALL SEQUENCES IN SCHEMA {schema} TO {grantee}"
+            ).format(
+                schema=sql.Identifier(schema_name),
+                grantee=sql.Identifier(sp_id),
+            )
+            client._execute_composed(seq_grant)
+        except Exception as e:
+            print_error(f"Lakebase {schema_name} 既存シーケンス GRANT 失敗: {str(e)[:200]}")
+            continue
+
+        print_success(
+            f"Lakebase {schema_name}: スキーマ + 全テーブル / シーケンス権限を付与"
+        )
 
 
 def main():
@@ -219,7 +217,7 @@ def main():
     )
     parser.add_argument(
         "--app-name",
-        help="Databricks Apps のアプリ名（省略時は databricks.yml から自動取得）",
+        help="Databricks Apps のアプリ名（--sp-client-id を使う場合は不要）",
     )
     parser.add_argument(
         "--sp-client-id",
@@ -237,10 +235,12 @@ def main():
         sp_id = args.sp_client_id
         app_name = args.app_name or "(direct)"
     else:
-        app_name = args.app_name or get_app_name_from_yml()
-        if not app_name:
-            print_error("アプリ名を --app-name で指定するか、databricks.yml を配置してください。")
+        if not args.app_name:
+            print_error("アプリ名を --app-name <名前> で指定してください。\n"
+                        "  例: uv run grant-sp-permissions --app-name freshmart-agent-hiroshi-0505\n"
+                        "  または、SP Client ID を直接指定: --sp-client-id <UUID>")
             sys.exit(1)
+        app_name = args.app_name
         print(f"アプリ '{app_name}' の SP Client ID を取得中...")
         sp_id = get_sp_client_id(app_name, args.profile)
 
@@ -306,7 +306,7 @@ def main():
     grant_lakebase_permissions(sp_id)
 
     print(f"\n{'='*60}")
-    print("完了! アプリを再起動してください:")
-    print(f"  databricks apps stop {app_name} --profile {args.profile}")
-    print(f"  databricks apps start {app_name} --profile {args.profile}")
+    print("完了! 次のステップ:")
+    print(f"  - アプリ未起動なら:  databricks apps start {app_name}")
+    print(f"  - 既に起動済みなら: 再起動不要（権限は次回リクエストから有効）")
     print(f"{'='*60}")

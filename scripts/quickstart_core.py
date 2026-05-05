@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 
@@ -1466,6 +1467,104 @@ def update_databricks_yml_resources(genie_space_id: str, vs_index: str) -> None:
     yml_path.write_text(content)
     print_success(t("databricks.yml を Genie Space ID と VS インデックスで更新しました",
                      "Updated databricks.yml with Genie Space ID and VS index"))
+
+
+# ── App name helpers ─────────────────────────────────────────────────
+
+# Databricks App 名の制約：
+#   - 小文字英数字とハイフンのみ
+#   - 英字で始まり、英数で終わる
+#   - 60文字以内（DNS ラベル制約 63 にバッファを残した安全側の値）
+APP_NAME_PREFIX = "freshmart-agent"
+APP_NAME_MAX_LENGTH = 60
+
+
+def sanitize_app_name_part(value: str) -> str:
+    """ユーザー名やemailをApp名に使える形に正規化する。
+
+    例:
+      'hiroshi.ouchiyama@databricks.com' -> 'hiroshi-ouchiyama'
+      'Tanaka_Taro+x@example.co.jp'      -> 'tanaka-taro-x'
+    """
+    s = value.split("@", 1)[0].lower()
+    s = re.sub(r"[^a-z0-9]+", "-", s)
+    s = re.sub(r"-+", "-", s).strip("-")
+    return s
+
+
+def compute_default_app_name(username: str, today: str | None = None) -> str:
+    """`freshmart-agent-{user}-{MMDD}` を生成。長すぎる場合は user を切り詰める。
+
+    today: YYYY-MM-DD 形式の文字列（省略時は本日）。テスト用に注入可能。
+    """
+    if today is None:
+        today = datetime.now().strftime("%Y-%m-%d")
+    mmdd = today.replace("-", "")[4:8]  # YYYY-MM-DD -> MMDD
+    user_part = sanitize_app_name_part(username) or "user"
+
+    suffix = f"-{mmdd}"
+    base = f"{APP_NAME_PREFIX}-"
+    budget = APP_NAME_MAX_LENGTH - len(base) - len(suffix)
+    if len(user_part) > budget:
+        user_part = user_part[:budget].rstrip("-")
+    return f"{base}{user_part}{suffix}"
+
+
+def is_valid_app_name(name: str) -> bool:
+    """Databricks App 名のバリデーション。"""
+    if not name or len(name) > APP_NAME_MAX_LENGTH:
+        return False
+    return bool(re.match(r"^[a-z][a-z0-9-]*[a-z0-9]$", name))
+
+
+def update_databricks_yml_app_name(app_name: str) -> None:
+    """databricks.yml の resources.apps.*.name を更新（dev/prod 両方）。
+
+    対象は `freshmart-agent...` で始まる app 名のみ（quote 有無どちらも）。
+    他のリソースの name キー（例: `name: "experiment"`）は変更しない。
+    """
+    yml_path = Path("databricks.yml")
+    if not yml_path.exists():
+        return
+
+    content = yml_path.read_text()
+    # quote ありバージョン
+    new_content = re.sub(
+        r'(\bname:\s*)"freshmart-agent[A-Za-z0-9._-]*"',
+        f'\\1"{app_name}"',
+        content,
+    )
+    # quote なしバージョン（行末まで）
+    new_content = re.sub(
+        r'(\bname:\s*)freshmart-agent[A-Za-z0-9._-]*(\s*$)',
+        f'\\1{app_name}\\2',
+        new_content,
+        flags=re.MULTILINE,
+    )
+    yml_path.write_text(new_content)
+    print_success(t(f"databricks.yml を App 名で更新しました: {app_name}",
+                     f"Updated databricks.yml with app name: {app_name}"))
+
+
+def select_app_name_interactive(
+    username: str, default: str | None = None
+) -> str:
+    """CLI: app 名を対話的に選択。"""
+    if default is None:
+        default = compute_default_app_name(username)
+
+    print(t(f"\n  Databricks App 名（デフォルト: {default}）",
+             f"\n  Databricks App name (default: {default})"))
+    print(t("  制約: 小文字英数字とハイフン、英字で始まり英数で終わる、30文字以内",
+             "  Constraints: lowercase alphanumeric+hyphen, start with letter, end with alphanumeric, ≤30 chars"))
+    while True:
+        s = input(t(f"  App 名を入力 [Enter で {default}]: ",
+                     f"  Enter app name [Enter for {default}]: ")).strip()
+        chosen = s or default
+        if is_valid_app_name(chosen):
+            return chosen
+        print_error(t(f"無効な App 名: {chosen}。制約を満たしていません。",
+                       f"Invalid app name: {chosen}. Does not meet constraints."))
 
 
 # ── REST API helpers ─────────────────────────────────────────────────

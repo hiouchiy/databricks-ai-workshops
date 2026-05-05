@@ -23,7 +23,7 @@ from scripts import quickstart_core as core
 customtkinter.set_appearance_mode("dark")
 customtkinter.set_default_color_theme("blue")
 
-TOTAL_PAGES = 15
+TOTAL_PAGES = 16
 
 
 # ── Helper: bilingual text ─────────────────────────────────────────────
@@ -79,6 +79,8 @@ class QuickstartWizard(customtkinter.CTk):
             "use_prompt_registry": "no",
             # LLM endpoint
             "llm_endpoint": "",
+            # App name
+            "app_name": "",
             # Prerequisites
             "prereqs_ok": False,
             # Execution
@@ -165,9 +167,10 @@ class QuickstartWizard(customtkinter.CTk):
             self._page_trace,           # 9 -> Step 10
             self._page_prompt_registry, # 10 -> Step 11
             self._page_llm_endpoint,    # 11 -> Step 12
-            self._page_summary,         # 12 -> Step 13
-            self._page_execute,         # 13 -> Step 14
-            self._page_complete,        # 14 -> Step 15
+            self._page_app_name,        # 12 -> Step 13
+            self._page_summary,         # 13 -> Step 14
+            self._page_execute,         # 14 -> Step 15
+            self._page_complete,        # 15 -> Step 16
         ]
 
     def _update_nav(self):
@@ -180,7 +183,7 @@ class QuickstartWizard(customtkinter.CTk):
 
         # Hide bottom bar entirely on execute/complete pages — those pages own
         # their own buttons (Run / Complete / Rollback / Close).
-        if pg >= 13:
+        if pg >= 14:
             self._bottom_bar.pack_forget()
             return
         else:
@@ -326,6 +329,23 @@ class QuickstartWizard(customtkinter.CTk):
                 self._show_error(t(
                     "LLM \u30a8\u30f3\u30c9\u30dd\u30a4\u30f3\u30c8\u540d\u3092\u9078\u629e\u307e\u305f\u306f\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
                     "Please select or enter an LLM endpoint name."
+                ))
+                return False
+        elif pg == 12:
+            # App name page
+            if hasattr(self, "_app_name_entry"):
+                self.data["app_name"] = self._app_name_entry.get().strip()
+            app_name = self.data.get("app_name", "").strip()
+            if not app_name:
+                self._show_error(t(
+                    "Databricks App \u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                    "Please enter a Databricks App name.",
+                ))
+                return False
+            if not core.is_valid_app_name(app_name):
+                self._show_error(t(
+                    f"\u7121\u52b9\u306a App \u540d: {app_name}\n\u5c0f\u6587\u5b57\u82f1\u6570\u5b57\u3068\u30cf\u30a4\u30d5\u30f3\u3001\u82f1\u5b57\u3067\u59cb\u307e\u308a\u82f1\u6570\u3067\u7d42\u308f\u308b\u300160\u6587\u5b57\u4ee5\u5185\u306b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                    f"Invalid app name: {app_name}\nUse lowercase alphanumeric+hyphen, start with letter, end with alphanumeric, less than 60 chars.",
                 ))
                 return False
         return True
@@ -1872,7 +1892,58 @@ class QuickstartWizard(customtkinter.CTk):
         name = getattr(self, "_llm_label_to_name", {}).get(label, label)
         self.data["llm_endpoint"] = name
 
-    # ── Page 12: Summary ────────────────────────────────────────────────
+    # ── Page 12: App Name ───────────────────────────────────
+    def _page_app_name(self, frame: customtkinter.CTkFrame):
+        customtkinter.CTkLabel(
+            frame,
+            text=t("Databricks App 名", "Databricks App Name"),
+            font=customtkinter.CTkFont(size=22, weight="bold"),
+        ).pack(pady=(20, 5))
+
+        customtkinter.CTkLabel(
+            frame,
+            text=t(
+                "デプロイする Databricks App の名前を設定します。\n"
+                "デフォルト: freshmart-agent-{username}-{MMDD}\n"
+                "制約: 小文字英数字とハイフン、英字で始まり英数で終わる、60文字以内。",
+                "Set the name of the Databricks App to deploy.\n"
+                "Default: freshmart-agent-{username}-{MMDD}\n"
+                "Constraints: lowercase alphanumeric+hyphen, start with letter, end with alphanumeric, less than 60 chars.",
+            ),
+            wraplength=580,
+            justify="left",
+            text_color="gray",
+        ).pack(pady=(0, 10), padx=40)
+
+        # Compute default
+        username = self.data.get("username", "") or self.data.get("user_email", "") or "user"
+        default_name = self.data.get("app_name") or core.compute_default_app_name(username)
+        self.data.setdefault("app_name", default_name)
+
+        customtkinter.CTkLabel(
+            frame,
+            text=t("App 名:", "App name:"),
+        ).pack(pady=(5, 2))
+
+        self._app_name_entry = customtkinter.CTkEntry(frame, width=500)
+        self._app_name_entry.insert(0, default_name)
+        self._app_name_entry.pack(pady=(0, 10), padx=40)
+
+        # Reset to default helper button
+        def _reset_to_default():
+            d = core.compute_default_app_name(username)
+            self._app_name_entry.delete(0, "end")
+            self._app_name_entry.insert(0, d)
+
+        customtkinter.CTkButton(
+            frame,
+            text=t("デフォルトに戻す", "Reset to default"),
+            command=_reset_to_default,
+            width=180,
+        ).pack(pady=(2, 10))
+
+
+    # ── Page 13: Summary ────────────────────────────────────────────────
     def _page_summary(self, frame: customtkinter.CTkFrame):
         customtkinter.CTkLabel(
             frame,
@@ -1917,6 +1988,7 @@ class QuickstartWizard(customtkinter.CTk):
             lines.append(f"Prompt Registry: {t('\u4f7f\u7528\u3057\u306a\u3044', 'Disabled')}")
 
         lines.append(f"LLM Endpoint: {self.data.get('llm_endpoint', '')}")
+        lines.append(f"App Name: {self.data.get('app_name', '')}")
 
         textbox.insert("0.0", "\n".join(lines))
         textbox.configure(state="disabled")
@@ -1972,8 +2044,8 @@ class QuickstartWizard(customtkinter.CTk):
                 elif kind == "done":
                     self._exec_running = False
                     self.data["setup_complete"] = True
-                    # Auto-advance to complete page (index 13)
-                    self.after(500, lambda: self.show_page(14))
+                    # Auto-advance to complete page (index 15)
+                    self.after(500, lambda: self.show_page(15))
                     return
         except queue.Empty:
             pass
@@ -2445,11 +2517,17 @@ class QuickstartWizard(customtkinter.CTk):
                 llm_endpoint = s.get("llm_endpoint", "") or core.DEFAULT_LLM_ENDPOINT
                 core.update_env_file("LLM_ENDPOINT_NAME", llm_endpoint)
                 core.append_env_to_app_yaml("LLM_ENDPOINT_NAME", llm_endpoint)
+                # Persist Databricks App name
+                app_name = s.get("app_name", "") or core.compute_default_app_name(
+                    s.get("username", "user")
+                )
+                core.update_env_file("DATABRICKS_APP_NAME", app_name)
 
                 buf = io.StringIO()
                 with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
                     core.update_databricks_yml_experiment(monitoring_id)
                     core.update_databricks_yml_resources(genie_space_id, vs_index_val)
+                    core.update_databricks_yml_app_name(app_name)
                     if lakebase_config:
                         core.update_databricks_yml_lakebase(lakebase_config)
                         core.update_app_yaml_lakebase(lakebase_config)

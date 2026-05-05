@@ -79,6 +79,10 @@ from scripts.quickstart_core import (
     select_warehouse_interactive,
     select_llm_endpoint_interactive,
     DEFAULT_LLM_ENDPOINT,
+    compute_default_app_name,
+    is_valid_app_name,
+    select_app_name_interactive,
+    update_databricks_yml_app_name,
     create_catalog_schema,
     check_tables_exist,
     check_chunked_table_exists,
@@ -122,6 +126,9 @@ def main():
     parser.add_argument("--llm-endpoint", default=None,
                         help="LLM serving endpoint name (FM API). "
                              "Default: databricks-claude-sonnet-4-6 (interactively selectable)")
+    parser.add_argument("--app-name", default=None,
+                        help="Databricks App name. "
+                             "Default: freshmart-agent-{username}-{MMDD} (interactively selectable)")
     parser.add_argument(
         "--lakebase-autoscaling-project",
         help="Lakebase autoscaling project name",
@@ -427,6 +434,26 @@ def main():
                 token, host, default=DEFAULT_LLM_ENDPOINT
             )
 
+        # Databricks App 名
+        default_app_name = compute_default_app_name(username)
+        if args.app_name:
+            if not is_valid_app_name(args.app_name):
+                print_error(t(
+                    f"無効な App 名: {args.app_name}。デフォルトを使用: {default_app_name}",
+                    f"Invalid app name: {args.app_name}. Using default: {default_app_name}",
+                ))
+                app_name = default_app_name
+            else:
+                app_name = args.app_name
+            print_success(t(f"Databricks App 名: {app_name}",
+                             f"Databricks App name: {app_name}"))
+        elif non_interactive:
+            app_name = default_app_name
+            print_success(t(f"Databricks App 名（デフォルト）: {app_name}",
+                             f"Databricks App name (default): {app_name}"))
+        else:
+            app_name = select_app_name_interactive(username, default=default_app_name)
+
         # ── Phase 4: リソース作成 ──
         print_step(t("[4/8] リソース作成", "[4/8] Resource creation"))
 
@@ -638,8 +665,10 @@ def main():
         update_env_file("VECTOR_SEARCH_INDEX", vs_index)
         update_env_file("LLM_ENDPOINT_NAME", llm_endpoint)
         append_env_to_app_yaml("LLM_ENDPOINT_NAME", llm_endpoint)
+        update_env_file("DATABRICKS_APP_NAME", app_name)
         update_databricks_yml_experiment(monitoring_id)
         update_databricks_yml_resources(genie_space_id, vs_index)
+        update_databricks_yml_app_name(app_name)
         print_success(t(".env / databricks.yml 更新完了",
                          ".env / databricks.yml updated"))
 

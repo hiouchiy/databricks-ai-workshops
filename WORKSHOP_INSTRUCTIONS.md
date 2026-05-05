@@ -81,7 +81,7 @@ uv run quickstart --catalog <CATALOG> --schema <SCHEMA> \
 - Lakebase の高速ブランチング機能を体験できる
 - テーブル権限の問題が発生しない（メンバーが自分のブランチで作るテーブルは自動的に自分が所有）
 
-> **アプリの SP 権限について:** 各メンバーが自分のアプリをデプロイした後に、ステップ 11-6 で `uv run grant-sp-permissions` を各自で実行してください。代表者が事前に設定することはできません（SP はアプリ作成時に生成されるため）。
+> **アプリの SP 権限について:** 各メンバーが自分のアプリをデプロイした後に、ステップ 11-4 で `uv run grant-sp-permissions --app-name $APP_NAME` を各自で実行してください。代表者が事前に設定することはできません（SP はアプリ作成時に生成されるため）。
 
 コマンド実行後、以下の情報をメンバーに共有してください：
 - カタログ名・スキーマ名
@@ -553,26 +553,37 @@ uv run agent-evaluate-advanced
 
 ### 最初に変数を設定
 
-以降のコマンドで繰り返し使う値を変数に設定しておくと便利です：
+以降のコマンドで繰り返し使う値を環境変数として設定しておきます。`DATABRICKS_CONFIG_PROFILE` を設定しておくと、Databricks CLI は `--profile` 引数なしで対応するプロファイルを自動的に使用します。
 
 ```bash
-# 参加者ごとにユニークなアプリ名（例: freshmart-agent-taro）
-export APP_NAME="<あなたのアプリ名>"
+# Databricks CLI プロファイル（このセッション全体で使用）
+export DATABRICKS_CONFIG_PROFILE="<あなたのプロファイル名>"   # 例: DEFAULT / demoenv-azure-eastus2 など
 
-# あなたの Databricks メールアドレス
-export MY_EMAIL=$(databricks current-user me --profile DEFAULT -o json | jq -r .userName)
-echo "APP_NAME: $APP_NAME"
-echo "MY_EMAIL: $MY_EMAIL"
+# アプリ名（クイックスタート使用済みなら .env の DATABRICKS_APP_NAME と同じ値、または databricks.yml の name と同じ値）
+export APP_NAME="<あなたのアプリ名>"   # 例: freshmart-agent-taro-0413
+
+# あなたの Databricks メールアドレス（以降のコマンドで自動取得）
+export MY_EMAIL=$(databricks current-user me -o json | jq -r .userName)
+
+echo "PROFILE:   $DATABRICKS_CONFIG_PROFILE"
+echo "APP_NAME:  $APP_NAME"
+echo "MY_EMAIL:  $MY_EMAIL"
 ```
+
+> **クイックスタートを使った場合**：`.env` ファイルの `DATABRICKS_APP_NAME` と `DATABRICKS_CONFIG_PROFILE` の値をそのまま使ってください。クイックスタートが自動生成しています。
 
 ### 11-1. `databricks.yml` の編集
 
-`databricks.yml` を開き、以下の箇所を自分の環境に合わせて編集します（`uv run quickstart` を使った場合は自動更新されます）。
+> **クイックスタートを使った場合：** このステップで編集する `name:` および `resources:` の各値は、`uv run quickstart` 実行時に自動入力済みです。**そのまま次の 11-2 へ進んでください。**
+>
+> **クイックスタートを使わなかった場合のみ：** 以下を手動で編集します。
+
+`databricks.yml` を開き、以下の箇所を自分の環境に合わせて編集します。
 
 **アプリ名**（参加者ごとにユニークにしてください）：
 
 ```yaml
-      name: "<あなたのアプリ名>"  # 例: freshmart-agent-taro
+      name: "<あなたのアプリ名>"  # 例: freshmart-agent-taro-0413
 ```
 
 > `name:` はファイル内に 2 箇所あります（`dev` と `prod` の両方）。両方とも同じ名前にしてください。
@@ -615,6 +626,10 @@ echo "MY_EMAIL: $MY_EMAIL"
 
 ### 11-2. `app.yaml` の編集
 
+> **クイックスタートを使った場合：** `app.yaml` の Lakebase 値および（オプションの）`MLFLOW_TRACING_DESTINATION` も自動入力済みです。**そのまま次の 11-3 へ進んでください。**
+>
+> **クイックスタートを使わなかった場合のみ：** 以下を手動で編集します。
+
 `app.yaml` も `databricks.yml` と同様に Lakebase の値を設定します：
 
 ```yaml
@@ -626,7 +641,7 @@ echo "MY_EMAIL: $MY_EMAIL"
 
 > その他の環境変数（MLFLOW_EXPERIMENT_ID、GENIE_SPACE_ID、VECTOR_SEARCH_INDEX）は `valueFrom` でリソースバインディング経由で自動注入されるため、編集不要です。
 
-**Delta Table トレースを使用する場合**は、以下も `app.yaml` に追加してください（`uv run quickstart` を使った場合は自動追加されます）：
+**Delta Table トレースを使用する場合**は、以下も `app.yaml` に追加してください：
 
 ```yaml
   - name: MLFLOW_TRACING_DESTINATION
@@ -637,39 +652,17 @@ echo "MY_EMAIL: $MY_EMAIL"
 
 ### 11-3. バンドルデプロイ
 
+`databricks bundle deploy` でアプリ本体（コンピュートリソース）と SP（Service Principal）を作成します。**まだソースコードはデプロイされません。**
+
 ```bash
-databricks bundle deploy -t dev --profile DEFAULT
+databricks bundle deploy -t dev
 ```
 
 初回はアプリの作成が含まれるため数分かかります。
 
-### 11-4. アプリの起動
+### 11-4. サービスプリンシパルへのパーミッション付与（**先に実行**）
 
-```bash
-databricks apps start $APP_NAME --profile DEFAULT
-```
-
-コンピュートが ACTIVE になるまで待機：
-
-```bash
-databricks apps get $APP_NAME --profile DEFAULT -o json | jq '.compute_status.state'
-# "ACTIVE" と表示されるまで待つ
-```
-
-### 11-5. ソースコードのデプロイ
-
-```bash
-databricks apps deploy $APP_NAME \
-  --source-code-path "/Workspace/Users/$MY_EMAIL/.bundle/retail_grocery_ltm_memory/dev/files" \
-  --profile DEFAULT
-```
-
-> **注意：** デプロイ後、npm install → npm build → アプリ起動に **3〜5 分** かかります。ステータスが RUNNING になるまで待ってから動作確認してください：
-> ```bash
-> databricks apps get $APP_NAME --profile DEFAULT -o json | jq '.app_status.state'
-> ```
-
-### 11-6. サービスプリンシパルへのパーミッション付与
+> **重要：** このステップを **アプリの起動・ソースコードデプロイの前に** 実行することで、アプリの初回起動時に必要な権限がすべて揃った状態にできます。これにより従来必要だった「権限付与後のアプリ再起動（5〜10 分）」が不要になります。
 
 リソースバインディングにより、以下の権限はデプロイ時に **自動付与** されます：
 
@@ -686,17 +679,15 @@ databricks apps deploy $APP_NAME \
 
 #### 方法 A：ワンコマンドで一括付与（推奨）
 
-ローカルからすべての SP 権限を一括で付与できます：
-
 ```bash
-uv run grant-sp-permissions
+uv run grant-sp-permissions --app-name $APP_NAME
 ```
 
-アプリ名は `databricks.yml` から自動取得されます。以下の権限が付与されます：
+以下の権限が付与されます：
 1. **Unity Catalog** — USE CATALOG, USE SCHEMA, SELECT, MODIFY（データスキーマ + トレーススキーマ）
-2. **Lakebase PostgreSQL** — ロール作成 + 全メモリテーブルの USAGE, SELECT, INSERT, UPDATE, DELETE
+2. **Lakebase PostgreSQL** — ロール作成 + スキーマ権限 + 既存の全メモリテーブル / シーケンスへの権限
 
-> アプリ名を指定する場合は `--app-name <名前>` を追加してください。
+> SP Client ID を直接指定する場合は `--sp-client-id <UUID>` を使ってください。
 
 #### 方法 B：手動で個別に付与
 
@@ -705,7 +696,7 @@ uv run grant-sp-permissions
 
 ```bash
 # SP Client ID を取得
-SP_CLIENT_ID=$(databricks apps get $APP_NAME --output json --profile DEFAULT | jq -r '.service_principal_client_id')
+SP_CLIENT_ID=$(databricks apps get $APP_NAME -o json | jq -r '.service_principal_client_id')
 echo "SP Client ID: $SP_CLIENT_ID"
 ```
 
@@ -725,18 +716,9 @@ Delta Table トレースを使用する場合は、**トレーススキーマ**�
 ```sql
 -- トレーススキーマ（データスキーマと同じ場合）
 GRANT MODIFY ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `<SP_CLIENT_ID>`;
-
--- トレーススキーマが別の場合（例: hiroshi.my_traces）
--- GRANT USE CATALOG ON CATALOG `<TRACE_CATALOG>` TO `<SP_CLIENT_ID>`;
--- GRANT USE SCHEMA ON SCHEMA `<TRACE_CATALOG>`.`<TRACE_SCHEMA>` TO `<SP_CLIENT_ID>`;
--- GRANT SELECT, MODIFY ON SCHEMA `<TRACE_CATALOG>`.`<TRACE_SCHEMA>` TO `<SP_CLIENT_ID>`;
 ```
 
-> `.env` の `MLFLOW_TRACING_DESTINATION` を確認して、データスキーマと異なる場合は両方に権限を付与してください。
-
 **Lakebase PostgreSQL 内部パーミッション**：
-
-> Lakebase のプロジェクト接続権限（`CAN_CONNECT_AND_CREATE`）はリソースバインディングで自動付与されますが、**PostgreSQL 内部のスキーマ・テーブル権限は別途付与が必要**です。これがないと、アプリ起動時に `permission denied for table` エラーが発生します。
 
 ```bash
 uv run python scripts/grant_lakebase_permissions.py "$SP_CLIENT_ID" \
@@ -747,12 +729,32 @@ uv run python scripts/grant_lakebase_permissions.py "$SP_CLIENT_ID" \
 
 </details>
 
-#### パーミッション付与後のアプリ再起動
+### 11-5. アプリの起動
 
 ```bash
-databricks apps stop $APP_NAME --profile DEFAULT
-databricks apps start $APP_NAME --profile DEFAULT
+databricks apps start $APP_NAME
 ```
+
+コンピュートが ACTIVE になるまで待機（数分かかります）：
+
+```bash
+databricks apps get $APP_NAME -o json | jq '.compute_status.state'
+# "ACTIVE" と表示されるまで待つ
+```
+
+### 11-6. ソースコードのデプロイ
+
+```bash
+databricks apps deploy $APP_NAME \
+  --source-code-path "/Workspace/Users/$MY_EMAIL/.bundle/retail_grocery_ltm_memory/dev/files"
+```
+
+> **注意：** デプロイ後、npm install → npm build → アプリ起動に **3〜5 分** かかります。ステータスが RUNNING になるまで待ってから動作確認してください：
+> ```bash
+> databricks apps get $APP_NAME -o json | jq '.app_status.state'
+> ```
+
+> **再起動は不要です。** 11-4 で先に SP 権限を付与してあるため、アプリの初回起動から `permission denied` エラーは出ません。
 
 ### 11-7. 動作確認
 
@@ -761,14 +763,14 @@ databricks apps start $APP_NAME --profile DEFAULT
 **ブラウザ**：アプリの URL にアクセスしてチャット画面が表示されることを確認
 
 ```bash
-databricks apps get $APP_NAME --profile DEFAULT -o json | jq -r '.url'
+databricks apps get $APP_NAME -o json | jq -r '.url'
 ```
 
 **API テスト**：
 
 ```bash
-APP_URL=$(databricks apps get $APP_NAME --output json --profile DEFAULT | jq -r '.url')
-TOKEN=$(databricks auth token --profile DEFAULT -o json | jq -r .access_token)
+APP_URL=$(databricks apps get $APP_NAME -o json | jq -r '.url')
+TOKEN=$(databricks auth token -o json | jq -r .access_token)
 
 curl -X POST "${APP_URL}/invocations" \
   -H "Authorization: Bearer $TOKEN" \
@@ -782,20 +784,19 @@ curl -X POST "${APP_URL}/invocations" \
 
 ```bash
 # 1. バンドルを再同期（ローカル → ワークスペース）
-databricks bundle deploy -t dev --profile DEFAULT
+databricks bundle deploy -t dev
 
 # 2. アプリにソースコードを再デプロイ
 databricks apps deploy $APP_NAME \
-  --source-code-path "/Workspace/Users/$MY_EMAIL/.bundle/retail_grocery_ltm_memory/dev/files" \
-  --profile DEFAULT
+  --source-code-path "/Workspace/Users/$MY_EMAIL/.bundle/retail_grocery_ltm_memory/dev/files"
 ```
 
 > **注意：** 再デプロイ後、npm install/build が走るため **3〜5 分** かかります。ステータスが RUNNING になるまで待ってください。
 >
 > `app.yaml` の `env` セクションを変更した場合は、アプリの再起動も必要です：
 > ```bash
-> databricks apps stop $APP_NAME --profile DEFAULT
-> databricks apps start $APP_NAME --profile DEFAULT
+> databricks apps stop $APP_NAME
+> databricks apps start $APP_NAME
 > ```
 
 ---
@@ -811,8 +812,8 @@ databricks apps deploy $APP_NAME \
 | VS インデックスが READY にならない | Catalog Explorer でステータスを確認。エンドポイントが ONLINE であることを確認 |
 | Lakebase `project_id is required` | API のクエリパラメータに `?project_id=<名前>` を指定（JSON ボディではなく URL に） |
 | `experiments create --name` エラー | `experiments create-experiment "<名前>"` を使用 |
-| `couldn't get a connection after 30 sec` | Lakebase の SP パーミッション未付与。ステップ 11-5 の Lakebase パーミッションを実行し、アプリを再起動 |
-| `relation "store" does not exist` | メモリテーブルが未作成。アプリを再起動すると初回リクエスト時に自動作成されます |
+| `couldn't get a connection after 30 sec` | Lakebase の SP パーミッション未付与。ステップ 11-4 の `uv run grant-sp-permissions --app-name $APP_NAME` を実行 |
+| `relation "store" does not exist` | メモリテーブルが未作成。`uv run quickstart` を再実行するか、アプリ初回起動時に自動作成されます |
 | API 呼び出しで `302` エラー | PAT ではなく OAuth トークン（`databricks auth token`）を使用 |
 | デプロイ後 502 Bad Gateway | フロントエンドの npm build に時間がかかっている。3〜5 分待ってから再アクセス |
 | `bundle deploy` でリソースエラー | Databricks CLI を v0.297.2 以上に更新（`brew upgrade databricks`） |
@@ -891,7 +892,7 @@ The following permissions are granted in bulk:
 
 To add members later, simply re-run the same command (idempotent).
 
-> **About App SP permissions:** Each member must run Step 11-6 themselves after deploying their own app. The team lead cannot configure this in advance (the SP is generated when the app is created).
+> **About App SP permissions:** Each member must run `uv run grant-sp-permissions --app-name $APP_NAME` themselves in Step 11-4 after deploying their own app. The team lead cannot configure this in advance (the SP is generated when the app is created).
 
 Share the following information displayed after running the command with team members:
 - Catalog name and schema name
@@ -1364,26 +1365,37 @@ Results can be viewed in the MLflow Experiments UI under the **freshmart-agent-e
 
 ### Set Variables First
 
-It is convenient to set frequently used values as variables for the commands that follow:
+Set frequently used values as environment variables for the commands that follow. Setting `DATABRICKS_CONFIG_PROFILE` lets the Databricks CLI automatically pick up the profile without `--profile` flags.
 
 ```bash
-# Unique app name per participant (e.g., freshmart-agent-taro)
-export APP_NAME="<YOUR-APP-NAME>"
+# Databricks CLI profile (used throughout this session)
+export DATABRICKS_CONFIG_PROFILE="<YOUR-PROFILE>"   # e.g., DEFAULT / demoenv-azure-eastus2
 
-# Your Databricks email address
-export MY_EMAIL=$(databricks current-user me --profile DEFAULT -o json | jq -r .userName)
-echo "APP_NAME: $APP_NAME"
-echo "MY_EMAIL: $MY_EMAIL"
+# App name (matches DATABRICKS_APP_NAME in .env if you used quickstart, or the name: in databricks.yml)
+export APP_NAME="<YOUR-APP-NAME>"   # e.g., freshmart-agent-taro-0413
+
+# Your Databricks email address (auto-fetched in subsequent commands)
+export MY_EMAIL=$(databricks current-user me -o json | jq -r .userName)
+
+echo "PROFILE:   $DATABRICKS_CONFIG_PROFILE"
+echo "APP_NAME:  $APP_NAME"
+echo "MY_EMAIL:  $MY_EMAIL"
 ```
+
+> **If you used quickstart:** the `DATABRICKS_APP_NAME` and `DATABRICKS_CONFIG_PROFILE` values are already populated in your `.env` file — use those.
 
 ### 11-1. Edit databricks.yml
 
-Open `databricks.yml` and edit the following sections to match your environment (these are auto-updated if you used `uv run quickstart`).
+> **If you used quickstart:** the `name:` and `resources:` values in this step are already populated by `uv run quickstart`. **Skip ahead to 11-2.**
+>
+> **Only if you did NOT use quickstart:** edit the file manually as below.
+
+Open `databricks.yml` and edit the following sections to match your environment.
 
 **App name** (must be unique per participant):
 
 ```yaml
-      name: "<YOUR-APP-NAME>"  # e.g., freshmart-agent-taro
+      name: "<YOUR-APP-NAME>"  # e.g., freshmart-agent-taro-0413
 ```
 
 > `name:` appears in 2 places in the file (`dev` and `prod`). Set both to the same name.
@@ -1426,6 +1438,10 @@ Open `databricks.yml` and edit the following sections to match your environment 
 
 ### 11-2. Edit app.yaml
 
+> **If you used quickstart:** the `app.yaml` Lakebase values (and optionally `MLFLOW_TRACING_DESTINATION`) are already populated. **Skip ahead to 11-3.**
+>
+> **Only if you did NOT use quickstart:** edit the file manually as below.
+
 Set the Lakebase values in `app.yaml` similarly to `databricks.yml`:
 
 ```yaml
@@ -1437,7 +1453,7 @@ Set the Lakebase values in `app.yaml` similarly to `databricks.yml`:
 
 > Other environment variables (MLFLOW_EXPERIMENT_ID, GENIE_SPACE_ID, VECTOR_SEARCH_INDEX) are automatically injected via resource bindings using `valueFrom`, so no editing is needed.
 
-**If using Delta Table traces**, also add the following to `app.yaml` (auto-added if you used `uv run quickstart`):
+**If using Delta Table traces**, also add the following to `app.yaml`:
 
 ```yaml
   - name: MLFLOW_TRACING_DESTINATION
@@ -1448,39 +1464,17 @@ Set the Lakebase values in `app.yaml` similarly to `databricks.yml`:
 
 ### 11-3. Bundle Deploy
 
+`databricks bundle deploy` creates the app shell (compute resource) and the SP (Service Principal). **Source code is not deployed yet at this point.**
+
 ```bash
-databricks bundle deploy -t dev --profile DEFAULT
+databricks bundle deploy -t dev
 ```
 
 The first deployment takes several minutes as it includes app creation.
 
-### 11-4. Start the App
+### 11-4. Grant Service Principal Permissions (**run before app start**)
 
-```bash
-databricks apps start $APP_NAME --profile DEFAULT
-```
-
-Wait until compute becomes ACTIVE:
-
-```bash
-databricks apps get $APP_NAME --profile DEFAULT -o json | jq '.compute_status.state'
-# Wait until "ACTIVE" is displayed
-```
-
-### 11-5. Deploy Source Code
-
-```bash
-databricks apps deploy $APP_NAME \
-  --source-code-path "/Workspace/Users/$MY_EMAIL/.bundle/retail_grocery_ltm_memory/dev/files" \
-  --profile DEFAULT
-```
-
-> **Note:** After deployment, npm install, npm build, and app startup take **3-5 minutes**. Wait until the status becomes RUNNING before verifying:
-> ```bash
-> databricks apps get $APP_NAME --profile DEFAULT -o json | jq '.app_status.state'
-> ```
-
-### 11-6. Grant Service Principal Permissions
+> **Important:** Run this step **before starting the app and deploying source code** so that all required permissions are in place by the app's first start. This eliminates the previously-required app restart after permission grants (which used to add 5-10 minutes of waiting).
 
 Resource bindings **automatically grant** the following permissions at deploy time:
 
@@ -1497,17 +1491,15 @@ The following must be **granted manually**:
 
 #### Option A: One-command bulk grant (recommended)
 
-Grant all SP permissions in one command from your local machine:
-
 ```bash
-uv run grant-sp-permissions
+uv run grant-sp-permissions --app-name $APP_NAME
 ```
 
-The app name is automatically read from `databricks.yml`. The following permissions are granted:
+The following permissions are granted:
 1. **Unity Catalog** -- USE CATALOG, USE SCHEMA, SELECT, MODIFY (data schema + trace schema)
-2. **Lakebase PostgreSQL** -- Role creation + USAGE, SELECT, INSERT, UPDATE, DELETE on all memory tables
+2. **Lakebase PostgreSQL** -- Role creation + schema permissions + USAGE, SELECT, INSERT, UPDATE, DELETE on all existing memory tables/sequences
 
-> To specify the app name, add `--app-name <NAME>`.
+> To pass the SP Client ID directly instead, use `--sp-client-id <UUID>`.
 
 #### Option B: Grant manually one by one
 
@@ -1516,13 +1508,11 @@ The app name is automatically read from `databricks.yml`. The following permissi
 
 ```bash
 # Retrieve SP Client ID
-SP_CLIENT_ID=$(databricks apps get $APP_NAME --output json --profile DEFAULT | jq -r '.service_principal_client_id')
+SP_CLIENT_ID=$(databricks apps get $APP_NAME -o json | jq -r '.service_principal_client_id')
 echo "SP Client ID: $SP_CLIENT_ID"
 ```
 
 **Unity Catalog permissions** (SQL editor, `workshop_setup.py` notebook, or CLI):
-
-Permissions for the **data schema** (Genie, Vector Search) that the agent accesses:
 
 ```sql
 -- Data schema (schema containing tables and VS index)
@@ -1531,23 +1521,13 @@ GRANT USE SCHEMA ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `<SP_CLIENT_ID>`;
 GRANT SELECT ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `<SP_CLIENT_ID>`;
 ```
 
-If using Delta Table traces, permissions for the **trace schema** are also required. If it is the same as the data schema, just add MODIFY to the above. **If a different schema is specified, grant permissions on that schema as well**:
+If using Delta Table traces in the same schema, also add MODIFY:
 
 ```sql
--- Trace schema (same as data schema)
 GRANT MODIFY ON SCHEMA `<CATALOG>`.`<SCHEMA>` TO `<SP_CLIENT_ID>`;
-
--- If trace schema is different (e.g., hiroshi.my_traces)
--- GRANT USE CATALOG ON CATALOG `<TRACE_CATALOG>` TO `<SP_CLIENT_ID>`;
--- GRANT USE SCHEMA ON SCHEMA `<TRACE_CATALOG>`.`<TRACE_SCHEMA>` TO `<SP_CLIENT_ID>`;
--- GRANT SELECT, MODIFY ON SCHEMA `<TRACE_CATALOG>`.`<TRACE_SCHEMA>` TO `<SP_CLIENT_ID>`;
 ```
 
-> Check `MLFLOW_TRACING_DESTINATION` in `.env` and grant permissions on both schemas if it differs from the data schema.
-
 **Lakebase PostgreSQL internal permissions**:
-
-> The Lakebase project connection permission (`CAN_CONNECT_AND_CREATE`) is automatically granted via resource bindings, but **PostgreSQL internal schema/table permissions must be granted separately**. Without this, a `permission denied for table` error occurs at app startup.
 
 ```bash
 uv run python scripts/grant_lakebase_permissions.py "$SP_CLIENT_ID" \
@@ -1558,12 +1538,32 @@ uv run python scripts/grant_lakebase_permissions.py "$SP_CLIENT_ID" \
 
 </details>
 
-#### Restart the App After Granting Permissions
+### 11-5. Start the App
 
 ```bash
-databricks apps stop $APP_NAME --profile DEFAULT
-databricks apps start $APP_NAME --profile DEFAULT
+databricks apps start $APP_NAME
 ```
+
+Wait until compute becomes ACTIVE (takes a few minutes):
+
+```bash
+databricks apps get $APP_NAME -o json | jq '.compute_status.state'
+# Wait until "ACTIVE" is displayed
+```
+
+### 11-6. Deploy Source Code
+
+```bash
+databricks apps deploy $APP_NAME \
+  --source-code-path "/Workspace/Users/$MY_EMAIL/.bundle/retail_grocery_ltm_memory/dev/files"
+```
+
+> **Note:** After deployment, npm install, npm build, and app startup take **3-5 minutes**. Wait until the status becomes RUNNING before verifying:
+> ```bash
+> databricks apps get $APP_NAME -o json | jq '.app_status.state'
+> ```
+
+> **No restart required.** Because SP permissions were already granted in 11-4, the app's first start has no `permission denied` errors.
 
 ### 11-7. Verify
 
@@ -1572,14 +1572,14 @@ databricks apps start $APP_NAME --profile DEFAULT
 **Browser**: Access the app URL and verify the chat interface is displayed
 
 ```bash
-databricks apps get $APP_NAME --profile DEFAULT -o json | jq -r '.url'
+databricks apps get $APP_NAME -o json | jq -r '.url'
 ```
 
 **API test**:
 
 ```bash
-APP_URL=$(databricks apps get $APP_NAME --output json --profile DEFAULT | jq -r '.url')
-TOKEN=$(databricks auth token --profile DEFAULT -o json | jq -r .access_token)
+APP_URL=$(databricks apps get $APP_NAME -o json | jq -r '.url')
+TOKEN=$(databricks auth token -o json | jq -r .access_token)
 
 curl -X POST "${APP_URL}/invocations" \
   -H "Authorization: Bearer $TOKEN" \
@@ -1593,20 +1593,19 @@ After editing `app.yaml`, `agent.py`, the frontend, etc. locally, run the follow
 
 ```bash
 # 1. Re-sync bundle (local -> workspace)
-databricks bundle deploy -t dev --profile DEFAULT
+databricks bundle deploy -t dev
 
 # 2. Re-deploy source code to the app
 databricks apps deploy $APP_NAME \
-  --source-code-path "/Workspace/Users/$MY_EMAIL/.bundle/retail_grocery_ltm_memory/dev/files" \
-  --profile DEFAULT
+  --source-code-path "/Workspace/Users/$MY_EMAIL/.bundle/retail_grocery_ltm_memory/dev/files"
 ```
 
 > **Note:** After redeployment, npm install/build runs, so it takes **3-5 minutes**. Wait until the status becomes RUNNING.
 >
 > If you changed the `env` section in `app.yaml`, an app restart is also required:
 > ```bash
-> databricks apps stop $APP_NAME --profile DEFAULT
-> databricks apps start $APP_NAME --profile DEFAULT
+> databricks apps stop $APP_NAME
+> databricks apps start $APP_NAME
 > ```
 
 ---
@@ -1622,8 +1621,8 @@ databricks apps deploy $APP_NAME \
 | VS index not becoming READY | Check status in Catalog Explorer. Verify the endpoint is ONLINE |
 | Lakebase `project_id is required` | Specify `?project_id=<NAME>` in the API query parameter (in the URL, not the JSON body) |
 | `experiments create --name` error | Use `experiments create-experiment "<NAME>"` |
-| `couldn't get a connection after 30 sec` | Lakebase SP permissions not granted. Execute the Lakebase permissions in Step 11-6 and restart the app |
-| `relation "store" does not exist` | Memory tables not created. Restart the app; they are auto-created on the first request |
+| `couldn't get a connection after 30 sec` | Lakebase SP permissions not granted. Run `uv run grant-sp-permissions --app-name $APP_NAME` (Step 11-4) |
+| `relation "store" does not exist` | Memory tables not created. Re-run `uv run quickstart`, or they will be auto-created on first app startup |
 | `302` error on API calls | Use OAuth token (`databricks auth token`) instead of PAT |
 | 502 Bad Gateway after deployment | Frontend npm build is still in progress. Wait 3-5 minutes and try again |
 | Resource error during `bundle deploy` | Update Databricks CLI to v0.297.2 or later (`brew upgrade databricks`) |

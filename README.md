@@ -362,18 +362,21 @@ uv add <パッケージ名>
 ## Databricks Apps へのデプロイ
 
 ```bash
-# 1. バンドルデプロイ
-databricks bundle deploy -t dev --profile DEFAULT
+# 0. 環境変数を設定（databricks CLI が自動的に使用）
+export DATABRICKS_CONFIG_PROFILE=<your-profile>
+export APP_NAME=<your-app-name>   # クイックスタート使用なら .env の DATABRICKS_APP_NAME と同じ
+export MY_EMAIL=$(databricks current-user me -o json | jq -r .userName)
 
-# 2. アプリ起動（初回は 3〜5 分かかります）
-databricks bundle run retail_grocery_ltm_memory -t dev --profile DEFAULT
+# 1. バンドルデプロイ（アプリ + SP の作成）
+databricks bundle deploy -t dev
 
-# 3. SP 権限付与（UC + Lakebase を一括）
-uv run grant-sp-permissions
+# 2. SP 権限付与（先に実行することで再起動不要になる）
+uv run grant-sp-permissions --app-name $APP_NAME
 
-# 4. アプリ再起動
-databricks apps stop $APP_NAME --profile DEFAULT
-databricks apps start $APP_NAME --profile DEFAULT
+# 3. アプリ起動 + ソースコードデプロイ
+databricks apps start $APP_NAME
+databricks apps deploy $APP_NAME \
+  --source-code-path "/Workspace/Users/$MY_EMAIL/.bundle/retail_grocery_ltm_memory/dev/files"
 ```
 
 詳細な手順は [WORKSHOP_INSTRUCTIONS.md のステップ 11](WORKSHOP_INSTRUCTIONS.md#ステップ-11オプションdatabricks-apps-へのデプロイ) を参照してください。
@@ -388,7 +391,7 @@ databricks apps start $APP_NAME --profile DEFAULT
 | `uv sync` で PyPI 接続エラー | インターネット接続を確認。社内ネットワークの場合は PyPI ミラー/プロキシを設定 |
 | `npm install` が Apps 上でクラッシュ | `package-lock.json` に社内プロキシ URL が含まれている。`rm -f package-lock.json && npm install` で再生成 |
 | `Lakebase configuration is required` | `.env` に `LAKEBASE_AUTOSCALING_PROJECT` と `LAKEBASE_AUTOSCALING_BRANCH`（またはプロビジョニング済みの場合は `LAKEBASE_INSTANCE_NAME`）を設定 |
-| `couldn't get a connection after 30 sec` | Lakebase SP 権限未付与。`uv run grant-sp-permissions` を実行しアプリを再起動 |
+| `couldn't get a connection after 30 sec` | Lakebase SP 権限未付与。`uv run grant-sp-permissions --app-name $APP_NAME` を実行 |
 | `checkpoint_migrations` duplicate key | 初回起動時の並行初期化で発生（無害）。リトライで自動回復 |
 | `tool_use without tool_result` | チェックポイント破損。自動でチェックポイント削除＆リトライされる |
 | `302 redirect when querying deployed agent` | PAT ではなく OAuth トークンを使用。`databricks auth token` を実行 |
@@ -802,18 +805,21 @@ uv add <package_name>
 ## Deploying to Databricks Apps
 
 ```bash
-# 1. Bundle deploy
-databricks bundle deploy -t dev --profile DEFAULT
+# 0. Set env vars (Databricks CLI picks them up automatically)
+export DATABRICKS_CONFIG_PROFILE=<your-profile>
+export APP_NAME=<your-app-name>   # matches DATABRICKS_APP_NAME in .env if you used quickstart
+export MY_EMAIL=$(databricks current-user me -o json | jq -r .userName)
 
-# 2. Start app (takes 3-5 minutes on first run)
-databricks bundle run retail_grocery_ltm_memory -t dev --profile DEFAULT
+# 1. Bundle deploy (creates app + SP)
+databricks bundle deploy -t dev
 
-# 3. Grant SP permissions (UC + Lakebase in one command)
-uv run grant-sp-permissions
+# 2. Grant SP permissions BEFORE first start (eliminates the post-grant restart)
+uv run grant-sp-permissions --app-name $APP_NAME
 
-# 4. Restart app
-databricks apps stop $APP_NAME --profile DEFAULT
-databricks apps start $APP_NAME --profile DEFAULT
+# 3. Start app + deploy source code
+databricks apps start $APP_NAME
+databricks apps deploy $APP_NAME \
+  --source-code-path "/Workspace/Users/$MY_EMAIL/.bundle/retail_grocery_ltm_memory/dev/files"
 ```
 
 For detailed deployment instructions, see [Step 11](WORKSHOP_INSTRUCTIONS.md#step-11-optional-deploying-to-databricks-apps) in WORKSHOP_INSTRUCTIONS.md.
@@ -829,7 +835,7 @@ For detailed deployment instructions, see [Step 11](WORKSHOP_INSTRUCTIONS.md#ste
 | `npm install` crashes in Apps | `package-lock.json` contains corporate proxy URLs. Run `rm -f package-lock.json && npm install` to regenerate with public registry |
 | `delta.enableChangeDataFeed` error | CDF not enabled. Run `ALTER TABLE` in SQL editor |
 | VS index not becoming READY | Check status in Catalog Explorer. Ensure endpoint is ONLINE |
-| `couldn't get a connection after 30 sec` | Lakebase SP permissions missing. Run `uv run grant-sp-permissions` and restart app |
+| `couldn't get a connection after 30 sec` | Lakebase SP permissions missing. Run `uv run grant-sp-permissions --app-name $APP_NAME` |
 | `checkpoint_migrations` duplicate key | Harmless on first startup (concurrent init). Auto-recovered on retry |
 | `tool_use without tool_result` | Corrupted checkpoint. Auto-recovered by deleting checkpoint and retrying |
 | `302 redirect when querying deployed agent` | Use OAuth token, not PAT. Run `databricks auth token` |
