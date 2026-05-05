@@ -1471,29 +1471,37 @@ def update_databricks_yml_resources(genie_space_id: str, vs_index: str) -> None:
 
 # ── App name helpers ─────────────────────────────────────────────────
 
-# Databricks App 名の制約：
+# Databricks App 名の制約（実測 — terraform apply のエラーメッセージで確認）：
 #   - 小文字英数字とハイフンのみ
 #   - 英字で始まり、英数で終わる
-#   - 60文字以内（DNS ラベル制約 63 にバッファを残した安全側の値）
+#   - 2〜30 文字
 APP_NAME_PREFIX = "freshmart-agent"
-APP_NAME_MAX_LENGTH = 60
+APP_NAME_MIN_LENGTH = 2
+APP_NAME_MAX_LENGTH = 30
 
 
-def sanitize_app_name_part(value: str) -> str:
+def sanitize_app_name_part(value: str, prefer_first_segment: bool = True) -> str:
     """ユーザー名やemailをApp名に使える形に正規化する。
 
+    Databricks App 名は 30 文字制限があるため、デフォルトではメールアドレスの
+    `@` 以前の **最初のセグメント** （ドット区切りの先頭）のみ使う。
     例:
-      'hiroshi.ouchiyama@databricks.com' -> 'hiroshi-ouchiyama'
-      'Tanaka_Taro+x@example.co.jp'      -> 'tanaka-taro-x'
+      'hiroshi.ouchiyama@databricks.com' -> 'hiroshi'   (prefer_first_segment=True、デフォルト)
+      'hiroshi.ouchiyama@databricks.com' -> 'hiroshi-ouchiyama'  (prefer_first_segment=False)
+      'Tanaka_Taro+x@example.co.jp'      -> 'tanaka'
+      'a@b.com'                          -> 'a'
     """
-    s = value.split("@", 1)[0].lower()
-    s = re.sub(r"[^a-z0-9]+", "-", s)
+    local = value.split("@", 1)[0].lower()
+    if prefer_first_segment:
+        # ドット区切りの先頭セグメントのみ採用（典型的な姓名 email を短縮）
+        local = local.split(".", 1)[0]
+    s = re.sub(r"[^a-z0-9]+", "-", local)
     s = re.sub(r"-+", "-", s).strip("-")
     return s
 
 
 def compute_default_app_name(username: str, today: str | None = None) -> str:
-    """`freshmart-agent-{user}-{MMDD}` を生成。長すぎる場合は user を切り詰める。
+    """`freshmart-agent-{user}-{MMDD}` を生成。Databricks App 名の 30 文字制限を守る。
 
     today: YYYY-MM-DD 形式の文字列（省略時は本日）。テスト用に注入可能。
     """
@@ -1505,6 +1513,7 @@ def compute_default_app_name(username: str, today: str | None = None) -> str:
     suffix = f"-{mmdd}"
     base = f"{APP_NAME_PREFIX}-"
     budget = APP_NAME_MAX_LENGTH - len(base) - len(suffix)
+    # ドット区切り先頭セグメントを採用しても 30 文字を超えるユーザー名は最後にハード切り詰め
     if len(user_part) > budget:
         user_part = user_part[:budget].rstrip("-")
     return f"{base}{user_part}{suffix}"
@@ -1512,7 +1521,7 @@ def compute_default_app_name(username: str, today: str | None = None) -> str:
 
 def is_valid_app_name(name: str) -> bool:
     """Databricks App 名のバリデーション。"""
-    if not name or len(name) > APP_NAME_MAX_LENGTH:
+    if not name or not (APP_NAME_MIN_LENGTH <= len(name) <= APP_NAME_MAX_LENGTH):
         return False
     return bool(re.match(r"^[a-z][a-z0-9-]*[a-z0-9]$", name))
 

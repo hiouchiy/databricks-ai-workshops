@@ -344,8 +344,8 @@ class QuickstartWizard(customtkinter.CTk):
                 return False
             if not core.is_valid_app_name(app_name):
                 self._show_error(t(
-                    f"\u7121\u52b9\u306a App \u540d: {app_name}\n\u5c0f\u6587\u5b57\u82f1\u6570\u5b57\u3068\u30cf\u30a4\u30d5\u30f3\u3001\u82f1\u5b57\u3067\u59cb\u307e\u308a\u82f1\u6570\u3067\u7d42\u308f\u308b\u300160\u6587\u5b57\u4ee5\u5185\u306b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
-                    f"Invalid app name: {app_name}\nUse lowercase alphanumeric+hyphen, start with letter, end with alphanumeric, less than 60 chars.",
+                    f"\u7121\u52b9\u306a App \u540d: {app_name}\n\u5c0f\u6587\u5b57\u82f1\u6570\u5b57\u3068\u30cf\u30a4\u30d5\u30f3\u3001\u82f1\u5b57\u3067\u59cb\u307e\u308a\u82f1\u6570\u3067\u7d42\u308f\u308b\u300130\u6587\u5b57\u4ee5\u5185\u306b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                    f"Invalid app name: {app_name}\nUse lowercase alphanumeric+hyphen, start with letter, end with alphanumeric, ≤30 chars.",
                 ))
                 return False
         return True
@@ -1905,10 +1905,10 @@ class QuickstartWizard(customtkinter.CTk):
             text=t(
                 "デプロイする Databricks App の名前を設定します。\n"
                 "デフォルト: freshmart-agent-{username}-{MMDD}\n"
-                "制約: 小文字英数字とハイフン、英字で始まり英数で終わる、60文字以内。",
+                "制約: 小文字英数字とハイフン、英字で始まり英数で終わる、30文字以内。",
                 "Set the name of the Databricks App to deploy.\n"
                 "Default: freshmart-agent-{username}-{MMDD}\n"
-                "Constraints: lowercase alphanumeric+hyphen, start with letter, end with alphanumeric, less than 60 chars.",
+                "Constraints: lowercase alphanumeric+hyphen, start with letter, end with alphanumeric, ≤30 chars.",
             ),
             wraplength=580,
             justify="left",
