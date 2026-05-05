@@ -260,7 +260,7 @@ def _create_native_agent():
     ws = WorkspaceClient()
     host_name = get_databricks_host_from_env()
 
-    LLM_ENDPOINT_NAME = "databricks-claude-sonnet-4-5"
+    LLM_ENDPOINT_NAME = os.getenv("LLM_ENDPOINT_NAME", "databricks-claude-sonnet-4-6")
     GENIE_SPACE_ID = os.getenv("GENIE_SPACE_ID", "")
     VECTOR_SEARCH_INDEX = os.getenv("VECTOR_SEARCH_INDEX", "")
 

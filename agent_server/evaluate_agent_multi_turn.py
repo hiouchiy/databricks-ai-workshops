@@ -105,10 +105,11 @@ test_cases = [
 #   https://mlflow.org/docs/latest/genai/eval-monitor/running-evaluation/conversation-simulation/
 #   https://docs.databricks.com/aws/en/mlflow3/genai/eval-monitor/conversation-simulation
 # ──────────────────────────────────────────────────────────────────────
+_USER_MODEL = os.getenv("LLM_ENDPOINT_NAME", "databricks-claude-sonnet-4-6")
 simulator = ConversationSimulator(
     test_cases=test_cases,
     max_turns=5,
-    user_model="databricks:/databricks-claude-sonnet-4-5",
+    user_model=f"databricks:/{_USER_MODEL}",
 )
 
 # エージェント内で@invokeデコレータにより登録された呼び出し関数を取得する

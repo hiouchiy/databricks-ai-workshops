@@ -77,6 +77,8 @@ from scripts.quickstart_core import (
     run_trace_setup_on_databricks,
     select_vs_endpoint_interactive,
     select_warehouse_interactive,
+    select_llm_endpoint_interactive,
+    DEFAULT_LLM_ENDPOINT,
     create_catalog_schema,
     check_tables_exist,
     check_chunked_table_exists,
@@ -117,6 +119,9 @@ def main():
     parser.add_argument("--schema", default=None, help="Schema name")
     parser.add_argument("--warehouse-id", default=None, help="SQL Warehouse ID")
     parser.add_argument("--vs-endpoint", default=None, help="Vector Search endpoint name")
+    parser.add_argument("--llm-endpoint", default=None,
+                        help="LLM serving endpoint name (FM API). "
+                             "Default: databricks-claude-sonnet-4-6 (interactively selectable)")
     parser.add_argument(
         "--lakebase-autoscaling-project",
         help="Lakebase autoscaling project name",
@@ -142,8 +147,13 @@ def main():
         args.lakebase_autoscaling_project,
     ])
 
-    # ロールバック用に作成したリソースを記録
+    # ロールバック用に「新規作成された」リソースを記録
+    # （ユーザーが既存を選択したリソースは含まない）
     created_resources = {
+        "catalog": None,           # 新規作成された場合のみ
+        "schema": None,            # 常に追跡（workshop 専用名）
+        "warehouse_id": None,      # 新規作成された場合のみ
+        "vs_endpoint": None,       # 新規作成された場合のみ
         "genie_space_id": None,
         "vs_index": None,
         "lakebase_project": None,
@@ -156,9 +166,9 @@ def main():
         pass
 
     def rollback():
-        """Lakebase 失敗など致命的エラー時にリソースをロールバック。
+        """致命的エラー時に「新規作成された」リソースを削除する。
 
-        カタログ、スキーマ、ウェアハウス、VS エンドポイントは保持する。
+        既存を選択したリソースは削除しない。
         """
         print()
         print_header(t("🔄 ロールバック開始", "🔄 Rollback starting"))
@@ -190,7 +200,7 @@ def main():
                 print(t(f"  ⚠ VS インデックス削除失敗: {vs}",
                          f"  ⚠ VS index delete failed: {vs}"))
 
-        # 3. Lakebase branch
+        # 3. Lakebase branch (if newly created)
         lp = created_resources.get("lakebase_project")
         lb = created_resources.get("lakebase_branch")
         if lp and lb:
@@ -205,6 +215,19 @@ def main():
                 print(t(f"  ⚠ Lakebase ブランチ削除失敗: {lb}",
                          f"  ⚠ Lakebase branch delete failed: {lb}"))
 
+        # 3b. Lakebase project (only if newly created in this run)
+        if lp:
+            r = run_command(
+                ["databricks", "api", "delete",
+                 f"/api/2.0/postgres/projects/{lp}",
+                 "-p", args.profile or "DEFAULT"], check=False)
+            if r.returncode == 0:
+                print_success(t(f"Lakebase プロジェクト削除: {lp}",
+                                 f"Lakebase project deleted: {lp}"))
+            else:
+                print(t(f"  ⚠ Lakebase プロジェクト削除失敗: {lp}",
+                         f"  ⚠ Lakebase project delete failed: {lp}"))
+
         # 4. MLflow experiments
         for key in ("monitoring_id", "eval_id"):
             eid = created_resources.get(key)
@@ -216,9 +239,69 @@ def main():
                     print_success(t(f"MLflow Experiment 削除: {eid}",
                                      f"MLflow Experiment deleted: {eid}"))
 
+        # 5. Schema (only if newly created and catalog is not also being dropped)
+        new_schema = created_resources.get("schema")
+        new_catalog = created_resources.get("catalog")
+        try:
+            wh_for_drop = warehouse_id  # noqa: F821 (defined later in main)
+        except NameError:
+            wh_for_drop = ""
+        if new_schema and not new_catalog and wh_for_drop:
+            from scripts.quickstart_core import run_sql_statement
+            try:
+                run_sql_statement(
+                    f"DROP SCHEMA IF EXISTS {new_schema} CASCADE",
+                    token, host, wh_for_drop, silent=True,
+                )
+                print_success(t(f"スキーマ削除: {new_schema}",
+                                 f"Schema dropped: {new_schema}"))
+            except Exception as e:
+                print(t(f"  ⚠ スキーマ削除失敗: {str(e)[:100]}",
+                         f"  ⚠ Schema drop failed: {str(e)[:100]}"))
+
+        # 6. Catalog (only if newly created)
+        if new_catalog and wh_for_drop:
+            from scripts.quickstart_core import run_sql_statement
+            try:
+                run_sql_statement(
+                    f"DROP CATALOG IF EXISTS `{new_catalog}` CASCADE",
+                    token, host, wh_for_drop, silent=True,
+                )
+                print_success(t(f"カタログ削除: {new_catalog}",
+                                 f"Catalog dropped: {new_catalog}"))
+            except Exception as e:
+                print(t(f"  ⚠ カタログ削除失敗: {str(e)[:100]}",
+                         f"  ⚠ Catalog drop failed: {str(e)[:100]}"))
+
+        # 7. SQL Warehouse (only if newly created)
+        new_wh = created_resources.get("warehouse_id")
+        if new_wh:
+            r = run_command(
+                ["databricks", "warehouses", "delete", new_wh,
+                 "-p", args.profile or "DEFAULT"], check=False)
+            if r.returncode == 0:
+                print_success(t(f"SQL ウェアハウス削除: {new_wh}",
+                                 f"SQL warehouse deleted: {new_wh}"))
+            else:
+                print(t(f"  ⚠ SQL ウェアハウス削除失敗: {new_wh}",
+                         f"  ⚠ SQL warehouse delete failed: {new_wh}"))
+
+        # 8. VS Endpoint (only if newly created)
+        new_ep = created_resources.get("vs_endpoint")
+        if new_ep:
+            r = run_command(
+                ["databricks", "api", "delete",
+                 f"/api/2.0/vector-search/endpoints/{new_ep}",
+                 "-p", args.profile or "DEFAULT"], check=False)
+            if r.returncode == 0:
+                print_success(t(f"VS エンドポイント削除: {new_ep}",
+                                 f"VS endpoint deleted: {new_ep}"))
+            else:
+                print(t(f"  ⚠ VS エンドポイント削除失敗: {new_ep}",
+                         f"  ⚠ VS endpoint delete failed: {new_ep}"))
+
         print()
-        print(t("✓ ロールバック完了。カタログ・スキーマ・ウェアハウス・VS エンドポイントは保持しています。",
-                 "✓ Rollback complete. Catalog, schema, warehouse, VS endpoint preserved."))
+        print(t("✓ ロールバック完了。", "✓ Rollback complete."))
 
     try:
         print_header(t("フレッシュマート AI エージェント - クイックスタートセットアップ",
@@ -273,29 +356,47 @@ def main():
             schema = input(t(f"  スキーマ名 [{default_schema}]: ",
                               f"  Schema name [{default_schema}]: ")).strip() or default_schema
 
-        # Warehouse
+        # Warehouse: pre-fetch existing IDs to detect newly-created
+        wh_list_before = run_command(
+            ["databricks", "warehouses", "list", "-p", profile_name, "-o", "json"],
+            check=False,
+        )
+        existing_wh_ids = (
+            {w["id"] for w in json.loads(wh_list_before.stdout)}
+            if wh_list_before.returncode == 0 and wh_list_before.stdout.strip()
+            else set()
+        )
+
         if args.warehouse_id:
             warehouse_id = args.warehouse_id
             print_success(f"Warehouse ID: {warehouse_id}")
         elif non_interactive:
-            # 非対話: 最初の RUNNING ウェアハウスを自動選択
-            wh_result = run_command(
-                ["databricks", "warehouses", "list", "-p", profile_name, "-o", "json"],
-                check=True,
-            )
-            warehouses = json.loads(wh_result.stdout)
+            warehouses = json.loads(wh_list_before.stdout) if existing_wh_ids else []
             running = [w for w in warehouses if w.get("state") == "RUNNING"]
-            picked = running[0] if running else warehouses[0]
+            picked = running[0] if running else (warehouses[0] if warehouses else None)
+            if not picked:
+                print_error(t("利用可能なウェアハウスがありません", "No warehouses available"))
+                sys.exit(1)
             warehouse_id = picked["id"]
             print_success(t(f"ウェアハウスを自動選択: {picked.get('name', '')} ({warehouse_id})",
                              f"Auto-selected warehouse: {picked.get('name', '')} ({warehouse_id})"))
         else:
-            warehouse_id, _ = select_warehouse_interactive(profile_name)
+            warehouse_id, _ = select_warehouse_interactive(profile_name, token, host, username)
 
-        # VS Endpoint
+        # If the chosen warehouse was newly created, track it for rollback
+        if warehouse_id not in existing_wh_ids and warehouse_id:
+            created_resources["warehouse_id"] = warehouse_id
+
+        # VS Endpoint: pre-fetch existing names to detect newly-created
+        ep_list_before = api_get("/api/2.0/vector-search/endpoints", token, host)
+        existing_ep_names = (
+            {e.get("name", "") for e in ep_list_before.get("endpoints", [])}
+            if isinstance(ep_list_before, dict)
+            else set()
+        )
+
         if args.vs_endpoint:
             vs_endpoint = args.vs_endpoint
-            # Verify the provided endpoint exists
             ep_status = api_get(f"/api/2.0/vector-search/endpoints/{vs_endpoint}", token, host)
             if "error" not in ep_status:
                 ep_state = ep_status.get("endpoint_status", {}).get("state", "UNKNOWN")
@@ -308,11 +409,39 @@ def main():
         else:
             vs_endpoint = select_vs_endpoint_interactive(token, host)
 
+        # If the chosen endpoint was newly created, track it for rollback
+        if vs_endpoint and vs_endpoint not in existing_ep_names:
+            created_resources["vs_endpoint"] = vs_endpoint
+
+        # LLM Endpoint
+        if args.llm_endpoint:
+            llm_endpoint = args.llm_endpoint
+            print_success(t(f"LLM エンドポイント: {llm_endpoint}",
+                             f"LLM endpoint: {llm_endpoint}"))
+        elif non_interactive:
+            llm_endpoint = DEFAULT_LLM_ENDPOINT
+            print_success(t(f"LLM エンドポイント（デフォルト）: {llm_endpoint}",
+                             f"LLM endpoint (default): {llm_endpoint}"))
+        else:
+            llm_endpoint = select_llm_endpoint_interactive(
+                token, host, default=DEFAULT_LLM_ENDPOINT
+            )
+
         # ── Phase 4: リソース作成 ──
         print_step(t("[4/8] リソース作成", "[4/8] Resource creation"))
 
-        # 4-1: Catalog & Schema
+        # 4-1: Catalog & Schema — pre-check existence to track for rollback
+        cat_check = api_get(f"/api/2.1/unity-catalog/catalogs/{catalog}", token, host)
+        catalog_was_new = "error" in cat_check
+        sch_check = api_get(
+            f"/api/2.1/unity-catalog/schemas/{catalog}.{schema}", token, host
+        )
+        schema_was_new = "error" in sch_check
         create_catalog_schema(token, host, warehouse_id, catalog, schema)
+        if catalog_was_new:
+            created_resources["catalog"] = catalog
+        if schema_was_new:
+            created_resources["schema"] = f"{catalog}.{schema}"
 
         # 4-2 & 4-3: Data generation (skip if tables already exist)
         generate_data(profile_name, warehouse_id, catalog, schema, token=token, host=host)
@@ -385,13 +514,13 @@ def main():
                 )
                 project_exists = (proj_check.returncode == 0)
 
-                # ブランチ名の自動生成（既存プロジェクト + ブランチ未指定）
-                if project_exists and not branch:
+                # ブランチ名の自動生成（ブランチ未指定の場合は常に発火 — 新規・既存プロジェクト両方）
+                if not branch:
                     user_slug = username.split("@")[0].replace(".", "-").lower()
                     branch = f"{project}-{user_slug}"
                     print_step(t(
-                        f"既存プロジェクト {project} に個人ブランチ {branch} を作成/使用",
-                        f"Using per-member branch {branch} in existing project {project}"))
+                        f"プロジェクト {project} に個人ブランチ {branch} を作成/使用",
+                        f"Using per-member branch {branch} in project {project}"))
 
                 # ブランチ存在確認（input() を避けるため API で直接チェック）
                 branch_check = run_command(
@@ -415,6 +544,9 @@ def main():
                                 project_id=project,
                             )
                             created_proj = proj_op.wait()
+                            # プロジェクト作成成功直後に追跡対象に登録
+                            # （後続のブランチ作成で失敗しても確実にロールバックされるよう）
+                            created_resources["lakebase_project"] = project
                             print_success(t(f"プロジェクト作成完了: {project}",
                                              f"Project created: {project}"))
                             parent_name = created_proj.name
@@ -431,7 +563,6 @@ def main():
                             )
                             created_branch = branch_op.wait()
                             branch = created_branch.name.split("/branches/")[-1] if "/branches/" in created_branch.name else branch
-                            created_resources["lakebase_project"] = project
                             created_resources["lakebase_branch"] = branch
                             print_success(t(f"ブランチ作成完了: {branch}",
                                              f"Branch created: {branch}"))
@@ -505,6 +636,8 @@ def main():
         update_env_file("MLFLOW_EVAL_EXPERIMENT_ID", eval_id)
         update_env_file("GENIE_SPACE_ID", genie_space_id)
         update_env_file("VECTOR_SEARCH_INDEX", vs_index)
+        update_env_file("LLM_ENDPOINT_NAME", llm_endpoint)
+        append_env_to_app_yaml("LLM_ENDPOINT_NAME", llm_endpoint)
         update_databricks_yml_experiment(monitoring_id)
         update_databricks_yml_resources(genie_space_id, vs_index)
         print_success(t(".env / databricks.yml 更新完了",

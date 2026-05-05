@@ -23,7 +23,7 @@ from scripts import quickstart_core as core
 customtkinter.set_appearance_mode("dark")
 customtkinter.set_default_color_theme("blue")
 
-TOTAL_PAGES = 14
+TOTAL_PAGES = 15
 
 
 # ── Helper: bilingual text ─────────────────────────────────────────────
@@ -77,6 +77,8 @@ class QuickstartWizard(customtkinter.CTk):
             "existing_trace_dest": "",
             # Prompt Registry
             "use_prompt_registry": "no",
+            # LLM endpoint
+            "llm_endpoint": "",
             # Prerequisites
             "prereqs_ok": False,
             # Execution
@@ -162,9 +164,10 @@ class QuickstartWizard(customtkinter.CTk):
             self._page_mlflow,          # 8 -> Step 9
             self._page_trace,           # 9 -> Step 10
             self._page_prompt_registry, # 10 -> Step 11
-            self._page_summary,         # 11 -> Step 12
-            self._page_execute,         # 12 -> Step 13
-            self._page_complete,        # 13 -> Step 14
+            self._page_llm_endpoint,    # 11 -> Step 12
+            self._page_summary,         # 12 -> Step 13
+            self._page_execute,         # 13 -> Step 14
+            self._page_complete,        # 14 -> Step 15
         ]
 
     def _update_nav(self):
@@ -175,17 +178,20 @@ class QuickstartWizard(customtkinter.CTk):
             text=f"Step {pg + 1} of {TOTAL_PAGES}"
         )
 
-        # Back disabled on page 1, and on execute/complete pages
-        if pg == 0 or pg >= 12:
+        # Hide bottom bar entirely on execute/complete pages — those pages own
+        # their own buttons (Run / Complete / Rollback / Close).
+        if pg >= 13:
+            self._bottom_bar.pack_forget()
+            return
+        else:
+            if not self._bottom_bar.winfo_ismapped():
+                self._bottom_bar.pack(side="bottom", fill="x", padx=10, pady=(0, 10))
+
+        if pg == 0:
             self._back_btn.configure(state="disabled")
         else:
             self._back_btn.configure(state="normal")
-
-        # Next disabled on execute/complete pages
-        if pg >= 12:
-            self._next_btn.configure(state="disabled")
-        else:
-            self._next_btn.configure(state="normal")
+        self._next_btn.configure(state="normal")
 
     def _go_back(self):
         if self.current_page > 0:
@@ -233,7 +239,13 @@ class QuickstartWizard(customtkinter.CTk):
                 self._show_error(msg)
                 return False
         elif pg == 4:
-            if not self.data.get("warehouse_id", "").strip():
+            # In "new" mode, warehouse_id is empty until run-time creation.
+            # Capture the latest name from the entry field.
+            if self.data.get("_warehouse_create_pending"):
+                if hasattr(self, "_wh_new_name_entry"):
+                    name = self._wh_new_name_entry.get().strip() or "freshmart-warehouse"
+                    self.data["warehouse_name"] = name
+            elif not self.data.get("warehouse_id", "").strip():
                 self._show_error(t(
                     "\u30a6\u30a7\u30a2\u30cf\u30a6\u30b9\u3092\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
                     "Please select a warehouse."
@@ -306,6 +318,16 @@ class QuickstartWizard(customtkinter.CTk):
                         "Please enter an Evaluation Experiment ID."
                     ))
                     return False
+        elif pg == 11:
+            # LLM endpoint page
+            if not self.data.get("_llm_models_available") and hasattr(self, "_llm_manual_entry"):
+                self.data["llm_endpoint"] = self._llm_manual_entry.get().strip()
+            if not self.data.get("llm_endpoint", "").strip():
+                self._show_error(t(
+                    "LLM \u30a8\u30f3\u30c9\u30dd\u30a4\u30f3\u30c8\u540d\u3092\u9078\u629e\u307e\u305f\u306f\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                    "Please select or enter an LLM endpoint name."
+                ))
+                return False
         return True
 
     def _show_error(self, msg: str):
@@ -447,6 +469,10 @@ class QuickstartWizard(customtkinter.CTk):
         profiles = core.get_databricks_profiles()
         profile_names = [p["name"] for p in profiles]
 
+        # Force first-login UI even when profiles exist (for adding new workspace)
+        if self.data.get("_force_first_login"):
+            profile_names = []
+
         if not profile_names:
             # 初回ユーザー: OAuth ログインフロー
             customtkinter.CTkLabel(
@@ -522,6 +548,24 @@ class QuickstartWizard(customtkinter.CTk):
             command=self._on_connect,
         ).pack(pady=10)
 
+        # Allow logging into a different workspace (creates a new profile)
+        def _switch_to_first_login():
+            self.data["_force_first_login"] = True
+            self.show_page(self.current_page)
+
+        customtkinter.CTkButton(
+            frame,
+            text=t(
+                "\u5225\u306e\u30ef\u30fc\u30af\u30b9\u30da\u30fc\u30b9\u306b\u30ed\u30b0\u30a4\u30f3\uff08\u65b0\u898f\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb\u3092\u8ffd\u52a0\uff09",
+                "Log in to a different workspace (add new profile)",
+            ),
+            width=320,
+            fg_color="transparent",
+            border_width=1,
+            text_color=("gray10", "gray90"),
+            command=_switch_to_first_login,
+        ).pack(pady=(0, 10))
+
         self._auth_status = customtkinter.CTkLabel(frame, text="", wraplength=500)
         self._auth_status.pack(pady=5)
 
@@ -588,12 +632,22 @@ class QuickstartWizard(customtkinter.CTk):
                 rc, profile = rest
                 if rc == 0:
                     self._auth_status.configure(
-                        text=t(f"✓ ログイン成功。プロファイル '{profile}' を保存しました。",
-                                 f"✓ Login succeeded. Profile '{profile}' saved."),
+                        text=t(f"✓ ログイン成功。プロファイル '{profile}' を保存しました。検証中...",
+                                 f"✓ Login succeeded. Profile '{profile}' saved. Validating..."),
                         text_color="green",
                     )
-                    # プロファイル一覧を再読み込み → 画面を再描画
-                    self.after(1000, lambda: self.show_page(self.current_page))
+                    # 自動的に finalize: ホスト・ユーザー名・トークンを取得して
+                    # auth_ok=True に設定。再度ユーザーが Connect を押す必要なし。
+                    # 1 秒後にページ再描画して、認証 OK の状態を表示
+                    self.data["_force_first_login"] = False
+                    def _autofinalize():
+                        # First refresh page to get the post-login UI (profile dropdown)
+                        self.show_page(self.current_page)
+                        # Now select the just-created profile and finalize
+                        if hasattr(self, "_profile_var"):
+                            self._profile_var.set(profile)
+                        self._finalize_auth(profile)
+                    self.after(1000, _autofinalize)
                 else:
                     self._login_button.configure(
                         state="normal",
@@ -777,7 +831,7 @@ class QuickstartWizard(customtkinter.CTk):
         self.data["_catalog_mode"] = mode
 
         if mode == "existing":
-            # Fetch catalogs via Unity Catalog REST API (no warehouse needed)
+            # Fetch catalogs via Unity Catalog REST API (no permission filter — too slow)
             token = self.data.get("token", "")
             host = self.data.get("host", "")
             catalogs: list[str] = []
@@ -936,77 +990,191 @@ class QuickstartWizard(customtkinter.CTk):
     def _page_warehouse(self, frame: customtkinter.CTkFrame):
         customtkinter.CTkLabel(
             frame,
-            text=t("SQL Warehouse \u306e\u9078\u629e", "Select SQL Warehouse"),
+            text=t("SQL Warehouse の選択", "Select SQL Warehouse"),
             font=customtkinter.CTkFont(size=22, weight="bold"),
         ).pack(pady=(20, 10))
 
-        # Fetch warehouses
+        self._wh_mode_var = customtkinter.StringVar(
+            value=self.data.get("_wh_mode", "existing")
+        )
+        customtkinter.CTkRadioButton(
+            frame,
+            text=t("既存のウェアハウスから選択（推奨）",
+                   "Select from existing (recommended)"),
+            variable=self._wh_mode_var,
+            value="existing",
+            command=self._rebuild_wh_fields,
+        ).pack(pady=5, padx=40, anchor="w")
+        customtkinter.CTkRadioButton(
+            frame,
+            text=t(
+                "新規作成（Serverless Pro X-Small、自動停止 60 分。作成 1〜2 分）",
+                "Create new (Serverless Pro X-Small, auto-stop 60min. Takes 1-2 min)",
+            ),
+            variable=self._wh_mode_var,
+            value="new",
+            command=self._rebuild_wh_fields,
+        ).pack(pady=5, padx=40, anchor="w")
+
+        self._wh_fields_frame = customtkinter.CTkFrame(frame)
+        self._wh_fields_frame.pack(fill="x", padx=40, pady=10)
+        self._rebuild_wh_fields()
+
+    def _rebuild_wh_fields(self):
+        for w in self._wh_fields_frame.winfo_children():
+            w.destroy()
+        mode = self._wh_mode_var.get()
+        self.data["_wh_mode"] = mode
+        if mode == "existing":
+            self._render_wh_existing()
+        else:
+            self._render_wh_new()
+
+    def _render_wh_existing(self):
+        loading = customtkinter.CTkLabel(
+            self._wh_fields_frame,
+            text=t("使用権限のあるウェアハウスを検索中...",
+                   "Checking which warehouses you can use..."),
+            text_color="gray",
+        )
+        loading.pack(pady=5)
+        self.update_idletasks()
+
+        token = self.data.get("token", "")
+        host = self.data.get("host", "")
+        user = self.data.get("username", "")
         try:
-            result = core.run_command(
-                ["databricks", "warehouses", "list", "-p", self.data["profile_name"], "-o", "json"],
-                check=True,
-            )
-            self._warehouses = json.loads(result.stdout)
-            self._warehouses.sort(
-                key=lambda w: (0 if w.get("state") == "RUNNING" else 1, w.get("name", ""))
+            self._warehouses = core.filter_usable_warehouses(
+                self.data["profile_name"], token, host, user
             )
         except Exception:
             self._warehouses = []
 
+        loading.destroy()
+
         if not self._warehouses:
             customtkinter.CTkLabel(
-                frame,
+                self._wh_fields_frame,
                 text=t(
-                    "\u30a6\u30a7\u30a2\u30cf\u30a6\u30b9\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3002",
-                    "No SQL warehouses found.",
+                    "使用権限のあるウェアハウスが見つかりませんでした。\n「新規作成」を選択するか、管理者に CAN_USE 以上を依頼してください。",
+                    "No warehouses found where you have CAN_USE permission.\nPlease choose 'Create new' or ask admin for CAN_USE+.",
                 ),
                 text_color="orange",
-            ).pack(pady=20)
+                wraplength=500,
+                justify="left",
+            ).pack(pady=10)
             return
 
         labels = [
-            f"{w.get('name', '?')} ({w.get('id', '?')}) [{w.get('state', '?')}]"
+            f"{w.get('name', '?')} ({w.get('id', '?')}) "
+            f"[{w.get('state', '?')}] [{w.get('_user_permission', '')}]"
             for w in self._warehouses
         ]
-
-        # Auto-select first RUNNING
         default_label = labels[0]
         for i, w in enumerate(self._warehouses):
             if w.get("state") == "RUNNING":
                 default_label = labels[i]
                 break
-
         self._wh_var = customtkinter.StringVar(value=default_label)
         customtkinter.CTkOptionMenu(
-            frame, variable=self._wh_var, values=labels, width=500,
+            self._wh_fields_frame,
+            variable=self._wh_var, values=labels, width=500,
             command=self._on_wh_change,
-        ).pack(pady=10, padx=40)
-
-        # Set initial state
+        ).pack(pady=10, padx=10)
         self._on_wh_change(default_label)
+
+    def _render_wh_new(self):
+        customtkinter.CTkLabel(
+            self._wh_fields_frame,
+            text=t("新規ウェアハウス名:",
+                   "New warehouse name:"),
+        ).pack(anchor="w", pady=(5, 2))
+
+        default_name = self.data.get("warehouse_name") or "freshmart-warehouse"
+        self._wh_new_name_entry = customtkinter.CTkEntry(
+            self._wh_fields_frame, width=400,
+        )
+        self._wh_new_name_entry.insert(0, default_name)
+        self._wh_new_name_entry.pack(pady=(0, 10))
+
+        customtkinter.CTkLabel(
+            self._wh_fields_frame,
+            text=t(
+                "・ サイズ: X-Small（Serverless Pro）\n・ 自動停止: 60 分\n・ 作成所要: 1〜2 分（セットアップ実行時に作成）",
+                "・ Size: X-Small (Serverless Pro)\n・ Auto-stop: 60 min\n・ Creation time: 1-2 min (created during setup execution)",
+            ),
+            text_color="gray",
+            justify="left",
+        ).pack(anchor="w", pady=5)
+
+        self.data["warehouse_id"] = ""
+        self.data["warehouse_name"] = default_name
+        self.data["_warehouse_create_pending"] = True
 
     def _on_wh_change(self, selection: str):
         for w in self._warehouses:
-            label = f"{w.get('name', '?')} ({w.get('id', '?')}) [{w.get('state', '?')}]"
+            label = (
+                f"{w.get('name', '?')} ({w.get('id', '?')}) "
+                f"[{w.get('state', '?')}] [{w.get('_user_permission', '')}]"
+            )
             if label == selection:
                 self.data["warehouse_id"] = w["id"]
                 self.data["warehouse_name"] = w.get("name", "")
+                self.data["_warehouse_create_pending"] = False
                 break
 
     # ── Page 6: Vector Search Endpoint ──────────────────────────────────
     def _page_vs_endpoint(self, frame: customtkinter.CTkFrame):
         customtkinter.CTkLabel(
             frame,
-            text=t("Vector Search \u30a8\u30f3\u30c9\u30dd\u30a4\u30f3\u30c8\u306e\u9078\u629e", "Select Vector Search Endpoint"),
+            text=t("Vector Search エンドポイントの選択", "Select Vector Search Endpoint"),
             font=customtkinter.CTkFont(size=22, weight="bold"),
         ).pack(pady=(20, 10))
 
-        # Fetch endpoints
+        self._ep_mode_var = customtkinter.StringVar(
+            value=self.data.get("_ep_mode", "existing")
+        )
+        customtkinter.CTkRadioButton(
+            frame,
+            text=t("既存のエンドポイントから選択（推奨）",
+                   "Select from existing (recommended)"),
+            variable=self._ep_mode_var,
+            value="existing",
+            command=self._rebuild_ep_fields,
+        ).pack(pady=5, padx=40, anchor="w")
+        customtkinter.CTkRadioButton(
+            frame,
+            text=t(
+                "新規作成（タイプ STANDARD。作成完了まで 10〜15 分かかります）",
+                "Create new (type STANDARD. Provisioning takes 10-15 min)",
+            ),
+            variable=self._ep_mode_var,
+            value="new",
+            command=self._rebuild_ep_fields,
+        ).pack(pady=5, padx=40, anchor="w")
+
+        self._ep_fields_frame = customtkinter.CTkFrame(frame)
+        self._ep_fields_frame.pack(fill="x", padx=40, pady=10)
+        self._rebuild_ep_fields()
+
+    def _rebuild_ep_fields(self):
+        for w in self._ep_fields_frame.winfo_children():
+            w.destroy()
+        mode = self._ep_mode_var.get()
+        self.data["_ep_mode"] = mode
+        if mode == "existing":
+            self._render_ep_existing()
+        else:
+            self._render_ep_new()
+
+    def _render_ep_existing(self):
         token = self.data.get("token", "")
         host = self.data.get("host", "")
+        self._vs_endpoints = []
         if token and host:
             data = core.api_get("/api/2.0/vector-search/endpoints", token, host)
-            self._vs_endpoints = data.get("endpoints", [])
+            if isinstance(data, dict):
+                self._vs_endpoints = data.get("endpoints", [])
             state_order = {"ONLINE": 0, "PROVISIONING": 1}
             self._vs_endpoints.sort(
                 key=lambda e: (
@@ -1014,45 +1182,69 @@ class QuickstartWizard(customtkinter.CTk):
                     e.get("name", ""),
                 )
             )
-        else:
-            self._vs_endpoints = []
 
         if not self._vs_endpoints:
             customtkinter.CTkLabel(
-                frame,
+                self._ep_fields_frame,
                 text=t(
-                    "Vector Search \u30a8\u30f3\u30c9\u30dd\u30a4\u30f3\u30c8\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3002\n\u7a7a\u306e\u307e\u307e\u6b21\u3078\u9032\u3080\u3053\u3068\u3082\u3067\u304d\u307e\u3059\u3002",
-                    "No Vector Search endpoints found.\nYou may proceed without one.",
+                    "既存のエンドポイントが見つかりませんでした。\n「新規作成」を選択してください。",
+                    "No existing endpoints found.\nPlease choose 'Create new'.",
                 ),
                 text_color="orange",
                 wraplength=500,
-            ).pack(pady=20)
+                justify="left",
+            ).pack(pady=10)
             return
 
         labels = [
             f"{e.get('name', '?')} [{e.get('endpoint_status', {}).get('state', '?')}]"
             for e in self._vs_endpoints
         ]
-
         default_label = labels[0]
         for i, e in enumerate(self._vs_endpoints):
             if e.get("endpoint_status", {}).get("state") == "ONLINE":
                 default_label = labels[i]
                 break
-
         self._ep_var = customtkinter.StringVar(value=default_label)
         customtkinter.CTkOptionMenu(
-            frame, variable=self._ep_var, values=labels, width=500,
+            self._ep_fields_frame,
+            variable=self._ep_var, values=labels, width=500,
             command=self._on_ep_change,
-        ).pack(pady=10, padx=40)
-
+        ).pack(pady=10, padx=10)
         self._on_ep_change(default_label)
+
+    def _render_ep_new(self):
+        customtkinter.CTkLabel(
+            self._ep_fields_frame,
+            text=t("新規エンドポイント名:", "New endpoint name:"),
+        ).pack(anchor="w", pady=(5, 2))
+
+        default_name = self.data.get("vs_endpoint") or "freshmart-vs-endpoint"
+        self._ep_new_name_entry = customtkinter.CTkEntry(
+            self._ep_fields_frame, width=400,
+        )
+        self._ep_new_name_entry.insert(0, default_name)
+        self._ep_new_name_entry.pack(pady=(0, 10))
+
+        customtkinter.CTkLabel(
+            self._ep_fields_frame,
+            text=t(
+                "・ タイプ: STANDARD\n・ 作成所要: 10〜15 分（コーヒーブレイクをどうぞ）\n・ セットアップ実行時に作成・待機します",
+                "・ Type: STANDARD\n・ Provisioning: 10-15 min (coffee break time)\n・ Created and awaited during setup execution",
+            ),
+            text_color="gray",
+            justify="left",
+        ).pack(anchor="w", pady=5)
+
+        self.data["vs_endpoint"] = default_name
+        self.data["_ep_create_pending"] = True
 
     def _on_ep_change(self, selection: str):
         for e in self._vs_endpoints:
             label = f"{e.get('name', '?')} [{e.get('endpoint_status', {}).get('state', '?')}]"
             if label == selection:
                 self.data["vs_endpoint"] = e["name"]
+                self.data["_ep_create_pending"] = False
                 break
 
     # ── Page 7: Genie Space ──────────────────────────────────────────────
@@ -1551,7 +1743,136 @@ class QuickstartWizard(customtkinter.CTk):
             command=lambda: self.data.update({"use_prompt_registry": "yes"}),
         ).pack(pady=5, padx=40, anchor="w")
 
-    # ── Page 11: Summary ────────────────────────────────────────────────
+    # ── Page 11: LLM Endpoint ───────────────────────────────────────────
+    def _page_llm_endpoint(self, frame: customtkinter.CTkFrame):
+        customtkinter.CTkLabel(
+            frame,
+            text=t("LLM エンドポイント", "LLM Endpoint"),
+            font=customtkinter.CTkFont(size=22, weight="bold"),
+        ).pack(pady=(20, 5))
+
+        customtkinter.CTkLabel(
+            frame,
+            text=t(
+                "エージェントが使用する Foundation Model API のチャットモデルを選択してください。\n"
+                "推奨デフォルト: databricks-claude-sonnet-4-6",
+                "Choose the Foundation Model API chat model the agent will use.\n"
+                "Recommended default: databricks-claude-sonnet-4-6",
+            ),
+            wraplength=580,
+            justify="left",
+            text_color="gray",
+        ).pack(pady=(0, 10), padx=40)
+
+        # Fetch chat models
+        loading = customtkinter.CTkLabel(
+            frame,
+            text=t("利用可能なチャット LLM エンドポイントを取得中...",
+                   "Fetching available chat LLM endpoints..."),
+            text_color="gray",
+        )
+        loading.pack(pady=5)
+        self.update_idletasks()
+
+        token = self.data.get("token", "")
+        host = self.data.get("host", "")
+        models: list[dict] = []
+        if token and host:
+            try:
+                models = core.list_chat_models(token, host)
+            except Exception:
+                models = []
+
+        loading.destroy()
+
+        if not models:
+            customtkinter.CTkLabel(
+                frame,
+                text=t(
+                    "利用可能なチャット LLM エンドポイントが見つかりませんでした。\n"
+                    "FM API がワークスペースで有効か確認してください。",
+                    "No chat-task LLM endpoints found.\n"
+                    "Please verify Foundation Model API is enabled.",
+                ),
+                text_color="orange",
+                wraplength=520,
+                justify="left",
+            ).pack(pady=20)
+
+            # Allow manual entry as a fallback
+            customtkinter.CTkLabel(
+                frame,
+                text=t("エンドポイント名を手動入力:", "Or enter endpoint name manually:"),
+            ).pack(pady=(5, 2))
+            self._llm_manual_entry = customtkinter.CTkEntry(frame, width=400)
+            self._llm_manual_entry.insert(
+                0, self.data.get("llm_endpoint") or core.DEFAULT_LLM_ENDPOINT
+            )
+            self._llm_manual_entry.pack(pady=(0, 10))
+            self.data["_llm_models_available"] = False
+            return
+
+        names = [m.get("name", "") for m in models if m.get("name")]
+        self.data["_llm_models_available"] = True
+
+        # Default selection logic
+        recommended = core.DEFAULT_LLM_ENDPOINT
+        previously = self.data.get("llm_endpoint", "")
+        if previously and previously in names:
+            default_value = previously
+        elif recommended in names:
+            default_value = recommended
+        else:
+            default_value = names[0]
+
+        # Notice when recommended default is unavailable
+        if recommended not in names:
+            customtkinter.CTkLabel(
+                frame,
+                text=t(
+                    f"⚠ 推奨デフォルト '{recommended}' はこのワークスペースにありません。"
+                    " 別のモデルを選んでください。",
+                    f"⚠ Recommended default '{recommended}' is not available here."
+                    " Please pick another model.",
+                ),
+                text_color="orange",
+                wraplength=560,
+                justify="left",
+            ).pack(pady=(0, 5), padx=40)
+
+        # Make the dropdown labels show "★ recommended" when applicable
+        labels = []
+        for name in names:
+            if name == recommended:
+                labels.append(f"{name}  ★ (推奨デフォルト)")
+            else:
+                labels.append(name)
+        # Map label → endpoint name
+        self._llm_label_to_name = {lbl: name for lbl, name in zip(labels, names)}
+        default_label = next(
+            (lbl for lbl, n in zip(labels, names) if n == default_value),
+            labels[0],
+        )
+
+        customtkinter.CTkLabel(
+            frame,
+            text=t("モデルを選択:", "Select a model:"),
+        ).pack(pady=(5, 2))
+
+        self._llm_var = customtkinter.StringVar(value=default_label)
+        customtkinter.CTkOptionMenu(
+            frame, variable=self._llm_var, values=labels, width=500,
+            command=self._on_llm_change,
+        ).pack(pady=(0, 10), padx=40)
+
+        # Initialize data
+        self._on_llm_change(default_label)
+
+    def _on_llm_change(self, label: str):
+        name = getattr(self, "_llm_label_to_name", {}).get(label, label)
+        self.data["llm_endpoint"] = name
+
+    # ── Page 12: Summary ────────────────────────────────────────────────
     def _page_summary(self, frame: customtkinter.CTkFrame):
         customtkinter.CTkLabel(
             frame,
@@ -1594,6 +1915,8 @@ class QuickstartWizard(customtkinter.CTk):
             lines.append(f"Prompt Registry: {t('\u4f7f\u7528\u3059\u308b', 'Enabled')}")
         else:
             lines.append(f"Prompt Registry: {t('\u4f7f\u7528\u3057\u306a\u3044', 'Disabled')}")
+
+        lines.append(f"LLM Endpoint: {self.data.get('llm_endpoint', '')}")
 
         textbox.insert("0.0", "\n".join(lines))
         textbox.configure(state="disabled")
@@ -1650,7 +1973,7 @@ class QuickstartWizard(customtkinter.CTk):
                     self._exec_running = False
                     self.data["setup_complete"] = True
                     # Auto-advance to complete page (index 13)
-                    self.after(500, lambda: self.show_page(13))
+                    self.after(500, lambda: self.show_page(14))
                     return
         except queue.Empty:
             pass
@@ -1672,8 +1995,13 @@ class QuickstartWizard(customtkinter.CTk):
         total_steps = 11
         step = 0
 
-        # ロールバック用: 作成したリソースを記録
+        # ロールバック用: 「新規作成された」リソースを記録
+        # （ユーザーが「既存」を選択したものは含めない）
         s["created_resources"] = {
+            "catalog": None,         # set if user chose "new" mode for catalog
+            "schema": None,          # workshop-specific schema name (always tracked)
+            "warehouse_id": None,    # set if user chose "new" mode for warehouse
+            "vs_endpoint": None,     # set if user chose "new" mode for VS endpoint
             "genie_space_id": None,
             "vs_index": None,
             "lakebase_branch": None,
@@ -1681,6 +2009,12 @@ class QuickstartWizard(customtkinter.CTk):
             "monitoring_id": None,
             "eval_id": None,
         }
+
+        # Track newly-created catalog/schema based on mode flag from the GUI
+        if s.get("_catalog_mode") == "new":
+            s["created_resources"]["catalog"] = catalog
+        # Schema is always workshop-specific so we always track it for rollback
+        s["created_resources"]["schema"] = f"{catalog}.{schema}"
 
         class _AbortSetup(Exception):
             pass
@@ -1712,11 +2046,37 @@ class QuickstartWizard(customtkinter.CTk):
             self._log(f"  Catalog: {catalog}, Schema: {schema}")
             self._log("")
 
+            # Step 0: Create SQL warehouse if user opted to create new
+            if s.get("_warehouse_create_pending"):
+                wh_name = s.get("warehouse_name") or "freshmart-warehouse"
+                self._log(t(
+                    f"SQL ウェアハウス '{wh_name}' を新規作成中（1〜2 分）...",
+                    f"Creating new SQL warehouse '{wh_name}' (1-2 min)..."
+                ))
+                wh_result = core.create_sql_warehouse(token, host, wh_name)
+                if "error" in wh_result:
+                    fail(
+                        t("SQL ウェアハウス作成", "SQL warehouse creation"),
+                        wh_result["error"][:200],
+                        fatal=True,
+                    )
+                else:
+                    new_wh_id = wh_result.get("id", "")
+                    s["warehouse_id"] = new_wh_id
+                    warehouse_id = new_wh_id
+                    s["created_resources"]["warehouse_id"] = new_wh_id
+                    self._log(t(
+                        f"  → ウェアハウス作成完了: {wh_name} ({new_wh_id})。起動を待機中...",
+                        f"  → Created: {wh_name} ({new_wh_id}). Waiting for startup..."
+                    ))
+                    core.wait_for_warehouse_ready(profile, new_wh_id, timeout_sec=300)
+                    self._log("")
+
             # Step 1: Create catalog & schema
             self._log(t("カタログ・スキーマを作成中...", "Creating catalog & schema..."))
             try:
                 buf = io.StringIO()
-                with contextlib.redirect_stdout(buf):
+                with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
                     core.setup_env_file()
                     core.update_env_file("DATABRICKS_CONFIG_PROFILE", profile)
                     core.update_env_file("MLFLOW_TRACKING_URI", f'"databricks://{profile}"')
@@ -1733,7 +2093,7 @@ class QuickstartWizard(customtkinter.CTk):
             self._log(t("\u69cb\u9020\u5316\u30c7\u30fc\u30bf\u3092\u751f\u6210\u4e2d\uff085\uff5e10\u5206\uff09...", "Generating structured data (5-10 min)..."))
             try:
                 buf = io.StringIO()
-                with contextlib.redirect_stdout(buf):
+                with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
                     core.generate_data(profile, warehouse_id, catalog, schema,
                                        token=token, host=host)
                 output = buf.getvalue()
@@ -1747,7 +2107,7 @@ class QuickstartWizard(customtkinter.CTk):
             self._log(t("Change Data Feed \u3092\u6709\u52b9\u5316\u4e2d...", "Enabling Change Data Feed..."))
             try:
                 buf = io.StringIO()
-                with contextlib.redirect_stdout(buf):
+                with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
                     core.enable_cdf(token, host, warehouse_id, catalog, schema)
                 output = buf.getvalue()
                 if output.strip():
@@ -1755,6 +2115,37 @@ class QuickstartWizard(customtkinter.CTk):
                 advance(t("CDF \u6709\u52b9\u5316\u5b8c\u4e86", "CDF enabled"))
             except Exception as e:
                 fail(t("CDF", "CDF"), str(e)[:200])
+
+            # Step 4 (pre): Create Vector Search endpoint if user opted to create new
+            if s.get("_ep_create_pending") and vs_endpoint:
+                self._log(t(
+                    f"⏳ VS エンドポイント '{vs_endpoint}' を新規作成中（10〜15 分）...",
+                    f"⏳ Creating new VS endpoint '{vs_endpoint}' (10-15 min)..."
+                ))
+                ep_result = core.create_vs_endpoint_new(token, host, vs_endpoint)
+                if "error" in ep_result and "ALREADY_EXISTS" not in ep_result["error"]:
+                    fail(
+                        t("VS エンドポイント作成", "VS endpoint creation"),
+                        ep_result["error"][:200],
+                        fatal=True,
+                    )
+                else:
+                    s["created_resources"]["vs_endpoint"] = vs_endpoint
+                    self._log(t(
+                        "  Provisioning 中... ONLINE になるまで待機します（最大 25 分）",
+                        "  Provisioning... waiting for ONLINE state (up to 25 min)"
+                    ))
+                    ok = core.wait_for_vs_endpoint_ready(
+                        token, host, vs_endpoint, timeout_sec=1500
+                    )
+                    if ok:
+                        self._log(t(f"  → ONLINE: {vs_endpoint}",
+                                    f"  → ONLINE: {vs_endpoint}"))
+                    else:
+                        self._log(t(
+                            f"  ⚠ タイムアウト（後続処理で再確認されます）: {vs_endpoint}",
+                            f"  ⚠ Timeout (will re-check in subsequent steps): {vs_endpoint}"
+                        ))
 
             # Step 4: Create Vector Search index
             vs_index = f"{catalog}.{schema}.policy_docs_index"
@@ -1767,7 +2158,7 @@ class QuickstartWizard(customtkinter.CTk):
                 _vs_was_new = "error" in _existing_vs
                 try:
                     buf = io.StringIO()
-                    with contextlib.redirect_stdout(buf):
+                    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
                         vs_index = core.create_vector_search_index(
                             token, host, catalog, schema, vs_endpoint)
                     output = buf.getvalue()
@@ -1877,6 +2268,9 @@ class QuickstartWizard(customtkinter.CTk):
                             project_id=project_name,
                         )
                         created_proj = project_op.wait()
+                        # プロジェクト作成成功直後に追跡対象に登録
+                        # （後続のブランチ作成で失敗しても確実にロールバックされるよう）
+                        s["created_resources"]["lakebase_project"] = project_name
                         parent_name = created_proj.name
                         project_exists = True
                     elif project_exists:
@@ -1900,8 +2294,7 @@ class QuickstartWizard(customtkinter.CTk):
                             if "/branches/" in created_branch.name
                             else branch_name
                         )
-                        # ロールバック用に記録
-                        s["created_resources"]["lakebase_project"] = project_name
+                        # ブランチ作成成功直後に追跡対象に登録
                         s["created_resources"]["lakebase_branch"] = branch_name
                         self._log(t(f"  ブランチ作成完了: {branch_name}",
                                      f"  Branch created: {branch_name}"))
@@ -1919,7 +2312,7 @@ class QuickstartWizard(customtkinter.CTk):
 
                     # Validate
                     buf = io.StringIO()
-                    with contextlib.redirect_stdout(buf):
+                    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
                         branch_info = core.validate_lakebase_autoscaling(
                             profile, project_name, branch_name
                         )
@@ -1967,7 +2360,7 @@ class QuickstartWizard(customtkinter.CTk):
                 if s.get("mlflow_mode") == "new":
                     base = s.get("mlflow_base_name") or f"/Users/{username}/freshmart-agent"
                     buf = io.StringIO()
-                    with contextlib.redirect_stdout(buf):
+                    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
                         m_name, m_id = core._create_single_experiment(profile, f"{base}-monitoring")
                         e_name, e_id = core._create_single_experiment(profile, f"{base}-evaluation")
                     output = buf.getvalue()
@@ -2008,7 +2401,7 @@ class QuickstartWizard(customtkinter.CTk):
                             core.run_sql_statement(
                                 f"CREATE SCHEMA IF NOT EXISTS `{_cat}`.`{_sch}`", token, host, warehouse_id)
                         buf = io.StringIO()
-                        with contextlib.redirect_stdout(buf):
+                        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
                             ok = core.run_trace_setup_on_databricks(
                                 profile_name=profile,
                                 username=username,
@@ -2048,9 +2441,13 @@ class QuickstartWizard(customtkinter.CTk):
                 core.update_env_file("MLFLOW_EVAL_EXPERIMENT_ID", eval_id)
                 core.update_env_file("GENIE_SPACE_ID", genie_space_id)
                 core.update_env_file("VECTOR_SEARCH_INDEX", vs_index_val)
+                # Persist LLM endpoint selection
+                llm_endpoint = s.get("llm_endpoint", "") or core.DEFAULT_LLM_ENDPOINT
+                core.update_env_file("LLM_ENDPOINT_NAME", llm_endpoint)
+                core.append_env_to_app_yaml("LLM_ENDPOINT_NAME", llm_endpoint)
 
                 buf = io.StringIO()
-                with contextlib.redirect_stdout(buf):
+                with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
                     core.update_databricks_yml_experiment(monitoring_id)
                     core.update_databricks_yml_resources(genie_space_id, vs_index_val)
                     if lakebase_config:
@@ -2115,7 +2512,7 @@ class QuickstartWizard(customtkinter.CTk):
             self._log(t("\u4f9d\u5b58\u95a2\u4fc2\u3092\u30a4\u30f3\u30b9\u30c8\u30fc\u30eb\u4e2d...", "Installing dependencies..."))
             try:
                 buf = io.StringIO()
-                with contextlib.redirect_stdout(buf):
+                with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
                     core.install_dependencies()
                 output = buf.getvalue()
                 if output.strip():
@@ -2126,7 +2523,8 @@ class QuickstartWizard(customtkinter.CTk):
 
         except _AbortSetup as ae:
             s["aborted_at"] = str(ae)
-            self._rollback(s.get("created_resources", {}))
+            # 自動ロールバックは行わない。完了ページで「ロールバック」ボタンを
+            # ユーザーが押したタイミングで実行する。
         except Exception as e:
             import traceback
             self._log(f"\n✗ Fatal error: {e}")
@@ -2142,15 +2540,17 @@ class QuickstartWizard(customtkinter.CTk):
             self._signal_done()
 
     def _rollback(self, created: dict) -> None:
-        """フェータルエラー時に作成済みリソースを削除する。
+        """ユーザーが「新規作成」を選択したリソースを削除する。
 
-        カタログ、スキーマ、ウェアハウス、VS エンドポイントは削除しない。
-        削除対象: Genie Space、Lakebase ブランチ、VS インデックス、MLflow Experiments。
+        ルール: ユーザーが「既存」を選択して使ったリソースは削除しない。
+                ユーザーが「新規作成」した、もしくは本セットアップで生成された
+                ものだけを削除対象とする。
         """
         self._log(t("\n🔄 ロールバック開始...", "\n🔄 Rollback starting..."))
         profile = self.data.get("profile_name", "")
         token = self.data.get("token", "")
         host = self.data.get("host", "")
+        warehouse_id = self.data.get("warehouse_id", "")
 
         # 1. Genie Space
         gs = created.get("genie_space_id")
@@ -2191,7 +2591,7 @@ class QuickstartWizard(customtkinter.CTk):
             except Exception as e:
                 self._log(f"  ⚠ VS index delete error: {str(e)[:100]}")
 
-        # 3. Lakebase branch (project は削除しない — ワークスペース制限に引っかかる場合がある)
+        # 3a. Lakebase branch (only if newly created in this run)
         lb_project = created.get("lakebase_project")
         lb_branch = created.get("lakebase_branch")
         if lb_project and lb_branch:
@@ -2210,6 +2610,24 @@ class QuickstartWizard(customtkinter.CTk):
                                  f"  ⚠ Lakebase branch delete failed: {result.stderr[:100]}"))
             except Exception as e:
                 self._log(f"  ⚠ Lakebase branch delete error: {str(e)[:100]}")
+
+        # 3b. Lakebase project (only if newly created in this run)
+        if lb_project:
+            try:
+                result = subprocess.run(
+                    ["databricks", "api", "delete",
+                     f"/api/2.0/postgres/projects/{lb_project}",
+                     "-p", profile],
+                    capture_output=True, text=True,
+                )
+                if result.returncode == 0:
+                    self._log(t(f"  ✓ Lakebase プロジェクト削除: {lb_project}",
+                                 f"  ✓ Lakebase project deleted: {lb_project}"))
+                else:
+                    self._log(t(f"  ⚠ Lakebase プロジェクト削除失敗: {result.stderr[:100]}",
+                                 f"  ⚠ Lakebase project delete failed: {result.stderr[:100]}"))
+            except Exception as e:
+                self._log(f"  ⚠ Lakebase project delete error: {str(e)[:100]}")
 
         # 4. MLflow Experiments
         for key in ("monitoring_id", "eval_id"):
@@ -2230,52 +2648,302 @@ class QuickstartWizard(customtkinter.CTk):
                 except Exception as e:
                     self._log(f"  ⚠ MLflow delete error: {str(e)[:100]}")
 
+        # 5. Schema (always tracked when set; uses CASCADE to drop tables/indexes)
+        new_schema = created.get("schema")
+        new_catalog = created.get("catalog")
+        if new_schema and warehouse_id and token and host:
+            # Skip schema drop if catalog is also being dropped (CASCADE handles it)
+            if not new_catalog:
+                try:
+                    core.run_sql_statement(
+                        f"DROP SCHEMA IF EXISTS {new_schema} CASCADE",
+                        token, host, warehouse_id,
+                    )
+                    self._log(t(f"  ✓ スキーマ削除: {new_schema}",
+                                 f"  ✓ Schema dropped: {new_schema}"))
+                except Exception as e:
+                    self._log(f"  ⚠ Schema drop error: {str(e)[:100]}")
+
+        # 6. Catalog (only if user chose "new" mode)
+        if new_catalog and warehouse_id and token and host:
+            try:
+                core.run_sql_statement(
+                    f"DROP CATALOG IF EXISTS `{new_catalog}` CASCADE",
+                    token, host, warehouse_id,
+                )
+                self._log(t(f"  ✓ カタログ削除: {new_catalog}",
+                             f"  ✓ Catalog dropped: {new_catalog}"))
+            except Exception as e:
+                self._log(f"  ⚠ Catalog drop error: {str(e)[:100]}")
+
+        # 7. SQL Warehouse (only if user chose "new" mode)
+        new_wh = created.get("warehouse_id")
+        if new_wh:
+            try:
+                result = subprocess.run(
+                    ["databricks", "warehouses", "delete", new_wh, "-p", profile],
+                    capture_output=True, text=True,
+                )
+                if result.returncode == 0:
+                    self._log(t(f"  ✓ SQL ウェアハウス削除: {new_wh}",
+                                 f"  ✓ SQL warehouse deleted: {new_wh}"))
+                else:
+                    self._log(t(f"  ⚠ SQL ウェアハウス削除失敗: {result.stderr[:100]}",
+                                 f"  ⚠ SQL warehouse delete failed: {result.stderr[:100]}"))
+            except Exception as e:
+                self._log(f"  ⚠ Warehouse delete error: {str(e)[:100]}")
+
+        # 8. VS Endpoint (only if user chose "new" mode)
+        new_ep = created.get("vs_endpoint")
+        if new_ep:
+            try:
+                result = subprocess.run(
+                    ["databricks", "api", "delete",
+                     f"/api/2.0/vector-search/endpoints/{new_ep}", "-p", profile],
+                    capture_output=True, text=True,
+                )
+                if result.returncode == 0:
+                    self._log(t(f"  ✓ VS エンドポイント削除: {new_ep}",
+                                 f"  ✓ VS endpoint deleted: {new_ep}"))
+                else:
+                    self._log(t(f"  ⚠ VS エンドポイント削除失敗: {result.stderr[:100]}",
+                                 f"  ⚠ VS endpoint delete failed: {result.stderr[:100]}"))
+            except Exception as e:
+                self._log(f"  ⚠ VS endpoint delete error: {str(e)[:100]}")
+
         self._log(t(
-            "\n✓ ロールバック完了。カタログ・スキーマ・ウェアハウス・VS エンドポイントは保持しています。",
-            "\n✓ Rollback complete. Catalog, schema, warehouse, VS endpoint are preserved.",
+            "\n✓ ロールバック完了。",
+            "\n✓ Rollback complete.",
         ))
 
-    # ── Page 13: Complete ───────────────────────────────────────────────
+    # ── Page 13: Complete (state-machine: success / errors / rolling-back / rolled-back) ──
     def _page_complete(self, frame: customtkinter.CTkFrame):
+        s = self.data
+        state = s.get("complete_state")
+        if state is None:
+            failed = s.get("setup_failed_steps", [])
+            aborted = bool(s.get("aborted_at"))
+            state = "errors" if (failed or aborted) else "success"
+            s["complete_state"] = state
+
+        if state == "rolling_back":
+            self._render_complete_rolling_back(frame)
+        elif state == "rolled_back":
+            self._render_complete_rolled_back(frame)
+        elif state == "errors":
+            self._render_complete_with_errors(frame)
+        else:
+            self._render_complete_success(frame)
+
+    # ── Sub-renderers for the complete page states ───────────────────────
+
+    def _render_complete_success(self, frame):
+        s = self.data
         customtkinter.CTkLabel(
             frame,
-            text=t("\u30bb\u30c3\u30c8\u30a2\u30c3\u30d7\u5b8c\u4e86\uff01", "Setup Complete!"),
-            font=customtkinter.CTkFont(size=22, weight="bold"),
+            text=t("✓ セットアップ完了！", "✓ Setup Complete!"),
+            font=customtkinter.CTkFont(size=24, weight="bold"),
+            text_color="#2ECC71",
         ).pack(pady=(15, 5))
 
-        # Show warnings about failed steps
-        failed = self.data.get("setup_failed_steps", [])
+        self._render_resource_summary(frame)
+        self._render_team_sharing_info(frame)
+
+        # Big centered Complete button
+        btn_frame = customtkinter.CTkFrame(frame, fg_color="transparent")
+        btn_frame.pack(pady=(15, 10))
+
+        customtkinter.CTkButton(
+            btn_frame,
+            text=t("クリップボードにコピー", "Copy to Clipboard"),
+            width=200,
+            command=self._copy_share_text,
+        ).pack(side="left", padx=10)
+
+        customtkinter.CTkButton(
+            btn_frame,
+            text=t("完了", "Complete"),
+            width=200,
+            height=40,
+            font=customtkinter.CTkFont(size=15, weight="bold"),
+            command=self.destroy,
+        ).pack(side="left", padx=10)
+
+        # 次のステップ: コピー可能なコマンドエントリで表示
+        next_label = customtkinter.CTkLabel(
+            frame,
+            text=t("次のステップ — このコマンドをターミナルで実行:",
+                   "Next step — run this in your terminal:"),
+            font=customtkinter.CTkFont(size=13),
+            text_color="#3B8ED0",
+        )
+        next_label.pack(pady=(10, 2))
+
+        next_cmd_frame = customtkinter.CTkFrame(frame, fg_color="transparent")
+        next_cmd_frame.pack(pady=(0, 10))
+
+        next_cmd_entry = customtkinter.CTkEntry(
+            next_cmd_frame,
+            width=300,
+            font=customtkinter.CTkFont(family="Menlo", size=14, weight="bold"),
+        )
+        next_cmd_entry.insert(0, "uv run start-app")
+        next_cmd_entry.configure(state="readonly")
+        next_cmd_entry.pack(side="left", padx=(0, 5))
+
+        def _copy_next_cmd():
+            self.clipboard_clear()
+            self.clipboard_append("uv run start-app")
+            copy_btn.configure(text=t("✓ コピー済み", "✓ Copied"))
+            self.after(1500, lambda: copy_btn.configure(
+                text=t("コピー", "Copy")
+            ))
+
+        copy_btn = customtkinter.CTkButton(
+            next_cmd_frame,
+            text=t("コピー", "Copy"),
+            width=80,
+            command=_copy_next_cmd,
+        )
+        copy_btn.pack(side="left")
+
+    def _render_complete_with_errors(self, frame):
+        s = self.data
+        failed = s.get("setup_failed_steps", [])
+        aborted = bool(s.get("aborted_at"))
+
+        title = (t("⚠ セットアップが中断されました", "⚠ Setup was aborted")
+                 if aborted else
+                 t("⚠ セットアップ完了（一部失敗あり）",
+                   "⚠ Setup Complete (with errors)"))
+        customtkinter.CTkLabel(
+            frame,
+            text=title,
+            font=customtkinter.CTkFont(size=22, weight="bold"),
+            text_color="orange",
+        ).pack(pady=(15, 5))
+
+        # Failed-steps box
         if failed:
-            fail_names = [f.get("name", str(f)) if isinstance(f, dict) else str(f) for f in failed]
             customtkinter.CTkLabel(
                 frame,
-                text=t(
-                    f"⚠ {len(failed)} 個のステップが失敗しました",
-                    f"⚠ {len(failed)} step(s) failed",
-                ),
+                text=t(f"失敗したステップ: {len(failed)} 個",
+                       f"Failed steps: {len(failed)}"),
                 text_color="orange",
-                wraplength=600,
             ).pack(pady=(0, 2))
-
-            # Show each failure with its error reason
-            fail_box = customtkinter.CTkTextbox(frame, width=620, height=80, text_color="orange")
+            fail_box = customtkinter.CTkTextbox(frame, width=620, height=100, text_color="orange")
             fail_box.pack(padx=20, pady=(0, 5))
             for f in failed:
                 if isinstance(f, dict):
-                    fail_box.insert("end", f"✗ {f['name']}: {f['error']}\n")
+                    fail_box.insert("end", f"✗ {f.get('name', '?')}: {f.get('error', '')}\n")
                 else:
                     fail_box.insert("end", f"✗ {f}\n")
             fail_box.configure(state="disabled")
 
-        # Summary of created resources
+        if aborted:
+            customtkinter.CTkLabel(
+                frame,
+                text=t(f"中断ポイント: {s.get('aborted_at', '')}",
+                       f"Aborted at: {s.get('aborted_at', '')}"),
+                text_color="orange",
+            ).pack(pady=(0, 5))
+
+        self._render_resource_summary(frame, compact=True)
+
+        # Action buttons: Complete (accept partial) + Rollback
+        btn_frame = customtkinter.CTkFrame(frame, fg_color="transparent")
+        btn_frame.pack(pady=(15, 10))
+
+        customtkinter.CTkButton(
+            btn_frame,
+            text=t("ロールバック\n(新規作成リソースを削除)",
+                   "Rollback\n(delete newly created resources)"),
+            width=240,
+            height=50,
+            fg_color="#E74C3C",
+            hover_color="#C0392B",
+            font=customtkinter.CTkFont(size=13, weight="bold"),
+            command=self._on_rollback_click,
+        ).pack(side="left", padx=10)
+
+        customtkinter.CTkButton(
+            btn_frame,
+            text=t("完了\n(現状のままアプリを閉じる)",
+                   "Complete\n(keep as-is and close)"),
+            width=240,
+            height=50,
+            font=customtkinter.CTkFont(size=13),
+            command=self.destroy,
+        ).pack(side="left", padx=10)
+
+    def _render_complete_rolling_back(self, frame):
+        customtkinter.CTkLabel(
+            frame,
+            text=t("🔄 ロールバック実行中...",
+                   "🔄 Rollback in progress..."),
+            font=customtkinter.CTkFont(size=22, weight="bold"),
+        ).pack(pady=(15, 10))
+
+        self._rollback_textbox = customtkinter.CTkTextbox(frame, width=620, height=380)
+        self._rollback_textbox.pack(padx=20, pady=5)
+        self._rollback_textbox.configure(state="disabled")
+
+        # Replay any rollback log lines collected so far
+        for line in self.data.get("rollback_log", []):
+            self._rollback_textbox.configure(state="normal")
+            self._rollback_textbox.insert("end", line + "\n")
+            self._rollback_textbox.configure(state="disabled")
+
+        # Start the rollback in a thread if not already started
+        if not self.data.get("_rollback_running"):
+            self.data["_rollback_running"] = True
+            self.data["rollback_log"] = []
+            thread = threading.Thread(target=self._run_rollback_async, daemon=True)
+            thread.start()
+            self.after(100, self._check_rollback_progress)
+
+    def _render_complete_rolled_back(self, frame):
+        customtkinter.CTkLabel(
+            frame,
+            text=t("✓ ロールバック完了", "✓ Rollback Complete"),
+            font=customtkinter.CTkFont(size=24, weight="bold"),
+            text_color="#2ECC71",
+        ).pack(pady=(15, 10))
+
+        customtkinter.CTkLabel(
+            frame,
+            text=t(
+                "本セットアップで新規作成されたリソースを削除しました。\nアプリを閉じて、最初からやり直せます。",
+                "Newly created resources from this setup have been deleted.\nClose the app and start over.",
+            ),
+            wraplength=600,
+            justify="left",
+        ).pack(pady=(0, 10))
+
+        log_box = customtkinter.CTkTextbox(frame, width=620, height=300)
+        log_box.pack(padx=20, pady=5)
+        for line in self.data.get("rollback_log", []):
+            log_box.insert("end", line + "\n")
+        log_box.configure(state="disabled")
+
+        customtkinter.CTkButton(
+            frame,
+            text=t("閉じる", "Close"),
+            width=200,
+            height=40,
+            font=customtkinter.CTkFont(size=15, weight="bold"),
+            command=self.destroy,
+        ).pack(pady=(15, 10))
+
+    def _render_resource_summary(self, frame, compact: bool = False):
         s = self.data
         summary_lines = [
-            f"{t('\u30ab\u30bf\u30ed\u30b0', 'Catalog')}: {s.get('catalog', '')}",
-            f"{t('\u30b9\u30ad\u30fc\u30de', 'Schema')}: {s.get('catalog', '')}.{s.get('schema', '')}",
+            f"{t('カタログ', 'Catalog')}: {s.get('catalog', '')}",
+            f"{t('スキーマ', 'Schema')}: {s.get('catalog', '')}.{s.get('schema', '')}",
             f"Vector Search: {s.get('vs_index', '')}",
             f"Genie Space ID: {s.get('genie_space_id', '')}",
-            f"{t('\u30e2\u30cb\u30bf\u30ea\u30f3\u30b0 Exp', 'Monitoring Exp')}: {s.get('monitoring_id', '')}",
-            f"{t('\u8a55\u4fa1 Exp', 'Evaluation Exp')}: {s.get('eval_id', '')}",
+            f"{t('モニタリング Exp', 'Monitoring Exp')}: {s.get('monitoring_id', '')}",
+            f"{t('評価 Exp', 'Evaluation Exp')}: {s.get('eval_id', '')}",
         ]
         lakebase_config = s.get("lakebase_config")
         if lakebase_config:
@@ -2293,93 +2961,92 @@ class QuickstartWizard(customtkinter.CTk):
                 f"{t('トレース送信先', 'Trace Dest')}: {s['trace_dest_schema']}"
             )
 
-        summary_text = "\n".join(summary_lines)
-
+        height = 100 if compact else 130
         customtkinter.CTkLabel(
             frame,
-            text=t("\u4f5c\u6210\u3055\u308c\u305f\u30ea\u30bd\u30fc\u30b9", "Created Resources"),
+            text=t("作成されたリソース", "Created Resources"),
             font=customtkinter.CTkFont(size=16, weight="bold"),
         ).pack(pady=(5, 2), anchor="w", padx=30)
-
-        res_box = customtkinter.CTkTextbox(frame, width=600, height=130)
+        res_box = customtkinter.CTkTextbox(frame, width=600, height=height)
         res_box.pack(padx=30, pady=(0, 5))
-        res_box.insert("0.0", summary_text)
+        res_box.insert("0.0", "\n".join(summary_lines))
         res_box.configure(state="disabled")
 
-        # 共有ブランチ警告（entered-existing の場合のみ）
+        # 共有ブランチ警告
         if lakebase_config and lakebase_config.get("branch_kind") == "entered-existing":
             warn_text = t(
-                "⚠ Lakebase 権限について:\n"
-                "既存の共有ブランチを指定しました。このブランチへのアクセスには、代表者が\n"
-                "grant-team-access であなた（またはグループ）に権限を付与済みである必要があります。\n"
-                "権限エラーが出る場合は代表者に以下を依頼してください:\n"
-                "  uv run grant-team-access --group <group-name>\n"
-                f"  または uv run grant-team-access {s.get('username', '')}",
-                "⚠ Lakebase permissions:\n"
-                "You selected an existing shared branch. Access requires the representative\n"
-                "to have run grant-team-access for you (or your group). If you hit permission\n"
-                "errors, ask the rep to run:\n"
-                "  uv run grant-team-access --group <group-name>\n"
-                f"  or uv run grant-team-access {s.get('username', '')}",
+                "⚠ 既存の共有 Lakebase ブランチを使用中です。アクセスには代表者による grant-team-access が必要です。",
+                "⚠ Using an existing shared Lakebase branch. Access requires grant-team-access from the team rep.",
             )
-            warn_box = customtkinter.CTkTextbox(
-                frame, width=600, height=95, text_color="orange"
-            )
-            warn_box.pack(padx=30, pady=(0, 5))
-            warn_box.insert("0.0", warn_text)
-            warn_box.configure(state="disabled")
+            customtkinter.CTkLabel(
+                frame, text=warn_text, text_color="orange", wraplength=600, justify="left",
+            ).pack(padx=30, pady=(0, 5), anchor="w")
 
-        # Team sharing info
-        customtkinter.CTkLabel(
-            frame,
-            text=t("\u30c1\u30fc\u30e0\u5171\u6709\u60c5\u5831", "Team Sharing Info"),
-            font=customtkinter.CTkFont(size=16, weight="bold"),
-        ).pack(pady=(5, 2), anchor="w", padx=30)
-
+    def _render_team_sharing_info(self, frame):
+        s = self.data
+        lakebase_config = s.get("lakebase_config")
         share_lines = [
-            f"{t('\u30ab\u30bf\u30ed\u30b0\u540d', 'Catalog')}: {s.get('catalog', '')}",
-            f"{t('\u30b9\u30ad\u30fc\u30de\u540d', 'Schema')}: {s.get('schema', '')}",
-            f"{t('VS \u30a8\u30f3\u30c9\u30dd\u30a4\u30f3\u30c8', 'VS Endpoint')}: {s.get('vs_endpoint', '')}",
+            f"{t('カタログ名', 'Catalog')}: {s.get('catalog', '')}",
+            f"{t('スキーマ名', 'Schema')}: {s.get('schema', '')}",
+            f"{t('VS エンドポイント', 'VS Endpoint')}: {s.get('vs_endpoint', '')}",
             f"Genie Space ID: {s.get('genie_space_id', '')}",
         ]
         if lakebase_config:
-            share_lines.append(f"{t('Lakebase \u30d7\u30ed\u30b8\u30a7\u30af\u30c8', 'Lakebase project')}: {lakebase_config.get('project', '')}")
-            share_lines.append(f"{t('Lakebase \u30d6\u30e9\u30f3\u30c1', 'Lakebase branch')}: {lakebase_config.get('branch', '')}")
-        share_lines.append(f"{t('\u30e2\u30cb\u30bf\u30ea\u30f3\u30b0 Exp ID', 'Monitoring Exp ID')}: {s.get('monitoring_id', '')}")
-        share_lines.append(f"{t('\u8a55\u4fa1 Exp ID', 'Evaluation Exp ID')}: {s.get('eval_id', '')}")
+            share_lines.append(f"{t('Lakebase プロジェクト', 'Lakebase project')}: {lakebase_config.get('project', '')}")
+            share_lines.append(f"{t('Lakebase ブランチ', 'Lakebase branch')}: {lakebase_config.get('branch', '')}")
+        share_lines.append(f"{t('モニタリング Exp ID', 'Monitoring Exp ID')}: {s.get('monitoring_id', '')}")
+        share_lines.append(f"{t('評価 Exp ID', 'Evaluation Exp ID')}: {s.get('eval_id', '')}")
 
         self._share_text = "\n".join(share_lines)
 
+        customtkinter.CTkLabel(
+            frame,
+            text=t("チーム共有情報", "Team Sharing Info"),
+            font=customtkinter.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(5, 2), anchor="w", padx=30)
         share_box = customtkinter.CTkTextbox(frame, width=600, height=100)
         share_box.pack(padx=30, pady=(0, 5))
         share_box.insert("0.0", self._share_text)
         share_box.configure(state="disabled")
 
-        btn_frame = customtkinter.CTkFrame(frame, fg_color="transparent")
-        btn_frame.pack(pady=5)
+    # ── Rollback action handlers ────────────────────────────────────────
 
-        customtkinter.CTkButton(
-            btn_frame,
-            text=t("\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u306b\u30b3\u30d4\u30fc", "Copy to Clipboard"),
-            width=180,
-            command=self._copy_share_text,
-        ).pack(side="left", padx=10)
+    def _on_rollback_click(self):
+        # Switch to rolling-back state and re-render the page
+        self.data["complete_state"] = "rolling_back"
+        self.show_page(self.current_page)
 
-        customtkinter.CTkButton(
-            btn_frame,
-            text=t("閉じる", "Close"),
-            width=120,
-            command=self.destroy,
-        ).pack(side="left", padx=10)
+    def _run_rollback_async(self):
+        """Background thread: run rollback and post log lines via the queue."""
+        try:
+            self._rollback(self.data.get("created_resources", {}))
+        except Exception as e:
+            self._log(f"⚠ Rollback exception: {str(e)[:200]}")
+        finally:
+            self._exec_queue.put(("rollback_done", None))
 
-        # Next steps
-        customtkinter.CTkLabel(
-            frame,
-            text=t("次のステップ:  uv run start-app",
-                     "Next step:  uv run start-app"),
-            font=customtkinter.CTkFont(size=14, weight="bold"),
-            text_color="#3B8ED0",
-        ).pack(pady=(10, 0))
+    def _check_rollback_progress(self):
+        """Drain the queue to update the rollback textbox; transition when done."""
+        try:
+            while True:
+                kind, data = self._exec_queue.get_nowait()
+                if kind == "log":
+                    self.data.setdefault("rollback_log", []).append(data)
+                    if hasattr(self, "_rollback_textbox"):
+                        self._rollback_textbox.configure(state="normal")
+                        self._rollback_textbox.insert("end", data + "\n")
+                        self._rollback_textbox.see("end")
+                        self._rollback_textbox.configure(state="disabled")
+                elif kind == "rollback_done":
+                    self.data["_rollback_running"] = False
+                    self.data["complete_state"] = "rolled_back"
+                    self.after(500, lambda: self.show_page(self.current_page))
+                    return
+        except queue.Empty:
+            pass
+
+        if self.data.get("_rollback_running"):
+            self.after(100, self._check_rollback_progress)
 
     def _copy_share_text(self):
         self.clipboard_clear()

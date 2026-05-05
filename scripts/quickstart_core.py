@@ -1480,8 +1480,14 @@ def get_auth_token(profile_name: str) -> str:
     return json.loads(result.stdout)["access_token"]
 
 
-def run_sql_statement(statement: str, token: str, host: str, warehouse_id: str) -> dict:
-    """Execute SQL via REST API."""
+def run_sql_statement(
+    statement: str, token: str, host: str, warehouse_id: str, silent: bool = False
+) -> dict:
+    """Execute SQL via REST API.
+
+    silent=True: suppress error logging. Use this when a SQL failure is an
+    expected/intentional probe (e.g., DESCRIBE TABLE to test existence).
+    """
     import urllib.request
     import urllib.error
     payload = json.dumps({
@@ -1498,16 +1504,18 @@ def run_sql_statement(statement: str, token: str, host: str, warehouse_id: str) 
         with urllib.request.urlopen(req, timeout=120) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         state = data.get("status", {}).get("state", "UNKNOWN")
-        if state == "FAILED":
+        if state == "FAILED" and not silent:
             err = data.get("status", {}).get("error", {}).get("message", "Unknown error")
             print_error(f"SQL failed: {err}")
         return data
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8")
-        print_error(f"SQL execution error: HTTP {e.code}: {body[:300]}")
+        if not silent:
+            print_error(f"SQL execution error: HTTP {e.code}: {body[:300]}")
         return {"status": {"state": "FAILED"}}
     except Exception as e:
-        print_error(f"SQL execution error: {e}")
+        if not silent:
+            print_error(f"SQL execution error: {e}")
         return {"status": {"state": "FAILED"}}
 
 
@@ -1639,6 +1647,10 @@ except ImportError:
         return False
 
     # 3. Submit one-time serverless run
+    # Serverless 環境 client version の選択:
+    #   - "1" (2024-03) は Free Edition 等の新しいワークスペースで未サポート
+    #     ("Workspace doesn't support Client-1 channel for REPL" エラー)
+    #   - "2" (2024-11) は広く互換性があり、3 年サポート (2027 年まで)
     submit_result = api_post("/api/2.0/jobs/runs/submit", token, host, {
         "run_name": "quickstart_trace_setup",
         "tasks": [{
@@ -1649,7 +1661,7 @@ except ImportError:
         "environments": [{
             "environment_key": "default",
             "spec": {
-                "client": "1",
+                "client": "2",
                 "dependencies": ["mlflow"],
             },
         }],
@@ -1707,8 +1719,49 @@ except ImportError:
         return True
     else:
         state_msg = run_data.get("state", {}).get("state_message", "")
-        print_error(t(f"実行失敗 (state={final_state}): {state_msg[:200]}",
-                       f"Run failed (state={final_state}): {state_msg[:200]}"))
+        # Pull task-level error from run output for a more informative message
+        task_error = ""
+        try:
+            tasks = run_data.get("tasks", [])
+            if tasks:
+                task_run_id = tasks[0].get("run_id")
+                if task_run_id:
+                    out = api_get(
+                        f"/api/2.0/jobs/runs/get-output?run_id={task_run_id}", token, host
+                    )
+                    task_error = (out.get("error") or "") if isinstance(out, dict) else ""
+        except Exception:
+            pass
+        combined = task_error or state_msg
+
+        # Recognise the "default storage catalog" limitation (Free Edition / shared
+        # default storage) and surface a specific, actionable message.
+        if (
+            "default storage" in combined.lower()
+            or "Unsupported table kind" in combined
+            or "tables created in default storage" in combined.lower()
+        ):
+            print_error(t(
+                "トレーステーブルの自動作成に失敗しました。\n"
+                "  原因: このカタログのストレージはワークスペース既定の共有ストレージで、\n"
+                "        MLflow トレースの Delta Table 出力先としてサポートされていません\n"
+                "        （Databricks 側の制約。Free Edition および外部ロケーション未設定の\n"
+                "         ワークスペースで発生します）。\n"
+                "  対処: 1) 外部ロケーションが設定されたカタログを使う\n"
+                "        2) もしくはトレース送信先を MLflow Experiment（既定）にする",
+                "Trace table auto-creation failed.\n"
+                "  Reason: This catalog uses workspace default storage, which is\n"
+                "          not supported as MLflow trace Delta Table destination\n"
+                "          (Databricks platform constraint; affects Free Edition\n"
+                "          and workspaces without external locations configured).\n"
+                "  Fix:    1) Use a catalog backed by an external location, or\n"
+                "          2) Set trace destination to MLflow Experiment (default)",
+            ))
+        else:
+            print_error(t(
+                f"トレーステーブル自動作成に失敗 (state={final_state}): {combined[:300]}",
+                f"Trace table auto-creation failed (state={final_state}): {combined[:300]}"
+            ))
         return False
 
 
@@ -1716,35 +1769,60 @@ except ImportError:
 
 
 def select_vs_endpoint_interactive(token: str, host: str) -> str:
-    """List Vector Search endpoints and let user select one. Returns endpoint name."""
+    """List Vector Search endpoints, or offer to create a new one.
+
+    Returns the endpoint name (existing or newly created).
+    """
     print_step(t("Vector Search エンドポイントの選択...", "Selecting Vector Search endpoint..."))
     ep_data = api_get("/api/2.0/vector-search/endpoints", token, host)
-    endpoints = ep_data.get("endpoints", [])
-    if not endpoints:
-        print_error(t("利用可能な Vector Search エンドポイントがありません。",
-                       "No Vector Search endpoints available."))
-        print(t("  Databricks UI の Compute > Vector Search > Create Endpoint から作成してください。",
-                 "  Create one from Databricks UI: Compute > Vector Search > Create Endpoint."))
-        # Fall back to manual input
-        name = input(t("\n  エンドポイント名を手動入力（スキップする場合は空Enter）: ",
-                        "\n  Enter endpoint name manually (or press Enter to skip): ")).strip()
-        return name
+    endpoints = ep_data.get("endpoints", []) if isinstance(ep_data, dict) else []
 
     # Sort: ONLINE first, then by name
     state_order = {"ONLINE": 0, "PROVISIONING": 1}
     endpoints.sort(key=lambda e: (state_order.get(e.get("endpoint_status", {}).get("state", ""), 9),
                                    e.get("name", "")))
 
-    print(t("  利用可能な Vector Search エンドポイント:",
-             "  Available Vector Search endpoints:"))
-    for i, ep in enumerate(endpoints, 1):
-        name = ep.get("name", "?")
-        state = ep.get("endpoint_status", {}).get("state", "UNKNOWN")
-        marker = " [ONLINE]" if state == "ONLINE" else f" [{state}]"
-        print(f"    {i}. {name}{marker}")
+    print()
+    print(t("  オプション:", "  Options:"))
+    print(t("    [N] 新規作成（タイプ STANDARD。作成完了まで 10〜15 分かかります）",
+            "    [N] Create new (type STANDARD. Provisioning takes 10-15 min)"))
+    if endpoints:
+        print(t("    既存のエンドポイントから番号で選択:",
+                "    Or pick an existing endpoint by number:"))
+        for i, ep in enumerate(endpoints, 1):
+            name = ep.get("name", "?")
+            state = ep.get("endpoint_status", {}).get("state", "UNKNOWN")
+            marker = " [ONLINE]" if state == "ONLINE" else f" [{state}]"
+            print(f"      {i}. {name}{marker}")
+    else:
+        print(t("    （既存のエンドポイントは見つかりませんでした）",
+                "    (No existing endpoints found)"))
 
+    default_choice = "1" if endpoints else "N"
     while True:
-        choice = input(t("\n  番号で選択 [1]: ", "\n  Select by number [1]: ")).strip() or "1"
+        choice = input(t(f"\n  選択 [{default_choice}]: ",
+                          f"\n  Selection [{default_choice}]: ")).strip() or default_choice
+        if choice.lower() == "n":
+            new_name = input(t("    新規エンドポイント名を入力 [freshmart-vs-endpoint]: ",
+                                "    Enter new endpoint name [freshmart-vs-endpoint]: ")).strip() \
+                or "freshmart-vs-endpoint"
+            print(t(f"\n  ⏳ '{new_name}' を作成中... 10〜15 分かかるためコーヒーブレイクを推奨します。",
+                    f"\n  ⏳ Creating '{new_name}'... This takes 10-15 min — coffee break time."))
+            result = create_vs_endpoint_new(token, host, new_name)
+            if "error" in result:
+                print_error(t(f"作成失敗: {result['error'][:200]}",
+                               f"Creation failed: {result['error'][:200]}"))
+                continue
+            print(t("  Provisioning 中... ONLINE になるまで待機します。",
+                    "  Provisioning... waiting until ONLINE."))
+            ok = wait_for_vs_endpoint_ready(token, host, new_name, timeout_sec=1500)
+            if ok:
+                print_success(t(f"VS エンドポイント作成完了: {new_name}",
+                                 f"VS endpoint created: {new_name}"))
+            else:
+                print(t(f"  ⚠ タイムアウト（後続処理で再確認されます）: {new_name}",
+                         f"  ⚠ Timeout (will be re-checked later): {new_name}"))
+            return new_name
         try:
             idx = int(choice) - 1
             if 0 <= idx < len(endpoints):
@@ -1755,48 +1833,90 @@ def select_vs_endpoint_interactive(token: str, host: str) -> str:
                 return name
         except ValueError:
             pass
-        print(t("  無効な選択です。もう一度入力してください。",
-                 "  Invalid selection. Please try again."))
+        print(t("  無効な選択です。", "  Invalid selection."))
 
 
-def select_warehouse_interactive(profile_name: str) -> tuple[str, str]:
-    """List warehouses and let user select one. Returns (warehouse_id, warehouse_name)."""
+def select_warehouse_interactive(
+    profile_name: str, token: str = "", host: str = "", user: str = ""
+) -> tuple[str, str]:
+    """List warehouses with CAN_USE+ permission, or offer to create a new one.
+
+    Returns (warehouse_id, warehouse_name).
+    """
     print_step(t("SQL ウェアハウスの選択...", "Selecting SQL warehouse..."))
-    result = run_command(
-        ["databricks", "warehouses", "list", "-p", profile_name, "-o", "json"],
-        check=True,
-    )
-    warehouses = json.loads(result.stdout)
-    if not warehouses:
-        print_error(t("利用可能な SQL ウェアハウスがありません。",
-                       "No SQL warehouses available."))
-        sys.exit(1)
+    print(t("  使用権限のあるウェアハウスを検索中（少々お待ちください）...",
+            "  Searching for warehouses you can use (this may take a moment)..."))
 
-    # Sort: RUNNING first
-    warehouses.sort(key=lambda w: (0 if w.get("state") == "RUNNING" else 1, w.get("name", "")))
+    if token and host and user:
+        warehouses = filter_usable_warehouses(profile_name, token, host, user)
+    else:
+        # Fallback: list all visible warehouses
+        result = run_command(
+            ["databricks", "warehouses", "list", "-p", profile_name, "-o", "json"],
+            check=False,
+        )
+        warehouses = (
+            json.loads(result.stdout)
+            if result.returncode == 0 and result.stdout.strip() else []
+        )
+        warehouses.sort(
+            key=lambda w: (0 if w.get("state") == "RUNNING" else 1, w.get("name", ""))
+        )
 
-    print(t("  利用可能なウェアハウス:", "  Available warehouses:"))
-    for i, w in enumerate(warehouses, 1):
-        state = w.get("state", "UNKNOWN")
-        name = w.get("name", "?")
-        wid = w.get("id", "?")
-        marker = " [RUNNING]" if state == "RUNNING" else f" [{state}]"
-        print(f"    {i}. {name} ({wid}){marker}")
+    print()
+    print(t("  オプション:", "  Options:"))
+    print(t("    [N] 新規作成（Serverless Pro X-Small、自動停止 60 分。作成 1〜2 分）",
+            "    [N] Create new (Serverless Pro X-Small, auto-stop 60min. Takes 1-2 min)"))
+    if warehouses:
+        print(t("    既存のウェアハウスから番号で選択（使用権限あり）:",
+                "    Or pick an existing warehouse by number (you have CAN_USE+):"))
+        for i, w in enumerate(warehouses, 1):
+            state = w.get("state", "UNKNOWN")
+            name = w.get("name", "?")
+            wid = w.get("id", "?")
+            perm = w.get("_user_permission", "")
+            marker = f" [{state}]" + (f" [{perm}]" if perm else "")
+            print(f"      {i}. {name} ({wid}){marker}")
+    else:
+        print(t("    （使用権限のある既存ウェアハウスは見つかりませんでした）",
+                "    (No existing warehouses found where you have CAN_USE permission)"))
 
+    default_choice = "1" if warehouses else "N"
     while True:
-        choice = input(t("\n  番号で選択 [1]: ", "\n  Select by number [1]: ")).strip() or "1"
+        choice = input(t(f"\n  選択 [{default_choice}]: ",
+                          f"\n  Selection [{default_choice}]: ")).strip() or default_choice
+        if choice.lower() == "n":
+            new_name = input(t("    新規ウェアハウス名を入力 [freshmart-warehouse]: ",
+                                "    Enter new warehouse name [freshmart-warehouse]: ")).strip() \
+                or "freshmart-warehouse"
+            print(t(f"\n  ウェアハウス '{new_name}' を作成中...",
+                    f"\n  Creating warehouse '{new_name}'..."))
+            if not token or not host:
+                print_error(t("token / host が未設定のため作成できません。",
+                               "Cannot create: token / host not set."))
+                continue
+            result = create_sql_warehouse(token, host, new_name)
+            if "error" in result:
+                print_error(t(f"作成失敗: {result['error'][:200]}",
+                               f"Creation failed: {result['error'][:200]}"))
+                continue
+            wid = result.get("id", "")
+            print_success(t(f"ウェアハウス作成完了: {new_name} ({wid})",
+                             f"Warehouse created: {new_name} ({wid})"))
+            print(t("  起動を待機中（最大 5 分）...", "  Waiting for startup (up to 5 min)..."))
+            wait_for_warehouse_ready(profile_name, wid, timeout_sec=300)
+            return wid, new_name
         try:
             idx = int(choice) - 1
             if 0 <= idx < len(warehouses):
                 selected = warehouses[idx]
                 wid = selected["id"]
-                wname = selected["name"]
+                wname = selected.get("name", "?")
                 print_success(f"Warehouse: {wname} ({wid})")
                 return wid, wname
         except ValueError:
             pass
-        print(t("  無効な選択です。もう一度入力してください。",
-                 "  Invalid selection. Please try again."))
+        print(t("  無効な選択です。", "  Invalid selection."))
 
 
 # ── Data & resource creation ─────────────────────────────────────────
@@ -1837,11 +1957,15 @@ def create_catalog_schema(token: str, host: str, warehouse_id: str, catalog: str
 
 
 def check_tables_exist(token: str, host: str, warehouse_id: str, catalog: str, schema: str) -> bool:
-    """全6テーブルと policy_docs_chunked が存在するかチェック。"""
+    """全6テーブルと policy_docs_chunked が存在するかチェック。
+
+    存在しないのは想定内なので silent=True で SQL エラーログを抑制する。
+    """
     required_tables = ["customers", "products", "stores", "transactions", "transaction_items", "payment_history"]
     for table in required_tables:
         data = run_sql_statement(
-            f"DESCRIBE TABLE `{catalog}`.`{schema}`.`{table}`", token, host, warehouse_id
+            f"DESCRIBE TABLE `{catalog}`.`{schema}`.`{table}`",
+            token, host, warehouse_id, silent=True,
         )
         if data.get("status", {}).get("state") not in ("SUCCEEDED", "CLOSED"):
             return False
@@ -1849,16 +1973,21 @@ def check_tables_exist(token: str, host: str, warehouse_id: str, catalog: str, s
 
 
 def check_chunked_table_exists(token: str, host: str, warehouse_id: str, catalog: str, schema: str) -> bool:
-    """policy_docs_chunked テーブルが存在するかチェック。"""
+    """policy_docs_chunked テーブルが存在するかチェック。
+
+    存在しないのは想定内なので silent=True でエラーログを抑制する。
+    """
     data = run_sql_statement(
-        f"DESCRIBE TABLE `{catalog}`.`{schema}`.policy_docs_chunked", token, host, warehouse_id
+        f"DESCRIBE TABLE `{catalog}`.`{schema}`.policy_docs_chunked",
+        token, host, warehouse_id, silent=True,
     )
     return data.get("status", {}).get("state") in ("SUCCEEDED", "CLOSED")
 
 
 def generate_data(profile_name: str, warehouse_id: str, catalog: str, schema: str, token: str = "", host: str = ""):
     """Generate structured data and chunked policy docs."""
-    data_dir = Path(__file__).parent.parent.parent / "data"
+    # scripts/quickstart_core.py から見て、data/ はリポ root にある
+    data_dir = Path(__file__).parent.parent / "data"
     env = os.environ.copy()
     env["CATALOG"] = catalog
     env["SCHEMA"] = schema
@@ -1887,9 +2016,10 @@ def generate_data(profile_name: str, warehouse_id: str, catalog: str, schema: st
                     print_success(t("ポリシー文書チャンク生成完了",
                                      "Policy document chunk generation complete"))
                 else:
-                    print_error(t(f"チャンク生成に失敗: {result.stderr[-300:]}",
-                                   f"Chunk generation failed: {result.stderr[-300:]}"))
-                    sys.exit(1)
+                    err_detail = result.stderr[-300:] if result.stderr else ""
+                    print_error(t(f"チャンク生成に失敗: {err_detail}",
+                                   f"Chunk generation failed: {err_detail}"))
+                    raise RuntimeError(f"Chunk generation failed: {err_detail}")
                 return
 
     # Structured data
@@ -1905,9 +2035,10 @@ def generate_data(profile_name: str, warehouse_id: str, catalog: str, schema: st
         print_success(t("構造化データ生成完了",
                          "Structured data generation complete"))
     else:
-        print_error(t(f"構造化データ生成に失敗: {result.stderr[-300:]}",
-                       f"Structured data generation failed: {result.stderr[-300:]}"))
-        sys.exit(1)
+        err_detail = result.stderr[-300:] if result.stderr else ""
+        print_error(t(f"構造化データ生成に失敗: {err_detail}",
+                       f"Structured data generation failed: {err_detail}"))
+        raise RuntimeError(f"Structured data generation failed: {err_detail}")
 
     # Chunked policy docs
     print_step(t("ポリシー文書のチャンク生成...",
@@ -1921,9 +2052,10 @@ def generate_data(profile_name: str, warehouse_id: str, catalog: str, schema: st
         print_success(t("ポリシー文書チャンク生成完了",
                          "Policy document chunk generation complete"))
     else:
-        print_error(t(f"ポリシー文書チャンク生成に失敗: {result.stderr[-300:]}",
-                       f"Policy document chunk generation failed: {result.stderr[-300:]}"))
-        sys.exit(1)
+        err_detail = result.stderr[-300:] if result.stderr else ""
+        print_error(t(f"ポリシー文書チャンク生成に失敗: {err_detail}",
+                       f"Policy document chunk generation failed: {err_detail}"))
+        raise RuntimeError(f"Policy document chunk generation failed: {err_detail}")
 
 
 def enable_cdf(token: str, host: str, warehouse_id: str, catalog: str, schema: str):
@@ -2203,3 +2335,339 @@ def init_lakebase_tables() -> bool:
         print(t("  アプリ初回起動後に grant-sp-permissions を再実行してください。",
                  "  Run grant-sp-permissions again after the first app startup."))
         return False
+
+
+# ── Permission-aware resource filtering & creation ───────────────────
+
+
+DEFAULT_LLM_ENDPOINT = "databricks-claude-sonnet-4-6"
+
+
+def list_chat_models(token: str, host: str) -> list[dict]:
+    """Return READY chat-task FM API endpoints in the workspace.
+
+    Filters /api/2.0/serving-endpoints by:
+      - task == "llm/v1/chat"
+      - state.ready == "READY"
+    Sorted alphabetically by name.
+    """
+    result = api_get("/api/2.0/serving-endpoints", token, host)
+    eps = result.get("endpoints", []) if isinstance(result, dict) else []
+    chat = [
+        ep for ep in eps
+        if ep.get("task") == "llm/v1/chat"
+        and ep.get("state", {}).get("ready") == "READY"
+    ]
+    chat.sort(key=lambda e: e.get("name", ""))
+    return chat
+
+
+def select_llm_endpoint_interactive(
+    token: str, host: str, default: str = DEFAULT_LLM_ENDPOINT
+) -> str:
+    """Show available chat models and let the user pick one.
+
+    Default is highlighted with ★ but the user must explicitly confirm
+    (no implicit fallback if the default is missing).
+    """
+    print_step(t("LLM エンドポイントの選択...",
+                  "Selecting LLM endpoint..."))
+    models = list_chat_models(token, host)
+    if not models:
+        print_error(t(
+            "利用可能なチャット用 LLM エンドポイントが見つかりません。\n"
+            "ワークスペースで Foundation Model API が有効か確認してください。",
+            "No chat-task LLM endpoints available.\n"
+            "Please verify Foundation Model API is enabled in your workspace.",
+        ))
+        manual = input(t("\n  エンドポイント名を手動入力 [{0}]: ".format(default),
+                          "\n  Enter endpoint name manually [{0}]: ".format(default))).strip()
+        return manual or default
+
+    names = [m.get("name", "") for m in models if m.get("name")]
+    print()
+    print(t("  利用可能なチャット LLM エンドポイント:",
+            "  Available chat LLM endpoints:"))
+    default_idx = -1
+    for i, name in enumerate(names, 1):
+        marker = " ★ (推奨デフォルト)" if name == default else ""
+        if name == default:
+            default_idx = i
+        print(f"    {i}. {name}{marker}")
+
+    if default_idx == -1:
+        print(t(f"\n  ⚠ 推奨デフォルト ({default}) はこのワークスペースにありません。",
+                f"\n  ⚠ Recommended default ({default}) is not available in this workspace."))
+        default_choice = "1"
+    else:
+        default_choice = str(default_idx)
+
+    while True:
+        choice = input(t(f"\n  番号で選択 [{default_choice}]: ",
+                          f"\n  Select by number [{default_choice}]: ")).strip() or default_choice
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(names):
+                selected = names[idx]
+                print_success(f"LLM endpoint: {selected}")
+                return selected
+        except ValueError:
+            pass
+        print(t("  無効な選択です。", "  Invalid selection."))
+
+
+def select_catalog_interactive(
+    token: str, host: str, user: str, default: str = ""
+) -> str:
+    """Let the user select a catalog from those they have CREATE_SCHEMA on,
+    or enter a name to create a new one."""
+    print_step(t("カタログの選択...", "Selecting catalog..."))
+    print(t("  書き込み権限のあるカタログを検索中（少々お待ちください）...",
+            "  Searching for catalogs you can write to (this may take a moment)..."))
+    writable = filter_writable_catalogs(token, host, user)
+    names = [c.get("name", "") for c in writable if c.get("name")]
+
+    print()
+    print(t("  オプション:", "  Options:"))
+    print(t("    [N] 新しいカタログを作成", "    [N] Create a new catalog"))
+    if names:
+        print(t("    既存のカタログから番号で選択（書き込み権限あり）:",
+                "    Or pick an existing catalog by number (you have write access):"))
+        for i, name in enumerate(names, 1):
+            marker = " ★" if name == default else ""
+            print(f"      {i}. {name}{marker}")
+    else:
+        print(t("    （書き込み権限のある既存カタログは見つかりませんでした）",
+                "    (No existing catalogs found where you have write access)"))
+
+    default_choice = (
+        "N" if not names
+        else (str(names.index(default) + 1) if default in names else "1")
+    )
+    while True:
+        choice = input(t(f"\n  選択 [{default_choice}]: ",
+                          f"\n  Selection [{default_choice}]: ")).strip() or default_choice
+        if choice.lower() == "n":
+            new_name = input(t("    新規カタログ名を入力: ",
+                                "    Enter new catalog name: ")).strip()
+            if new_name:
+                return new_name
+            print(t("    名前が必要です。", "    A name is required."))
+            continue
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(names):
+                return names[idx]
+        except ValueError:
+            pass
+        print(t("  無効な選択です。", "  Invalid selection."))
+
+
+def get_effective_uc_permissions(
+    token: str, host: str, securable_type: str, full_name: str, principal: str = None
+) -> list[str]:
+    """Get effective UC permissions for a securable. Returns list of privilege names.
+
+    securable_type: 'catalog', 'schema', 'table', 'function', etc.
+    full_name: name of the securable (e.g., catalog name, or 'cat.schema')
+    principal: user email or SP application ID. If None, returns all assignments.
+    """
+    import urllib.parse
+    path = f"/api/2.1/unity-catalog/effective-permissions/{securable_type}/{full_name}"
+    if principal:
+        path += f"?principal={urllib.parse.quote(principal)}"
+    result = api_get(path, token, host)
+    if "error" in result:
+        return []
+    privs: list[str] = []
+    for assignment in result.get("privilege_assignments", []):
+        for p in assignment.get("privileges", []):
+            name = p.get("privilege") if isinstance(p, dict) else p
+            if name:
+                privs.append(name)
+    return privs
+
+
+def filter_writable_catalogs(
+    token: str, host: str, user: str, max_workers: int = 8
+) -> list[dict]:
+    """Return catalogs where the user can create a schema.
+
+    Filters by the CREATE_SCHEMA effective permission. Catalog ownership and
+    ALL_PRIVILEGES are also reflected as CREATE_SCHEMA in effective permissions.
+    Permission checks are issued in parallel.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    result = api_get("/api/2.1/unity-catalog/catalogs", token, host)
+    catalogs = result.get("catalogs", []) if isinstance(result, dict) else []
+    if not catalogs:
+        return []
+
+    def _check(cat: dict) -> dict | None:
+        name = cat.get("name", "")
+        if not name:
+            return None
+        privs = get_effective_uc_permissions(token, host, "catalog", name, user)
+        if "CREATE_SCHEMA" in privs:
+            return cat
+        return None
+
+    writable: list[dict] = []
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        for r in ex.map(_check, catalogs):
+            if r is not None:
+                writable.append(r)
+    writable.sort(key=lambda c: c.get("name", ""))
+    return writable
+
+
+def get_warehouse_user_permission(
+    token: str, host: str, warehouse_id: str, user: str
+) -> str | None:
+    """Return the user's effective permission on a SQL warehouse, or None.
+
+    Returns one of: "IS_OWNER", "CAN_MANAGE", "CAN_USE", "CAN_VIEW", "CAN_MONITOR".
+    Returns None if the user has no permission entry.
+    """
+    result = api_get(f"/api/2.0/permissions/warehouses/{warehouse_id}", token, host)
+    if "error" in result:
+        return None
+    rank = {
+        "IS_OWNER": 5,
+        "CAN_MANAGE": 4,
+        "CAN_USE": 3,
+        "CAN_MONITOR": 2,
+        "CAN_VIEW": 1,
+    }
+    best: str | None = None
+    user_lc = (user or "").lower()
+    for entry in result.get("access_control_list", []):
+        if (entry.get("user_name") or "").lower() != user_lc:
+            continue
+        for p in entry.get("all_permissions", []):
+            level = p.get("permission_level", "")
+            if level and (best is None or rank.get(level, 0) > rank.get(best, 0)):
+                best = level
+    return best
+
+
+def filter_usable_warehouses(
+    profile_name: str, token: str, host: str, user: str, max_workers: int = 8
+) -> list[dict]:
+    """Return SQL warehouses on which the user has CAN_USE or higher.
+
+    Calls `databricks warehouses list` first, then checks permissions in parallel.
+    Falls back to returning all warehouses if permission API is unavailable.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    try:
+        result = run_command(
+            ["databricks", "warehouses", "list", "-p", profile_name, "-o", "json"],
+            check=False,
+        )
+        if result.returncode != 0:
+            return []
+        warehouses = json.loads(result.stdout) if result.stdout.strip() else []
+    except Exception:
+        return []
+
+    if not warehouses:
+        return []
+
+    rank = {"IS_OWNER": 5, "CAN_MANAGE": 4, "CAN_USE": 3}
+
+    def _check(wh: dict) -> dict | None:
+        wid = wh.get("id", "")
+        if not wid:
+            return None
+        level = get_warehouse_user_permission(token, host, wid, user)
+        if level and rank.get(level, 0) >= 3:  # CAN_USE or higher
+            wh["_user_permission"] = level
+            return wh
+        return None
+
+    usable: list[dict] = []
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        for r in ex.map(_check, warehouses):
+            if r is not None:
+                usable.append(r)
+    usable.sort(key=lambda w: (0 if w.get("state") == "RUNNING" else 1, w.get("name", "")))
+    return usable
+
+
+def create_sql_warehouse(
+    token: str, host: str, name: str,
+    cluster_size: str = "X-Small",
+    warehouse_type: str = "PRO",
+    enable_serverless_compute: bool = True,
+    auto_stop_mins: int = 60,
+) -> dict:
+    """Create a new SQL warehouse via REST API.
+
+    Returns dict with 'id' on success, or {'error': ...} on failure.
+    Defaults: Serverless Pro, X-Small, auto-stop 60min — minimal cost while still
+    fast for demo workloads.
+    """
+    body = {
+        "name": name,
+        "cluster_size": cluster_size,
+        "warehouse_type": warehouse_type,
+        "enable_serverless_compute": enable_serverless_compute,
+        "auto_stop_mins": auto_stop_mins,
+        "min_num_clusters": 1,
+        "max_num_clusters": 1,
+        "channel": {"name": "CHANNEL_NAME_CURRENT"},
+    }
+    return api_post("/api/2.0/sql/warehouses", token, host, body)
+
+
+def create_vs_endpoint_new(
+    token: str, host: str, name: str, endpoint_type: str = "STANDARD"
+) -> dict:
+    """Create a new Vector Search endpoint via REST API.
+
+    Note: endpoint creation typically takes 10-15 minutes to fully provision.
+    Returns dict with 'name' / 'endpoint_status' on success, or {'error': ...}.
+    """
+    body = {"name": name, "endpoint_type": endpoint_type}
+    return api_post("/api/2.0/vector-search/endpoints", token, host, body)
+
+
+def wait_for_vs_endpoint_ready(
+    token: str, host: str, name: str, timeout_sec: int = 1200, poll_sec: int = 30
+) -> bool:
+    """Poll a VS endpoint until ONLINE or timeout. Returns True if ONLINE."""
+    deadline = time.time() + timeout_sec
+    while time.time() < deadline:
+        info = api_get(f"/api/2.0/vector-search/endpoints/{name}", token, host)
+        if "error" not in info:
+            state = info.get("endpoint_status", {}).get("state", "")
+            if state == "ONLINE":
+                return True
+        time.sleep(poll_sec)
+    return False
+
+
+def wait_for_warehouse_ready(
+    profile_name: str, warehouse_id: str, timeout_sec: int = 300, poll_sec: int = 5
+) -> bool:
+    """Poll a warehouse until RUNNING/STARTING completes. Returns True on RUNNING."""
+    deadline = time.time() + timeout_sec
+    while time.time() < deadline:
+        try:
+            result = run_command(
+                ["databricks", "warehouses", "get", warehouse_id, "-p", profile_name, "-o", "json"],
+                check=False,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                state = json.loads(result.stdout).get("state", "")
+                if state == "RUNNING":
+                    return True
+                if state in ("STOPPED", "DELETED"):
+                    return False
+        except Exception:
+            pass
+        time.sleep(poll_sec)
+    return False

@@ -102,7 +102,7 @@ def get_current_time() -> str:
 ############################################
 # Configuration（agent.py と同一）
 ############################################
-LLM_ENDPOINT_NAME = "databricks-claude-sonnet-4-5"
+LLM_ENDPOINT_NAME = os.getenv("LLM_ENDPOINT_NAME", "databricks-claude-sonnet-4-6")
 _LAKEBASE_INSTANCE_NAME_RAW = os.getenv("LAKEBASE_INSTANCE_NAME") or None
 EMBEDDING_ENDPOINT = "databricks-qwen3-embedding-0-6b"
 EMBEDDING_DIMS = 1024

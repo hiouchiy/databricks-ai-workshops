@@ -522,10 +522,11 @@ def retail_tone_appropriateness(*, inputs=None, outputs=None) -> Feedback:
 # 参照:
 #   https://mlflow.org/docs/latest/genai/eval-monitor/running-evaluation/conversation-simulation/
 # ──────────────────────────────────────────────────────────────────────
+_USER_MODEL = os.getenv("LLM_ENDPOINT_NAME", "databricks-claude-sonnet-4-6")
 simulator = ConversationSimulator(
     test_cases=test_cases,
     max_turns=5,
-    user_model="databricks:/databricks-claude-sonnet-4-5",
+    user_model=f"databricks:/{_USER_MODEL}",
 )
 
 # エージェントで@invokeデコレータにより登録されたinvoke関数を取得
