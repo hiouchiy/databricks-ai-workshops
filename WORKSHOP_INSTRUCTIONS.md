@@ -114,7 +114,7 @@ databricks current-user me  # ユーザー名が表示されればOK
 
 ```bash
 git clone https://github.com/hiouchiy/databricks-ai-workshops.git
-cd databricks-ai-workshops/advanced
+cd databricks-ai-workshops
 
 # Python 依存関係のインストール
 uv venv .venv
@@ -925,7 +925,7 @@ databricks current-user me  # Success if your username is displayed
 
 ```bash
 git clone https://github.com/hiouchiy/databricks-ai-workshops.git
-cd databricks-ai-workshops/advanced
+cd databricks-ai-workshops
 
 # Install Python dependencies
 uv venv .venv

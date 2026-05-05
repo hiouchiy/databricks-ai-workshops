@@ -37,7 +37,7 @@ Databricks 上で、リアルタイムデータクエリ・ドキュメント検
 ## プロジェクト構成
 
 ```
-advanced/
+databricks-ai-workshops/
 ├── agent_server/                    # Python エージェントバックエンド
 │   ├── agent.py                     # コアエージェントロジック（LangGraph + MCP ツール）
 │   ├── utils_memory.py              # 7つのメモリツール（取得/保存/削除 + タスク/会話）
@@ -54,7 +54,9 @@ advanced/
 │   └── scripts/                     # DB マイグレーションスクリプト
 │
 ├── scripts/                         # セットアップ・ユーティリティスクリプト
-│   ├── quickstart.py                # 対話式セットアップウィザード
+│   ├── quickstart.py                # CUI 対話式セットアップウィザード
+│   ├── quickstart_gui.py            # GUI ウィザード（CustomTkinter）
+│   ├── quickstart_core.py           # CUI/GUI 共通の業務ロジック
 │   ├── start_app.py                 # フロントエンド + バックエンドを同時起動
 │   ├── discover_tools.py            # 利用可能な Databricks ツールの検出
 │   ├── grant_sp_permissions.py       # デプロイ後の SP 権限一括付与（UC + Lakebase）
@@ -62,6 +64,8 @@ advanced/
 │   ├── grant_team_access.py          # チームメンバーへのリソース共有
 │   └── register_prompt.py           # 日本語システムプロンプトを Prompt Registry に登録
 │
+├── data/                            # データ生成・チャンク化用スクリプトとポリシー文書
+├── docs/                            # アーキテクチャ図など追加ドキュメント
 ├── .claude/skills/                  # Claude Code 用 AI 開発支援スキル
 ├── databricks.yml                   # Databricks Asset Bundle 設定
 ├── app.yaml                         # Databricks App マニフェスト
@@ -114,7 +118,7 @@ CUI（コマンドライン）版と GUI（デスクトップアプリ）版の2
 ```bash
 # リポジトリをクローン
 git clone https://github.com/hiouchiy/databricks-ai-workshops.git
-cd databricks-ai-workshops/advanced
+cd databricks-ai-workshops
 
 # CUI 版（ターミナルで対話式に実行）
 uv run quickstart
@@ -216,7 +220,7 @@ uv run quickstart --catalog <CATALOG> --schema <SCHEMA> \
 
 ```bash
 # プロジェクトディレクトリで Claude Code を起動
-cd databricks-ai-workshops/advanced
+cd databricks-ai-workshops
 claude
 ```
 
@@ -473,7 +477,7 @@ A **FreshMart Grocery Shopping Assistant** with the following capabilities:
 ## Project Structure
 
 ```
-advanced/
+databricks-ai-workshops/
 ├── agent_server/                    # Python agent backend
 │   ├── agent.py                     # Core agent logic (LangGraph + MCP tools)
 │   ├── utils_memory.py              # 7 memory tools (get/save/delete + task/conversation)
@@ -490,7 +494,9 @@ advanced/
 │   └── scripts/                     # DB migration scripts
 │
 ├── scripts/                         # Setup & utility scripts
-│   ├── quickstart.py                # Interactive setup wizard
+│   ├── quickstart.py                # CUI interactive setup wizard
+│   ├── quickstart_gui.py            # GUI wizard (CustomTkinter)
+│   ├── quickstart_core.py           # Shared business logic for CUI/GUI
 │   ├── start_app.py                 # Starts both frontend + backend
 │   ├── discover_tools.py            # Discovers available Databricks tools
 │   ├── grant_sp_permissions.py       # Post-deploy SP permissions (UC + Lakebase)
@@ -498,6 +504,8 @@ advanced/
 │   ├── grant_team_access.py          # Share resources with team members
 │   └── register_prompt.py           # Register Japanese system prompt to Prompt Registry
 │
+├── data/                            # Data generation / chunking scripts and policy docs
+├── docs/                            # Architecture diagrams and supplementary docs
 ├── .claude/skills/                  # Claude Code skills for AI-assisted development
 ├── databricks.yml                   # Databricks Asset Bundle config
 ├── app.yaml                         # Databricks App manifest
@@ -550,7 +558,7 @@ Both a CUI (command-line) and GUI (desktop app) version are available. They perf
 ```bash
 # Clone the repository
 git clone https://github.com/hiouchiy/databricks-ai-workshops.git
-cd databricks-ai-workshops/advanced
+cd databricks-ai-workshops
 
 # CUI version (interactive terminal wizard)
 uv run quickstart
@@ -650,7 +658,7 @@ If you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code) instal
 
 ```bash
 # Start Claude Code in the project directory
-cd databricks-ai-workshops/advanced
+cd databricks-ai-workshops
 claude
 ```
 

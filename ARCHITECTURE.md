@@ -939,7 +939,7 @@ mlflow.tracing.reset()
 ## ファイル構成と役割
 
 ```
-advanced/
+databricks-ai-workshops/  (リポジトリルート)
 ├── agent_server/
 │   ├── agent.py           ← AI エージェント本体（LangGraph + ツール + プロンプト）
 │   ├── utils_memory.py    ← 7つのメモリツール
@@ -953,11 +953,15 @@ advanced/
 │   └── packages/          ← 共有ライブラリ（認証、DB、AI SDK）
 │
 ├── scripts/
-│   ├── quickstart.py      ← 対話式セットアップウィザード
+│   ├── quickstart.py      ← CUI 対話式セットアップウィザード
+│   ├── quickstart_gui.py  ← GUI ウィザード（CustomTkinter）
+│   ├── quickstart_core.py ← CUI/GUI 共通の業務ロジック
 │   ├── start_app.py       ← フロントエンド + バックエンドの起動管理
 │   ├── cleanup.py         ← リソース一括削除
 │   └── register_prompt.py ← Prompt Registry への登録
 │
+├── data/                  ← データ生成・チャンク化スクリプトとポリシー文書
+├── docs/                  ← アーキテクチャ図など
 ├── app.yaml               ← Databricks Apps の設定（コマンド、環境変数）
 ├── databricks.yml         ← Databricks Asset Bundle の設定（リソース定義）
 ├── workshop_setup.py      ← Databricks ノートブック（SQL/Python セットアップ）
