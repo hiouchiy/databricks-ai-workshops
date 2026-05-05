@@ -2522,13 +2522,34 @@ def filter_writable_catalogs(
     return writable
 
 
+def get_current_user_groups(token: str, host: str) -> set[str]:
+    """Return the set of group display names the current user belongs to.
+
+    Uses the SCIM Me endpoint. Returns lowercase group names.
+    Returns empty set on error (caller should treat as "no groups detected").
+    """
+    result = api_get("/api/2.0/preview/scim/v2/Me", token, host)
+    if "error" in result or not isinstance(result, dict):
+        return set()
+    groups: set[str] = set()
+    for g in result.get("groups", []):
+        display = g.get("display") or g.get("displayName") or ""
+        if display:
+            groups.add(display.lower())
+    return groups
+
+
 def get_warehouse_user_permission(
-    token: str, host: str, warehouse_id: str, user: str
+    token: str, host: str, warehouse_id: str, user: str,
+    user_groups: set[str] | None = None,
 ) -> str | None:
     """Return the user's effective permission on a SQL warehouse, or None.
 
     Returns one of: "IS_OWNER", "CAN_MANAGE", "CAN_USE", "CAN_VIEW", "CAN_MONITOR".
-    Returns None if the user has no permission entry.
+    Returns None if the user has no permission entry — directly or via group.
+
+    user_groups: optional pre-fetched lowercase group names. If None, only
+                 direct user/SP grants are checked.
     """
     result = api_get(f"/api/2.0/permissions/warehouses/{warehouse_id}", token, host)
     if "error" in result:
@@ -2542,8 +2563,17 @@ def get_warehouse_user_permission(
     }
     best: str | None = None
     user_lc = (user or "").lower()
+    user_groups = user_groups or set()
     for entry in result.get("access_control_list", []):
-        if (entry.get("user_name") or "").lower() != user_lc:
+        # Match by direct user, service principal, or group membership
+        matched = False
+        if (entry.get("user_name") or "").lower() == user_lc and user_lc:
+            matched = True
+        elif (entry.get("service_principal_name") or "").lower() == user_lc and user_lc:
+            matched = True
+        elif (entry.get("group_name") or "").lower() in user_groups:
+            matched = True
+        if not matched:
             continue
         for p in entry.get("all_permissions", []):
             level = p.get("permission_level", "")
@@ -2576,13 +2606,18 @@ def filter_usable_warehouses(
     if not warehouses:
         return []
 
+    # Pre-fetch user's groups so we can check group-based grants too
+    user_groups = get_current_user_groups(token, host)
+
     rank = {"IS_OWNER": 5, "CAN_MANAGE": 4, "CAN_USE": 3}
 
     def _check(wh: dict) -> dict | None:
         wid = wh.get("id", "")
         if not wid:
             return None
-        level = get_warehouse_user_permission(token, host, wid, user)
+        level = get_warehouse_user_permission(
+            token, host, wid, user, user_groups=user_groups,
+        )
         if level and rank.get(level, 0) >= 3:  # CAN_USE or higher
             wh["_user_permission"] = level
             return wh
@@ -2593,6 +2628,17 @@ def filter_usable_warehouses(
         for r in ex.map(_check, warehouses):
             if r is not None:
                 usable.append(r)
+
+    # Fallback: if no direct/group grant was detected on any warehouse,
+    # the user likely has access via a path we can't see (workspace admin,
+    # nested group, account-level group, etc.). Trust the warehouses-list
+    # API (which only returns visible warehouses) and include them all
+    # without a permission label.
+    if not usable and warehouses:
+        for wh in warehouses:
+            wh["_user_permission"] = "(unverified)"
+        usable = warehouses
+
     usable.sort(key=lambda w: (0 if w.get("state") == "RUNNING" else 1, w.get("name", "")))
     return usable
 
