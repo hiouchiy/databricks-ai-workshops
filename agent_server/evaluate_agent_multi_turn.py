@@ -28,8 +28,18 @@ _eval_exp_id = os.environ.get("MLFLOW_EVAL_EXPERIMENT_ID")
 if _eval_exp_id:
     os.environ["MLFLOW_EXPERIMENT_ID"] = _eval_exp_id
 
-# 評価時は Delta Table への送信を無効化
-# 1. 環境変数を消す（agent.py のインポート時に set_destination が呼ばれないようにする）
+# 評価時は Delta Table（UC Schema）への送信を無効化し、MLflow Experiment に強制送信する。
+#
+# 背景：本評価スクリプトは ConversationSimulator を使用するが、Simulator が遅延 import する
+# litellm が __init__.py で load_dotenv() を自動実行する。このため env var を pop しても、
+# litellm import のタイミングで .env から MLFLOW_TRACING_DESTINATION が **復活** してしまう。
+# 結果として MLflow が UC Schema 宛ての V4 trace_id を生成し、_fetch_traces() で
+# batch_get_traces が "Annotation table is required for V2 schema traces" で失敗する。
+#
+# 解決策：MlflowExperimentLocation を _global_value として明示的に set_destination することで、
+# UserTraceDestinationRegistry.get() が env var フォールバックを参照しなくなる
+# （registry の get() は _global_value がある限り env var を見ない）。
+# これで litellm が env を復活させても trace は MLflow Experiment（V3）に送信される。
 os.environ.pop("MLFLOW_TRACING_DESTINATION", None)
 
 logging.getLogger("mlflow.utils.autologging_utils").setLevel(logging.ERROR)
@@ -37,8 +47,13 @@ logging.getLogger("mlflow.utils.autologging_utils").setLevel(logging.ERROR)
 # @invokeデコレータで登録された関数を見つけるために、agentモジュールをインポートする必要がある
 from agent_server import agent  # noqa: F401
 
-# 2. agent.py のインポートで set_destination が呼ばれた場合にリセット
+# agent.py のインポートで set_destination が呼ばれた場合にリセット
 mlflow.tracing.reset()
+
+# 評価用 Experiment を明示的に trace destination に設定（litellm 経由の env 復活対策）
+if _eval_exp_id:
+    from mlflow.entities.trace_location import MlflowExperimentLocation
+    mlflow.tracing.set_destination(MlflowExperimentLocation(experiment_id=_eval_exp_id))
 
 # 評価データセットを作成する
 # 評価に関するドキュメント:

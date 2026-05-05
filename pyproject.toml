@@ -6,24 +6,34 @@ readme = "README.md"
 authors = [
     { name = "Agent Developer", email = "developer@example.com" }
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
+# 依存ライブラリは「ピン止め（==）」する。
+# 理由: AI/エージェント関連 OSS は破壊的変更が頻繁に入り、緩い制約（>=）だと数日〜数週で挙動が変わる。
+# ワークショップではユーザー環境で確実に動くことが最重要なので、確認済みバージョンを固定する。
+# 更新時は uv.lock とセットで再検証してから引き上げる。
+# 検証済み: 2026-05-05（agent-evaluate / agent-evaluate-chat 完走確認）
 dependencies = [
-    "fastapi>=0.129.0",
-    "uvicorn>=0.41.0",
-    "databricks-langchain[memory]>=0.17.0",
-    "databricks-sdk>=0.79.0",
-    "databricks-agents>=1.9.3",
-    "mlflow>=3.10.0",
-    "langgraph>=1.0.9",
-    "langchain-mcp-adapters>=0.2.1",
-    "python-dotenv>=1.2.1",
-    "uuid-utils>=0.9.0",
-    "streamlit>=1.45.0",
-    "customtkinter>=5.2.0",
+    "fastapi==0.135.1",
+    "uvicorn==0.42.0",
+    "databricks-langchain[memory]==0.17.0",
+    "databricks-sdk==0.102.0",
+    "databricks-agents==1.9.3",
+    "mlflow==3.10.1",
+    "langgraph==1.1.3",
+    "langchain==1.2.13",
+    "langchain-core==1.2.20",
+    "langchain-mcp-adapters==0.2.2",
+    "litellm==1.82.6",
+    "python-dotenv==1.2.2",
+    "uuid-utils==0.14.1",
+    "streamlit==1.56.0",
+    "customtkinter==5.2.2",
+    "opentelemetry-api==1.40.0",
+    "opentelemetry-sdk==1.40.0",
 ]
 
 [build-system]
-requires = ["setuptools>=75.0", "wheel"]
+requires = ["setuptools==82.0.1", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
@@ -31,7 +41,7 @@ include = ["agent_server*", "scripts*"]
 
 [dependency-groups]
 dev = [
-    "pytest>=9.0.2",
+    "pytest==9.0.2",
 ]
 
 
