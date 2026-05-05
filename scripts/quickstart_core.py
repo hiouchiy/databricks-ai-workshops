@@ -706,8 +706,13 @@ def get_workspace_client(profile_name: str):
         return None
 
 
-def create_lakebase_instance(profile_name: str) -> dict:
+def create_lakebase_instance(profile_name: str, default_name: str | None = None) -> dict:
     """Create a new Lakebase autoscaling instance (project + branch).
+
+    Args:
+        profile_name: Databricks CLI profile.
+        default_name: 対話プロンプトで Enter を押したときに使われるデフォルト値。
+            未指定なら入力必須。
 
     Returns:
         Dict with {"type": "autoscaling", "project": str, "branch": str}
@@ -721,16 +726,34 @@ def create_lakebase_instance(profile_name: str) -> dict:
     from databricks.sdk.service.postgres import Branch, BranchSpec, Project, ProjectSpec
 
     while True:
-        name = input(t("新しい Lakebase オートスケーリングプロジェクト名を入力: ",
-                        "Enter a name for the new Lakebase autoscaling project: ")).strip()
+        if default_name:
+            prompt = t(
+                f"新しい Lakebase オートスケーリングプロジェクト名 [Enter で {default_name}]: ",
+                f"Enter a name for the new Lakebase autoscaling project [Enter for {default_name}]: ",
+            )
+        else:
+            prompt = t(
+                "新しい Lakebase オートスケーリングプロジェクト名を入力: ",
+                "Enter a name for the new Lakebase autoscaling project: ",
+            )
+        name = (input(prompt).strip() or default_name or "")
         if not name:
             print(t("  名前を入力してください。", "  Please enter a name."))
             continue
 
-        # 使用可能な文字をチェック（英数字、ハイフン、アンダースコアのみ）
-        if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9_-]*$', name):
-            print_error(t("プロジェクト名には英数字、ハイフン(-)、アンダースコア(_)のみ使用できます。先頭は英数字にしてください。",
-                           "Project name can only contain alphanumeric characters, hyphens (-), and underscores (_). Must start with an alphanumeric character."))
+        # 公式制約: project_id は 1〜63 文字、英小文字 + 数字 + ハイフン、英字始まり。
+        # branch_id = `{project}-branch` も 63 文字以内に収めるため、project は 56 文字までに制限。
+        if len(name) > LAKEBASE_PROJECT_MAX_LENGTH:
+            print_error(t(
+                f"プロジェクト名は {LAKEBASE_PROJECT_MAX_LENGTH} 文字以内にしてください（現在 {len(name)} 文字）。",
+                f"Project name must be ≤ {LAKEBASE_PROJECT_MAX_LENGTH} chars (currently {len(name)}).",
+            ))
+            continue
+        if not re.match(r'^[a-z][a-z0-9-]*[a-z0-9]$', name):
+            print_error(t(
+                "プロジェクト名は英小文字・数字・ハイフンのみ使用できます。先頭は英小文字、末尾は英数字にしてください。",
+                "Project name can only contain lowercase letters, digits, and hyphens. Must start with a lowercase letter and end with an alphanumeric.",
+            ))
             continue
 
         print(t(f"\nLakebase オートスケーリングプロジェクト '{name}' を作成中...",
@@ -805,7 +828,9 @@ def select_lakebase_interactive(profile_name: str) -> dict:
                        "Please enter 1 or 2"))
 
     if choice == "1":
-        return create_lakebase_instance(profile_name)
+        username = get_databricks_username(profile_name)
+        default_proj = compute_default_lakebase_project_name(username)
+        return create_lakebase_instance(profile_name, default_name=default_proj)
 
     # Existing autoscaling instance - ask for project and branch
     project = input(t("\nオートスケーリングプロジェクト名を入力: ",
@@ -1522,6 +1547,44 @@ def compute_default_app_name(username: str, today: str | None = None) -> str:
 def is_valid_app_name(name: str) -> bool:
     """Databricks App 名のバリデーション。"""
     if not name or not (APP_NAME_MIN_LENGTH <= len(name) <= APP_NAME_MAX_LENGTH):
+        return False
+    return bool(re.match(r"^[a-z][a-z0-9-]*[a-z0-9]$", name))
+
+
+# ── Lakebase project / branch 名 ──
+# 公式制約（Lakebase Autoscaling）: 1〜63 文字、英小文字 + 数字 + ハイフン、英字始まり。
+#   出典: docs.databricks.com/.../oltp/projects/limitations
+# プロジェクト名は 56 文字に制限する。"new" モードでは branch_id が `{project}-branch`（+7）で
+# 自動生成されるため、project ≤ 56 にしておけば branch も 63 以内に収まる。
+LAKEBASE_PROJECT_PREFIX = "freshmart-lakebase"
+LAKEBASE_PROJECT_MAX_LENGTH = 56  # branch="{project}-branch" でも 63 以内に収まる
+LAKEBASE_BRANCH_MAX_LENGTH = 63   # API の絶対上限
+
+
+def compute_default_lakebase_project_name(username: str, today: str | None = None) -> str:
+    """`freshmart-lakebase-{user}-{MMDD}` を生成。`{project}-branch` も 63 文字に収まるよう制約。"""
+    if today is None:
+        today = datetime.now().strftime("%Y-%m-%d")
+    mmdd = today.replace("-", "")[4:8]
+    user_part = sanitize_app_name_part(username) or "user"
+    suffix = f"-{mmdd}"
+    base = f"{LAKEBASE_PROJECT_PREFIX}-"
+    budget = LAKEBASE_PROJECT_MAX_LENGTH - len(base) - len(suffix)
+    if len(user_part) > budget:
+        user_part = user_part[:budget].rstrip("-")
+    return f"{base}{user_part}{suffix}"
+
+
+def is_valid_lakebase_project_name(name: str) -> bool:
+    """Lakebase プロジェクト名のバリデーション（branch="{project}-branch" 自動生成も考慮）。"""
+    if not name or len(name) > LAKEBASE_PROJECT_MAX_LENGTH:
+        return False
+    return bool(re.match(r"^[a-z][a-z0-9-]*[a-z0-9]$", name))
+
+
+def is_valid_lakebase_branch_name(name: str) -> bool:
+    """Lakebase ブランチ名のバリデーション。"""
+    if not name or len(name) > LAKEBASE_BRANCH_MAX_LENGTH:
         return False
     return bool(re.match(r"^[a-z][a-z0-9-]*[a-z0-9]$", name))
 

@@ -395,7 +395,7 @@ class QuickstartWizard(customtkinter.CTk):
             )
         return True, ""
 
-    def _validate_lakebase_name(self, name: str) -> tuple[bool, str]:
+    def _validate_lakebase_name(self, name: str, kind: str = "project") -> tuple[bool, str]:
         """Validate a Lakebase project/branch name.
 
         Rules:
@@ -403,10 +403,22 @@ class QuickstartWizard(customtkinter.CTk):
         - Can contain lowercase letters, digits, hyphens
         - Must start with a letter
         - No underscores, uppercase, spaces, or special characters
+        - Length limits:
+          - project: 56 chars (so auto-branch `{project}-branch` fits in 63)
+          - branch:  63 chars (Lakebase API limit)
         """
         import re
         if not name:
             return False, t("名前を入力してください", "Name is required")
+        max_len = (
+            core.LAKEBASE_PROJECT_MAX_LENGTH if kind == "project"
+            else core.LAKEBASE_BRANCH_MAX_LENGTH
+        )
+        if len(name) > max_len:
+            return False, t(
+                f"{max_len} 文字以内にしてください（現在 {len(name)} 文字）",
+                f"Must be ≤ {max_len} chars (currently {len(name)})",
+            )
         if not re.match(r'^[a-z]', name):
             return False, t("先頭は英小文字で始めてください", "Must start with a lowercase letter")
         if not re.match(r'^[a-z0-9-]+$', name):
@@ -1398,13 +1410,17 @@ class QuickstartWizard(customtkinter.CTk):
                 self._lb_fields_frame,
                 text=t("プロジェクト名:", "Project name:"),
             ).pack(anchor="w", pady=(5, 2))
+
+            # ユーザー名 + 日付ベースのデフォルト名を計算
+            username = self.data.get("username", "") or "user"
+            default_proj = self.data.get("lakebase_project") or core.compute_default_lakebase_project_name(username)
+            self.data.setdefault("lakebase_project", default_proj)
+
             self._lb_proj_entry = customtkinter.CTkEntry(
                 self._lb_fields_frame, width=400,
-                placeholder_text="e.g. freshmart-lakebase",
             )
             self._lb_proj_entry.pack(pady=(0, 5))
-            if self.data.get("lakebase_project"):
-                self._lb_proj_entry.insert(0, self.data["lakebase_project"])
+            self._lb_proj_entry.insert(0, default_proj)
 
             self._lb_proj_validation_label = customtkinter.CTkLabel(
                 self._lb_fields_frame, text="", wraplength=400,
@@ -1413,9 +1429,8 @@ class QuickstartWizard(customtkinter.CTk):
 
             self._lb_proj_entry.bind("<KeyRelease>", lambda _: self._on_lb_proj_change())
 
-            # Run initial validation if there's a pre-filled value
-            if self.data.get("lakebase_project"):
-                self._on_lb_proj_change()
+            # 初期値があるので即時バリデーション
+            self._on_lb_proj_change()
 
             customtkinter.CTkLabel(
                 self._lb_fields_frame,
