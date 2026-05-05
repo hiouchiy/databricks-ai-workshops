@@ -247,6 +247,10 @@ class QuickstartWizard(customtkinter.CTk):
             if self.data.get("_warehouse_create_pending"):
                 if hasattr(self, "_wh_new_name_entry"):
                     name = self._wh_new_name_entry.get().strip() or "freshmart-warehouse"
+                    valid, msg = core.validate_sql_warehouse_name(name)
+                    if not valid:
+                        self._show_error(msg)
+                        return False
                     self.data["warehouse_name"] = name
             elif not self.data.get("warehouse_id", "").strip():
                 self._show_error(t(
@@ -255,6 +259,15 @@ class QuickstartWizard(customtkinter.CTk):
                 ))
                 return False
         elif pg == 5:
+            # In "new" mode, validate the user-entered VS endpoint name.
+            if self.data.get("_ep_create_pending") and hasattr(self, "_ep_new_name_entry"):
+                name = self._ep_new_name_entry.get().strip()
+                if name:
+                    valid, msg = core.validate_vs_endpoint_name(name)
+                    if not valid:
+                        self._show_error(msg)
+                        return False
+                    self.data["vs_endpoint"] = name
             if not self.data.get("vs_endpoint", "").strip():
                 # Allow empty with warning
                 pass
@@ -372,28 +385,8 @@ class QuickstartWizard(customtkinter.CTk):
 
     # ── Naming validators ─────────────────────────────────────────────
     def _validate_uc_name(self, name: str) -> tuple[bool, str]:
-        """Validate a Unity Catalog identifier (catalog/schema name).
-
-        Rules:
-        - Must not be empty
-        - Max 255 characters
-        - Can contain letters (including Unicode/Japanese), digits, underscores
-        - Must start with a letter or underscore
-        - No spaces, hyphens, dots, or special characters
-        """
-        import re
-        if not name:
-            return False, t("名前を入力してください", "Name is required")
-        if len(name) > 255:
-            return False, t("255文字以内で入力してください", "Must be 255 characters or fewer")
-        if not re.match(r'^[a-zA-Z_\u3000-\u9fff\uf900-\ufaff]', name):
-            return False, t("先頭は英字またはアンダースコアで始めてください", "Must start with a letter or underscore")
-        if not re.match(r'^[a-zA-Z0-9_\u3000-\u9fff\uf900-\ufaff]+$', name):
-            return False, t(
-                "使用できない文字が含まれています（英数字・アンダースコアのみ）",
-                "Contains invalid characters (only letters, digits, underscores allowed)"
-            )
-        return True, ""
+        """Delegate to core for consistent UC name rules across CLI/GUI."""
+        return core.validate_uc_object_name(name)
 
     def _validate_lakebase_name(self, name: str, kind: str = "project") -> tuple[bool, str]:
         """Validate a Lakebase project/branch name.

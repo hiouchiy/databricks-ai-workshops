@@ -1589,6 +1589,82 @@ def is_valid_lakebase_branch_name(name: str) -> bool:
     return bool(re.match(r"^[a-z][a-z0-9-]*[a-z0-9]$", name))
 
 
+# ── Unity Catalog: Catalog / Schema 名 ──
+# 公式仕様（docs.databricks.com/.../sql/language-manual/sql-ref-names）：
+#   - 全 UC オブジェクト名は最大 255 文字
+#   - 禁則文字: `.`、空白、`/`、ASCII 制御文字（0x00-0x1F）、DEL（0x7F）
+#   - lowercase で保存される
+# ワークショップでは SQL クエリでバッククォート不要にするため、より厳しく
+# 「英数字 + アンダースコア」のみ許可し、上限を 100 文字に制限する（実用範囲）。
+UC_NAME_MAX_LENGTH = 100
+
+
+def validate_uc_object_name(name: str, kind: str = "catalog/schema") -> tuple[bool, str]:
+    """Unity Catalog オブジェクト名（catalog / schema）のバリデーション。
+
+    Returns:
+        (is_valid, error_message). is_valid=True なら error_message は空文字。
+    """
+    if not name:
+        return False, t(f"{kind} 名を入力してください", f"{kind} name is required")
+    if len(name) > UC_NAME_MAX_LENGTH:
+        return False, t(
+            f"{kind} 名は {UC_NAME_MAX_LENGTH} 文字以内にしてください（現在 {len(name)} 文字）",
+            f"{kind} name must be ≤ {UC_NAME_MAX_LENGTH} chars (currently {len(name)})",
+        )
+    if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", name):
+        return False, t(
+            f"{kind} 名は英字またはアンダースコアで始まり、英数字・アンダースコアのみ使用できます",
+            f"{kind} name must start with letter/underscore and contain only alphanumeric/underscore",
+        )
+    return True, ""
+
+
+# ── SQL Warehouse 名 ──
+# 公式に厳密な上限値は文書化されていないが、Databricks UI / API は実質的に
+# 100 文字程度を上限にしている。空白を含む名前は OK だが、
+# ワークショップでは扱いやすさのため英数字 + アンダースコア + ハイフンに制限。
+SQL_WAREHOUSE_NAME_MAX_LENGTH = 100
+
+
+def validate_sql_warehouse_name(name: str) -> tuple[bool, str]:
+    if not name:
+        return False, t("ウェアハウス名を入力してください", "Warehouse name is required")
+    if len(name) > SQL_WAREHOUSE_NAME_MAX_LENGTH:
+        return False, t(
+            f"ウェアハウス名は {SQL_WAREHOUSE_NAME_MAX_LENGTH} 文字以内にしてください（現在 {len(name)} 文字）",
+            f"Warehouse name must be ≤ {SQL_WAREHOUSE_NAME_MAX_LENGTH} chars (currently {len(name)})",
+        )
+    if not re.match(r"^[A-Za-z0-9][A-Za-z0-9_-]*$", name):
+        return False, t(
+            "ウェアハウス名は英数字で始まり、英数字・アンダースコア・ハイフンのみ使用できます",
+            "Warehouse name must start with alphanumeric and contain only alphanumeric/underscore/hyphen",
+        )
+    return True, ""
+
+
+# ── Vector Search Endpoint 名 ──
+# 公式に厳密な上限値は文書化されていないが、Vector Search Index 名と同様に
+# 英数字 + アンダースコアのパターンが推奨される。長さは 100 文字を上限とする。
+VS_ENDPOINT_NAME_MAX_LENGTH = 100
+
+
+def validate_vs_endpoint_name(name: str) -> tuple[bool, str]:
+    if not name:
+        return False, t("エンドポイント名を入力してください", "Endpoint name is required")
+    if len(name) > VS_ENDPOINT_NAME_MAX_LENGTH:
+        return False, t(
+            f"エンドポイント名は {VS_ENDPOINT_NAME_MAX_LENGTH} 文字以内にしてください（現在 {len(name)} 文字）",
+            f"Endpoint name must be ≤ {VS_ENDPOINT_NAME_MAX_LENGTH} chars (currently {len(name)})",
+        )
+    if not re.match(r"^[A-Za-z0-9][A-Za-z0-9_-]*$", name):
+        return False, t(
+            "エンドポイント名は英数字で始まり、英数字・アンダースコア・ハイフンのみ使用できます",
+            "Endpoint name must start with alphanumeric and contain only alphanumeric/underscore/hyphen",
+        )
+    return True, ""
+
+
 def update_databricks_yml_app_name(app_name: str) -> None:
     """databricks.yml の resources.apps.*.name を更新（dev/prod 両方）。
 
@@ -1974,9 +2050,14 @@ def select_vs_endpoint_interactive(token: str, host: str) -> str:
         choice = input(t(f"\n  選択 [{default_choice}]: ",
                           f"\n  Selection [{default_choice}]: ")).strip() or default_choice
         if choice.lower() == "n":
-            new_name = input(t("    新規エンドポイント名を入力 [freshmart-vs-endpoint]: ",
-                                "    Enter new endpoint name [freshmart-vs-endpoint]: ")).strip() \
-                or "freshmart-vs-endpoint"
+            while True:
+                new_name = input(t("    新規エンドポイント名を入力 [freshmart-vs-endpoint]: ",
+                                    "    Enter new endpoint name [freshmart-vs-endpoint]: ")).strip() \
+                    or "freshmart-vs-endpoint"
+                ok, msg = validate_vs_endpoint_name(new_name)
+                if ok:
+                    break
+                print_error(msg)
             print(t(f"\n  ⏳ '{new_name}' を作成中... 10〜15 分かかるためコーヒーブレイクを推奨します。",
                     f"\n  ⏳ Creating '{new_name}'... This takes 10-15 min — coffee break time."))
             result = create_vs_endpoint_new(token, host, new_name)
@@ -2057,9 +2138,14 @@ def select_warehouse_interactive(
         choice = input(t(f"\n  選択 [{default_choice}]: ",
                           f"\n  Selection [{default_choice}]: ")).strip() or default_choice
         if choice.lower() == "n":
-            new_name = input(t("    新規ウェアハウス名を入力 [freshmart-warehouse]: ",
-                                "    Enter new warehouse name [freshmart-warehouse]: ")).strip() \
-                or "freshmart-warehouse"
+            while True:
+                new_name = input(t("    新規ウェアハウス名を入力 [freshmart-warehouse]: ",
+                                    "    Enter new warehouse name [freshmart-warehouse]: ")).strip() \
+                    or "freshmart-warehouse"
+                ok, msg = validate_sql_warehouse_name(new_name)
+                if ok:
+                    break
+                print_error(msg)
             print(t(f"\n  ウェアハウス '{new_name}' を作成中...",
                     f"\n  Creating warehouse '{new_name}'..."))
             if not token or not host:

@@ -83,6 +83,7 @@ from scripts.quickstart_core import (
     is_valid_app_name,
     select_app_name_interactive,
     update_databricks_yml_app_name,
+    validate_uc_object_name,
     create_catalog_schema,
     check_tables_exist,
     check_chunked_table_exists,
@@ -351,8 +352,13 @@ def main():
             print_success(t(f"カタログ: {catalog}", f"Catalog: {catalog}"))
         else:
             default_catalog = username.split("@")[0].replace(".", "_")
-            catalog = input(t(f"  カタログ名 [{default_catalog}]: ",
-                               f"  Catalog name [{default_catalog}]: ")).strip() or default_catalog
+            while True:
+                catalog = input(t(f"  カタログ名 [{default_catalog}]: ",
+                                   f"  Catalog name [{default_catalog}]: ")).strip() or default_catalog
+                valid, msg = validate_uc_object_name(catalog, kind="catalog")
+                if valid:
+                    break
+                print_error(msg)
 
         # Schema
         if args.schema:
@@ -360,8 +366,13 @@ def main():
             print_success(t(f"スキーマ: {schema}", f"Schema: {schema}"))
         else:
             default_schema = "retail_agent"
-            schema = input(t(f"  スキーマ名 [{default_schema}]: ",
-                              f"  Schema name [{default_schema}]: ")).strip() or default_schema
+            while True:
+                schema = input(t(f"  スキーマ名 [{default_schema}]: ",
+                                  f"  Schema name [{default_schema}]: ")).strip() or default_schema
+                valid, msg = validate_uc_object_name(schema, kind="schema")
+                if valid:
+                    break
+                print_error(msg)
 
         # Warehouse: pre-fetch existing IDs to detect newly-created
         wh_list_before = run_command(
