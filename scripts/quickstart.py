@@ -351,7 +351,8 @@ def main():
             catalog = args.catalog
             print_success(t(f"カタログ: {catalog}", f"Catalog: {catalog}"))
         else:
-            default_catalog = username.split("@")[0].replace(".", "_")
+            from scripts.quickstart_core import compute_default_catalog_name, compute_default_schema_name
+            default_catalog = compute_default_catalog_name(username)
             while True:
                 catalog = input(t(f"  カタログ名 [{default_catalog}]: ",
                                    f"  Catalog name [{default_catalog}]: ")).strip() or default_catalog
@@ -365,7 +366,7 @@ def main():
             schema = args.schema
             print_success(t(f"スキーマ: {schema}", f"Schema: {schema}"))
         else:
-            default_schema = "retail_agent"
+            default_schema = compute_default_schema_name(username)
             while True:
                 schema = input(t(f"  スキーマ名 [{default_schema}]: ",
                                   f"  Schema name [{default_schema}]: ")).strip() or default_schema

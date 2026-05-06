@@ -229,6 +229,11 @@ class QuickstartWizard(customtkinter.CTk):
                 if not valid:
                     self._show_error(msg)
                     return False
+                # 同名既存チェック → ダイアログ
+                if self._resource_exists("catalog", catalog_name):
+                    if not self._confirm_use_existing("カタログ", "catalog", catalog_name):
+                        return False  # ユーザーが「いいえ」を選択 → このページに留まる
+                    self.data["_catalog_reused"] = True
         elif pg == 3:
             schema_name = self.data.get("schema", "").strip()
             if not schema_name:
@@ -241,6 +246,11 @@ class QuickstartWizard(customtkinter.CTk):
             if not valid:
                 self._show_error(msg)
                 return False
+            # 同名既存チェック → ダイアログ（カタログが存在する場合のみ）
+            if self._resource_exists("schema", schema_name):
+                if not self._confirm_use_existing("スキーマ", "schema", schema_name):
+                    return False
+                self.data["_schema_reused"] = True
         elif pg == 4:
             # In "new" mode, warehouse_id is empty until run-time creation.
             # Capture the latest name from the entry field.
@@ -252,6 +262,11 @@ class QuickstartWizard(customtkinter.CTk):
                         self._show_error(msg)
                         return False
                     self.data["warehouse_name"] = name
+                    # 同名既存チェック
+                    if self._resource_exists("warehouse", name):
+                        if not self._confirm_use_existing("ウェアハウス", "warehouse", name):
+                            return False
+                        self.data["_warehouse_reused"] = True
             elif not self.data.get("warehouse_id", "").strip():
                 self._show_error(t(
                     "\u30a6\u30a7\u30a2\u30cf\u30a6\u30b9\u3092\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
@@ -268,6 +283,13 @@ class QuickstartWizard(customtkinter.CTk):
                         self._show_error(msg)
                         return False
                     self.data["vs_endpoint"] = name
+                    # 同名既存チェック
+                    if self._resource_exists("vs_endpoint", name):
+                        if not self._confirm_use_existing(
+                            "Vector Search エンドポイント", "Vector Search endpoint", name,
+                        ):
+                            return False
+                        self.data["_ep_reused"] = True
             if not self.data.get("vs_endpoint", "").strip():
                 # Allow empty with warning
                 pass
@@ -295,6 +317,13 @@ class QuickstartWizard(customtkinter.CTk):
                 if not valid:
                     self._show_error(msg)
                     return False
+                # 同名既存チェック → ダイアログ
+                if self._resource_exists("lakebase", project_name):
+                    if not self._confirm_use_existing(
+                        "Lakebase プロジェクト", "Lakebase project", project_name,
+                    ):
+                        return False
+                    self.data["_lakebase_reused"] = True
             else:
                 if not project_name:
                     self._show_error(t(
@@ -361,6 +390,13 @@ class QuickstartWizard(customtkinter.CTk):
                     f"Invalid app name: {app_name}\nUse lowercase alphanumeric+hyphen, start with letter, end with alphanumeric, ≤30 chars.",
                 ))
                 return False
+            # 同名既存チェック → ダイアログ
+            if self._resource_exists("app", app_name):
+                if not self._confirm_use_existing(
+                    "Databricks App", "Databricks App", app_name,
+                ):
+                    return False
+                self.data["_app_reused"] = True
         return True
 
     def _show_error(self, msg: str):
@@ -399,6 +435,108 @@ class QuickstartWizard(customtkinter.CTk):
         def _check(new_value: str) -> bool:
             return len(new_value) <= max_len
         return (self.register(_check), "%P")
+
+    # ── 既存リソース確認ダイアログ ────────────────────────────────────
+    def _resource_exists(self, kind: str, name: str) -> bool:
+        """指定名のリソースがワークスペースに既に存在するか同期的に確認する。
+
+        kind: catalog / schema / warehouse / vs_endpoint / lakebase / app
+        """
+        token = self.data.get("token", "")
+        host = self.data.get("host", "")
+        if not token or not host:
+            return False
+        try:
+            if kind == "catalog":
+                r = core.api_get(f"/api/2.1/unity-catalog/catalogs/{name}", token, host)
+                return isinstance(r, dict) and "error" not in r
+            if kind == "schema":
+                cat = self.data.get("catalog", "")
+                if not cat:
+                    return False
+                r = core.api_get(f"/api/2.1/unity-catalog/schemas/{cat}.{name}", token, host)
+                return isinstance(r, dict) and "error" not in r
+            if kind == "warehouse":
+                r = core.api_get("/api/2.0/sql/warehouses", token, host)
+                if isinstance(r, dict) and "warehouses" in r:
+                    return any(w.get("name") == name for w in r["warehouses"])
+                return False
+            if kind == "vs_endpoint":
+                r = core.api_get(f"/api/2.0/vector-search/endpoints/{name}", token, host)
+                return isinstance(r, dict) and "error" not in r and r.get("name") == name
+            if kind == "lakebase":
+                profile = self.data.get("profile", "")
+                if not profile:
+                    return False
+                w = core.get_workspace_client(profile)
+                if w is None:
+                    return False
+                try:
+                    w.postgres.get_project(project_id=name)
+                    return True
+                except Exception:
+                    return False
+            if kind == "app":
+                r = core.api_get(f"/api/2.0/apps/{name}", token, host)
+                return isinstance(r, dict) and "error" not in r
+        except Exception:
+            return False
+        return False
+
+    def _confirm_use_existing(self, kind_label_ja: str, kind_label_en: str, name: str) -> bool:
+        """同名リソースが既存の場合に「再利用するか／別名にするか」を尋ねるモーダルダイアログ。
+
+        Returns:
+            True  — ユーザーが「はい（既存を使う）」を選択 → 次へ進む
+            False — ユーザーが「いいえ（別名で作成）」を選択 → 現在ページに留まる
+        """
+        dialog = customtkinter.CTkToplevel(self)
+        dialog.title(t("既存リソースの確認", "Existing resource detected"))
+        dialog.geometry("520x200")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+        # 中央表示
+        self.update_idletasks()
+        x = self.winfo_x() + (700 - 520) // 2
+        y = self.winfo_y() + (550 - 200) // 2
+        dialog.geometry(f"+{x}+{y}")
+
+        msg = t(
+            f"同じ名前の{kind_label_ja}「{name}」が既に存在します。\n\n"
+            "「はい」: 既存のリソースをそのまま使用して次へ進む\n"
+            "「いいえ」: このページに戻って別の名前を入力する",
+            f"A {kind_label_en} named '{name}' already exists.\n\n"
+            "Yes: Reuse the existing resource and proceed\n"
+            "No: Stay on this page and choose a different name",
+        )
+        customtkinter.CTkLabel(
+            dialog, text=msg, wraplength=480, justify="left",
+        ).pack(padx=20, pady=(20, 10))
+
+        result = {"value": False}
+
+        def _yes():
+            result["value"] = True
+            dialog.destroy()
+
+        def _no():
+            result["value"] = False
+            dialog.destroy()
+
+        btn_frame = customtkinter.CTkFrame(dialog, fg_color="transparent")
+        btn_frame.pack(pady=(5, 15))
+        customtkinter.CTkButton(
+            btn_frame, text=t("はい（既存を使う）", "Yes (use existing)"),
+            command=_yes, width=180,
+        ).pack(side="left", padx=8)
+        customtkinter.CTkButton(
+            btn_frame, text=t("いいえ（別名にする）", "No (different name)"),
+            command=_no, width=180, fg_color="gray",
+        ).pack(side="left", padx=8)
+
+        self.wait_window(dialog)
+        return result["value"]
 
     def _validate_lakebase_name(self, name: str, kind: str = "project") -> tuple[bool, str]:
         """Validate a Lakebase project/branch name.
@@ -811,13 +949,13 @@ class QuickstartWizard(customtkinter.CTk):
         self.data["auth_ok"] = True
         self.data["lakebase_required"] = core.check_lakebase_required()
 
-        # Pre-fill defaults
+        # Pre-fill defaults — fm_handson_{user} catalog + ai_assistant_{user} schema
         if not self.data["catalog"]:
-            self.data["catalog"] = self.data["username"].split("@")[0].replace(".", "_")
+            self.data["catalog"] = core.compute_default_catalog_name(self.data.get("username", ""))
         if not self.data["schema"]:
-            self.data["schema"] = "retail_agent"
+            self.data["schema"] = core.compute_default_schema_name(self.data.get("username", ""))
         if not self.data["mlflow_base_name"]:
-            self.data["mlflow_base_name"] = f"/Users/{self.data['username']}/freshmart-agent"
+            self.data["mlflow_base_name"] = f"/Users/{self.data['username']}/fm-agent"
 
         self._auth_status.configure(
             text=t(
@@ -2182,12 +2320,19 @@ class QuickstartWizard(customtkinter.CTk):
                     new_wh_id = wh_result.get("id", "")
                     s["warehouse_id"] = new_wh_id
                     warehouse_id = new_wh_id
-                    s["created_resources"]["warehouse_id"] = new_wh_id
-                    self._log(t(
-                        f"  → ウェアハウス作成完了: {wh_name} ({new_wh_id})。起動を待機中...",
-                        f"  → Created: {wh_name} ({new_wh_id}). Waiting for startup..."
-                    ))
-                    core.wait_for_warehouse_ready(profile, new_wh_id, timeout_sec=300)
+                    # 既存再利用（reused=True）の場合はロールバック対象外にする
+                    if not wh_result.get("reused"):
+                        s["created_resources"]["warehouse_id"] = new_wh_id
+                        self._log(t(
+                            f"  → ウェアハウス作成完了: {wh_name} ({new_wh_id})。起動を待機中...",
+                            f"  → Created: {wh_name} ({new_wh_id}). Waiting for startup..."
+                        ))
+                        core.wait_for_warehouse_ready(profile, new_wh_id, timeout_sec=300)
+                    else:
+                        self._log(t(
+                            f"  → 既存ウェアハウスを再利用: {wh_name} ({new_wh_id})",
+                            f"  → Reusing existing warehouse: {wh_name} ({new_wh_id})"
+                        ))
                     self._log("")
 
             # Step 1: Create catalog & schema
@@ -2248,7 +2393,9 @@ class QuickstartWizard(customtkinter.CTk):
                         fatal=True,
                     )
                 else:
-                    s["created_resources"]["vs_endpoint"] = vs_endpoint
+                    # 既存再利用ならロールバック対象外
+                    if not ep_result.get("reused"):
+                        s["created_resources"]["vs_endpoint"] = vs_endpoint
                     self._log(t(
                         "  Provisioning 中... ONLINE になるまで待機します（最大 25 分）",
                         "  Provisioning... waiting for ONLINE state (up to 25 min)"

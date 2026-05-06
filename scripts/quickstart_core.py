@@ -756,6 +756,48 @@ def create_lakebase_instance(profile_name: str, default_name: str | None = None)
             ))
             continue
 
+        # 既存プロジェクトをまず確認 — 同名があれば再利用
+        try:
+            existing = w.postgres.get_project(project_id=name)
+            project_short = (
+                existing.name.removeprefix("projects/")
+                if existing.name else name
+            )
+            print_success(t(
+                f"  既存の Lakebase プロジェクト '{project_short}' を再利用します",
+                f"  Reusing existing Lakebase project '{project_short}'",
+            ))
+            # 既存プロジェクトの default branch も再利用 or 作成
+            branch_id = f"{name}-branch"
+            try:
+                existing_branch = w.postgres.get_branch(name=f"projects/{name}/branches/{branch_id}")
+                branch_name = (
+                    existing_branch.name.split("/branches/")[-1]
+                    if "/branches/" in existing_branch.name else branch_id
+                )
+                print_success(t(
+                    f"  既存のブランチ '{branch_name}' を再利用します",
+                    f"  Reusing existing branch '{branch_name}'",
+                ))
+            except Exception:
+                # branch がなければ作成
+                branch_op = w.postgres.create_branch(
+                    parent=existing.name,
+                    branch=Branch(spec=BranchSpec(no_expiry=True)),
+                    branch_id=branch_id,
+                )
+                created_branch = branch_op.wait()
+                branch_name = (
+                    created_branch.name.split("/branches/")[-1]
+                    if "/branches/" in created_branch.name else branch_id
+                )
+                print_success(t(f"ブランチ作成完了: {branch_name}",
+                                 f"Created branch: {branch_name}"))
+            return {"type": "autoscaling", "project": project_short, "branch": branch_name, "reused": True}
+        except Exception:
+            # 存在しない場合は新規作成へ進む
+            pass
+
         print(t(f"\nLakebase オートスケーリングプロジェクト '{name}' を作成中...",
                  f"\nCreating Lakebase autoscaling project '{name}'..."))
         try:
@@ -787,14 +829,18 @@ def create_lakebase_instance(profile_name: str, default_name: str | None = None)
             return {"type": "autoscaling", "project": project_short, "branch": branch_name}
         except Exception as e:
             err_msg = str(e)
+            # 競合（並行作成等）で "already exists" が返ってきた場合は、
+            # ループを再開すれば次の繰り返しで get_project が成功して再利用される。
+            if "already exists" in err_msg.lower():
+                print(t(
+                    f"  プロジェクト '{name}' は既に存在しています。再利用します...",
+                    f"  Project '{name}' already exists. Reusing...",
+                ))
+                continue
             print_error(t(f"作成に失敗しました: {err_msg[:200]}",
                            f"Creation failed: {err_msg[:200]}"))
-            if "already exists" in err_msg.lower():
-                print(t("  この名前は既に使用されています。別の名前を入力してください。",
-                         "  This name is already in use. Please enter a different name."))
-            else:
-                print(t("  名前を変えてもう一度試してください。",
-                         "  Please try again with a different name."))
+            print(t("  名前を変えてもう一度試してください。",
+                     "  Please try again with a different name."))
             continue
 
 
@@ -1688,29 +1734,34 @@ def sanitize_uc_name_part(value: str) -> str:
 
 
 def compute_default_catalog_name(username: str) -> str:
-    """`{user}` 形式の UC 識別子。ユーザー固有のため日付なし。"""
-    s = sanitize_uc_name_part(username) or "user"
-    if len(s) > UC_NAME_MAX_LENGTH:
-        s = s[:UC_NAME_MAX_LENGTH].rstrip("_")
-    return s
-
-
-def compute_default_schema_name(username: str | None = None, today: str | None = None) -> str:
-    """`retail_agent_{user}` 形式。同一カタログを複数ユーザーで共有する場合の
-    名前衝突を避けるため、ユーザーIDを suffix として付ける。日付は付けない
-    （同じユーザーが再実行しても同じスキーマを再利用したいため）。
-    username 未指定なら `retail_agent`。
+    """`fm_handson_{user}` 形式の UC 識別子。フレッシュマートハンズオンであることが
+    名前から分かるようにすることで、ワークショップ後のクリーンアップを容易にする。
     """
-    if not username:
-        return "retail_agent"
-    user_part = sanitize_uc_name_part(username)
-    if not user_part:
-        return "retail_agent"
-    base = "retail_agent_"
+    base = "fm_handson_"
+    user_part = sanitize_uc_name_part(username) or "user"
     budget = UC_NAME_MAX_LENGTH - len(base)
     if len(user_part) > budget:
         user_part = user_part[:budget].rstrip("_")
     return f"{base}{user_part}"
+
+
+def compute_default_schema_name(username: str | None = None, today: str | None = None) -> str:
+    """`ai_assistant_{user}` 形式。同一カタログを複数ユーザーで共有する場合の
+    名前衝突を避けるため、ユーザーIDを suffix として付ける。日付は付けない
+    （同じユーザーが再実行しても同じスキーマを再利用したいため）。
+    username 未指定なら `ai_assistant`。
+    """
+    base = "ai_assistant"
+    if not username:
+        return base
+    user_part = sanitize_uc_name_part(username)
+    if not user_part:
+        return base
+    base_with_sep = f"{base}_"
+    budget = UC_NAME_MAX_LENGTH - len(base_with_sep)
+    if len(user_part) > budget:
+        user_part = user_part[:budget].rstrip("_")
+    return f"{base_with_sep}{user_part}"
 
 
 def compute_default_warehouse_name(username: str, today: str | None = None) -> str:
@@ -2990,12 +3041,27 @@ def create_sql_warehouse(
     enable_serverless_compute: bool = True,
     auto_stop_mins: int = 60,
 ) -> dict:
-    """Create a new SQL warehouse via REST API.
+    """Create a new SQL warehouse via REST API（冪等化）。
 
-    Returns dict with 'id' on success, or {'error': ...} on failure.
-    Defaults: Serverless Pro, X-Small, auto-stop 60min — minimal cost while still
-    fast for demo workloads.
+    同名のウェアハウスが既に存在する場合は **作成せず既存のものを再利用** する
+    （warehouse は名前の一意性制約がないため、デフォルトの API は同名複数を作って
+    しまう。それを避けるため事前にリストして名前マッチがあれば再利用する）。
+
+    Returns:
+        dict with 'id' (and 'reused' bool if reused), or {'error': ...} on failure.
     """
+    # 1. 既存の同名 warehouse を探す
+    existing = api_get("/api/2.0/sql/warehouses", token, host)
+    if isinstance(existing, dict) and "warehouses" in existing:
+        for w in existing.get("warehouses", []):
+            if w.get("name") == name:
+                print_success(t(
+                    f"  既存のウェアハウス '{name}' を再利用します（id: {w.get('id')}）",
+                    f"  Reusing existing warehouse '{name}' (id: {w.get('id')})",
+                ))
+                return {**w, "reused": True}
+
+    # 2. 存在しなければ新規作成
     body = {
         "name": name,
         "cluster_size": cluster_size,
@@ -3012,11 +3078,26 @@ def create_sql_warehouse(
 def create_vs_endpoint_new(
     token: str, host: str, name: str, endpoint_type: str = "STANDARD"
 ) -> dict:
-    """Create a new Vector Search endpoint via REST API.
+    """Create a new Vector Search endpoint via REST API（冪等化）。
 
-    Note: endpoint creation typically takes 10-15 minutes to fully provision.
-    Returns dict with 'name' / 'endpoint_status' on success, or {'error': ...}.
+    同名エンドポイントが既に存在する場合は **作成せず既存のものを再利用** する。
+    新規作成は 10〜15 分かかるので、再利用できれば大幅な時間節約になる。
+
+    Returns:
+        dict with 'name' / 'endpoint_status' (and 'reused' bool if reused),
+        or {'error': ...} on failure.
     """
+    # 1. 既存エンドポイントの確認
+    existing = api_get(f"/api/2.0/vector-search/endpoints/{name}", token, host)
+    if isinstance(existing, dict) and "error" not in existing and existing.get("name") == name:
+        state = existing.get("endpoint_status", {}).get("state", "?")
+        print_success(t(
+            f"  既存の VS エンドポイント '{name}' を再利用します（state: {state}）",
+            f"  Reusing existing VS endpoint '{name}' (state: {state})",
+        ))
+        return {**existing, "reused": True}
+
+    # 2. 存在しなければ新規作成
     body = {"name": name, "endpoint_type": endpoint_type}
     return api_post("/api/2.0/vector-search/endpoints", token, host, body)
 
