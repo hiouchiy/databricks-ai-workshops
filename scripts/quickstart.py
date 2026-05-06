@@ -422,9 +422,18 @@ def main():
                 print_success(t(f"VS エンドポイント: {vs_endpoint} ({ep_state})",
                                  f"VS endpoint: {vs_endpoint} ({ep_state})"))
             else:
-                print(t(f"  ⚠ エンドポイント {vs_endpoint} が見つかりません。",
-                         f"  Warning: Endpoint {vs_endpoint} not found."))
-                vs_endpoint = ""
+                # 非対話モードで存在しないエンドポイント名が指定された場合は自動作成
+                from scripts.quickstart_core import create_vs_endpoint_new
+                print(t(f"  エンドポイント {vs_endpoint} は未存在。自動作成します...",
+                         f"  Endpoint {vs_endpoint} not found. Auto-creating..."))
+                try:
+                    create_vs_endpoint_new(token, host, vs_endpoint)
+                    print_success(t(f"VS エンドポイント作成完了: {vs_endpoint}",
+                                     f"VS endpoint created: {vs_endpoint}"))
+                except Exception as e:
+                    print_error(t(f"VS エンドポイント作成失敗: {str(e)[:200]}",
+                                   f"VS endpoint creation failed: {str(e)[:200]}"))
+                    vs_endpoint = ""
         else:
             vs_endpoint = select_vs_endpoint_interactive(token, host, username)
 
