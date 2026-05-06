@@ -44,6 +44,14 @@ dev = [
     "pytest==9.0.2",
 ]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "live: tests that hit a real Databricks workspace (gated; not run by default)",
+]
+# Default: skip live tests (run with `pytest -m live` explicitly to include them)
+addopts = "-m 'not live'"
+
 
 [project.scripts]
 quickstart = "scripts.quickstart:main"
