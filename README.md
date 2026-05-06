@@ -151,7 +151,7 @@ GUI 版はステップごとに1画面ずつ設定を進めるウィザード形
 uv run start-app
 ```
 
-チャット UI は **http://localhost:3000** 、API は **http://localhost:8000** でアクセスできます。
+チャット UI および API ともに **http://localhost:8000** でアクセスできます（Agent Server に組み込まれた chat proxy 経由）。
 
 #### Delta Table トレースを選択した場合
 
@@ -240,7 +240,7 @@ claude
 
 手順：
 1. .env にすべての値を設定（PGHOST は Lakebase ブランチのエンドポイントから取得）
-2. uv run start-app を実行し、フロントエンド（3000）とバックエンド（8000）が起動することを確認
+2. uv run start-app を実行し、エージェントサーバー（8000）が起動することを確認
 3. curl で /invocations にリクエストを送って動作確認
 ```
 
@@ -594,7 +594,7 @@ After setup, start the app anytime with:
 uv run start-app
 ```
 
-The chat UI will be available at **http://localhost:3000** and the API at **http://localhost:8000**.
+Both the chat UI and the API are available at **http://localhost:8000** (chat proxy is built into the Agent Server).
 
 #### If you selected Delta Table tracing
 
@@ -682,8 +682,7 @@ resources manually:
 Steps:
 1. Update .env with all the above values (resolve PGHOST from the Lakebase
    branch endpoint)
-2. Run `uv run start-app` and verify both frontend (port 3000) and backend
-   (port 8000) are healthy
+2. Run `uv run start-app` and verify the Agent Server (port 8000) is healthy
 3. Smoke test the agent with a curl POST to /invocations
 ```
 

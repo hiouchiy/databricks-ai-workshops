@@ -5,9 +5,15 @@
 .env ファイルからリソース情報を読み取り、一つ一つ確認しながら削除します。
 
 Usage:
-    uv run cleanup
+    uv run cleanup           # 対話式（各リソースで Y/N 確認）
+    uv run cleanup --yes     # 全 Y を仮定して非対話実行（CI/E2E 向け）
+
+新規作成された SQL Warehouse / Vector Search Endpoint は quickstart 完了時に
+.env へ `_NEW_WAREHOUSE_ID` / `_NEW_VS_ENDPOINT` として書かれているため、
+それを参照して新規作成分のみを削除対象とする（既存リソースは触らない）。
 """
 
+import argparse
 import json
 import os
 import re
@@ -19,6 +25,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=".env", override=True)
+
+# --yes フラグで全プロンプトを Yes と仮定
+YES_TO_ALL = False
 
 
 def print_header(text: str):
@@ -40,7 +49,11 @@ def print_error(text: str):
 
 
 def confirm(prompt: str) -> bool:
-    """ユーザーに確認を求める。y/N でデフォルトは No。"""
+    """ユーザーに確認を求める。y/N でデフォルトは No。
+    --yes フラグ指定時は常に Yes を返す。"""
+    if YES_TO_ALL:
+        print(f"  {prompt} (y/N): y  [auto: --yes]")
+        return True
     response = input(f"  {prompt} (y/N): ").strip().lower()
     return response == "y"
 
@@ -155,6 +168,80 @@ def delete_vector_search_index(profile: str):
     result = run_cmd(["databricks", "api", "delete", f"/api/2.0/vector-search/indexes/{index_name}", "-p", profile])
     if result.returncode == 0:
         print_success(f"インデックス '{index_name}' を削除しました")
+    else:
+        print_error(f"削除に失敗: {result.stderr[:200]}")
+
+
+def delete_vs_endpoint(profile: str):
+    """Vector Search Endpoint を削除（quickstart で新規作成したものに限る）。
+
+    `_NEW_VS_ENDPOINT` が .env に書かれている場合のみ削除対象にする。
+    （既存エンドポイントを再利用していた場合はこの env 変数が無いのでスキップ）
+    """
+    name = os.getenv("_NEW_VS_ENDPOINT", "")
+    if not name:
+        print_skip("新規作成された VS Endpoint が記録されていません（既存利用 or 未作成）")
+        return
+
+    print(f"\n  エンドポイント: {name}")
+    result = run_cmd([
+        "databricks", "api", "get",
+        f"/api/2.0/vector-search/endpoints/{name}", "-p", profile,
+    ])
+    if result.returncode != 0:
+        print_skip(f"エンドポイント {name} が既に存在しません")
+        return
+
+    if not confirm(f"Vector Search エンドポイント '{name}' を削除しますか？"):
+        print_skip("ユーザーがキャンセル")
+        return
+
+    result = run_cmd([
+        "databricks", "api", "delete",
+        f"/api/2.0/vector-search/endpoints/{name}", "-p", profile,
+    ])
+    if result.returncode == 0:
+        print_success(f"エンドポイント '{name}' を削除しました")
+    else:
+        print_error(f"削除に失敗: {result.stderr[:200]}")
+
+
+def delete_sql_warehouse(profile: str):
+    """SQL Warehouse を削除（quickstart で新規作成したものに限る）。
+
+    `_NEW_WAREHOUSE_ID` が .env に書かれている場合のみ削除対象にする。
+    """
+    wh_id = os.getenv("_NEW_WAREHOUSE_ID", "")
+    if not wh_id:
+        print_skip("新規作成された SQL Warehouse が記録されていません（既存利用 or 未作成）")
+        return
+
+    print(f"\n  ウェアハウス ID: {wh_id}")
+    result = run_cmd([
+        "databricks", "api", "get",
+        f"/api/2.0/sql/warehouses/{wh_id}", "-p", profile,
+    ])
+    if result.returncode != 0:
+        print_skip(f"ウェアハウス {wh_id} が既に存在しません")
+        return
+
+    # 名前を取得して確認プロンプトに含める
+    try:
+        wh_data = json.loads(result.stdout)
+        wh_name = wh_data.get("name", wh_id)
+    except Exception:
+        wh_name = wh_id
+
+    if not confirm(f"SQL ウェアハウス '{wh_name}' ({wh_id}) を削除しますか？"):
+        print_skip("ユーザーがキャンセル")
+        return
+
+    result = run_cmd([
+        "databricks", "api", "delete",
+        f"/api/2.0/sql/warehouses/{wh_id}", "-p", profile,
+    ])
+    if result.returncode == 0:
+        print_success(f"ウェアハウス '{wh_name}' を削除しました")
     else:
         print_error(f"削除に失敗: {result.stderr[:200]}")
 
@@ -284,10 +371,19 @@ def delete_bundle_workspace(profile: str):
 
 
 def main():
+    global YES_TO_ALL
+    parser = argparse.ArgumentParser(description="フレッシュマート AI エージェント リソースクリーンアップ")
+    parser.add_argument("--yes", action="store_true",
+                        help="全プロンプトを Yes と仮定（CI / E2E 向け）")
+    args = parser.parse_args()
+    YES_TO_ALL = args.yes
+
     print_header("フレッシュマート AI エージェント — リソースクリーンアップ")
     print()
     print("このスクリプトは、ワークショップで作成したリソースを一つずつ確認しながら削除します。")
     print(".env ファイルからリソース情報を読み取ります。")
+    if YES_TO_ALL:
+        print("【非対話モード: 全プロンプト Yes と仮定】")
     print()
 
     env_path = Path(".env")
@@ -303,36 +399,44 @@ def main():
         return
 
     # 1. Databricks App
-    print_header("[1/8] Databricks App")
+    print_header("[1/10] Databricks App")
     delete_app(profile)
 
     # 2. MLflow Experiments
-    print_header("[2/8] MLflow Experiments")
+    print_header("[2/10] MLflow Experiments")
     delete_experiment(profile, os.getenv("MLFLOW_EXPERIMENT_ID", ""), "モニタリング Experiment")
     delete_experiment(profile, os.getenv("MLFLOW_EVAL_EXPERIMENT_ID", ""), "評価 Experiment")
 
     # 3. Vector Search Index
-    print_header("[3/8] Vector Search インデックス")
+    print_header("[3/10] Vector Search インデックス")
     delete_vector_search_index(profile)
 
-    # 4. Genie Space
-    print_header("[4/8] Genie Space")
+    # 4. Vector Search Endpoint（quickstart で新規作成したもののみ）
+    print_header("[4/10] Vector Search エンドポイント")
+    delete_vs_endpoint(profile)
+
+    # 5. Genie Space
+    print_header("[5/10] Genie Space")
     delete_genie_space(profile)
 
-    # 5. Lakebase
-    print_header("[5/8] Lakebase プロジェクト")
+    # 6. Lakebase
+    print_header("[6/10] Lakebase プロジェクト")
     delete_lakebase(profile)
 
-    # 6. Unity Catalog スキーマ（テーブル・トレーステーブルを含む）
-    print_header("[6/8] Unity Catalog スキーマ")
+    # 7. Unity Catalog スキーマ（テーブル・トレーステーブルを含む）
+    print_header("[7/10] Unity Catalog スキーマ")
     delete_schema(profile)
 
-    # 7. ワークスペースのバンドルファイル
-    print_header("[7/8] ワークスペースのバンドルファイル")
+    # 8. SQL Warehouse（quickstart で新規作成したもののみ）
+    print_header("[8/10] SQL Warehouse")
+    delete_sql_warehouse(profile)
+
+    # 9. ワークスペースのバンドルファイル
+    print_header("[9/10] ワークスペースのバンドルファイル")
     delete_bundle_workspace(profile)
 
-    # 8. ローカルファイル
-    print_header("[8/8] ローカルファイル")
+    # 10. ローカルファイル
+    print_header("[10/10] ローカルファイル")
     delete_local_files()
 
     print_header("クリーンアップ完了")

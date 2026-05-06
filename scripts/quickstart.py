@@ -876,6 +876,12 @@ def main():
             print_step(t("[7/8] Lakebase テーブル初期化", "[7/8] Lakebase table initialization"))
             init_lakebase_tables()
 
+        # ── Phase 7.5: cleanup スクリプトが新規作成リソースを識別できるよう .env に記録 ──
+        if created_resources.get("warehouse_id"):
+            update_env_file("_NEW_WAREHOUSE_ID", created_resources["warehouse_id"])
+        if created_resources.get("vs_endpoint"):
+            update_env_file("_NEW_VS_ENDPOINT", created_resources["vs_endpoint"])
+
         # ── Phase 8: サマリー ──
         print_header(t("セットアップ完了！", "Setup Complete!"))
 

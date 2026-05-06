@@ -455,7 +455,7 @@ WHERE start_time > current_timestamp() - INTERVAL 1 HOUR;
 uv run start-app
 ```
 
-バックエンドが `http://localhost:8000`、チャット UI が `http://localhost:3000` で起動します。
+エージェントサーバーが `http://localhost:8000` で起動し、API・チャット UI ともに同じポートからアクセスできます。
 
 > **`--no-ui` モード：** チャット UI なしでバックエンド（API）のみ起動したい場合：
 > ```bash
@@ -473,7 +473,7 @@ uv run start-app
 
 ### 動作確認
 
-ブラウザで `http://localhost:3000` を開き、以下のプロンプトを試してください：
+ブラウザで `http://localhost:8000` を開き、以下のプロンプトを試してください：
 
 **Genie（構造化データクエリ）：**
 
@@ -1267,7 +1267,7 @@ WHERE start_time > current_timestamp() - INTERVAL 1 HOUR;
 uv run start-app
 ```
 
-The backend starts at `http://localhost:8000` and the chat UI at `http://localhost:3000`.
+The Agent Server starts at `http://localhost:8000` — both the API and the chat UI are served from the same port.
 
 > **`--no-ui` mode:** To start only the backend (API) without the chat UI:
 > ```bash
@@ -1285,7 +1285,7 @@ The backend starts at `http://localhost:8000` and the chat UI at `http://localho
 
 ### Verification
 
-Open `http://localhost:3000` in your browser and try the following prompts:
+Open `http://localhost:8000` in your browser and try the following prompts:
 
 **Genie (structured data queries):**
 

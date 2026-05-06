@@ -2945,6 +2945,13 @@ class QuickstartWizard(customtkinter.CTk):
                     f"\n⛔ Setup aborted at step: {s['aborted_at']}",
                 ))
             else:
+                # 新規作成された SQL Warehouse / VS Endpoint を .env に記録
+                # （cleanup スクリプトが識別して削除するため）
+                created = s.get("created_resources", {})
+                if created.get("warehouse_id"):
+                    core.update_env_file("_NEW_WAREHOUSE_ID", created["warehouse_id"])
+                if created.get("vs_endpoint"):
+                    core.update_env_file("_NEW_VS_ENDPOINT", created["vs_endpoint"])
                 self._log(t("\nセットアップ完了！", "\nSetup complete!"))
             self._signal_done()
 
