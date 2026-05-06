@@ -96,3 +96,13 @@ def test_live_default_lakebase_name_within_56_chars(live_auth):
     assert core.is_valid_lakebase_project_name(name)
     # Auto-branch `{name}-branch` must also fit
     assert len(name) + len("-branch") <= core.LAKEBASE_BRANCH_MAX_LENGTH
+
+
+def test_live_list_lakebase_projects(live_auth):
+    """Real SDK call to list Lakebase projects. May be empty on Free Edition."""
+    projects = core.list_lakebase_projects(live_auth["profile"])
+    assert isinstance(projects, list)
+    # Each entry must be a valid project_id (not the full "projects/..." path)
+    for p in projects:
+        assert isinstance(p, str)
+        assert not p.startswith("projects/")

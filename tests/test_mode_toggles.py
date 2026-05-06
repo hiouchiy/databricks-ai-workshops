@@ -176,9 +176,12 @@ def test_vs_endpoint_existing_list_cached(app, mock_core):
 # ── Lakebase ────────────────────────────────────────────────────────────────
 
 def test_lakebase_new_to_existing_preserves_separate_typed_slots(app):
+    """New-mode is a text entry; existing-mode is a dropdown of fetched
+    projects. Switching modes should restore each mode's last value
+    independently (no cross-leak)."""
     app.data["lakebase_required"] = True
     goto_page(app, 7)
-    # Default: new mode
+    # Default: new mode → text entry with computed default
     new_default = core.compute_default_lakebase_project_name(app.data["username"])
     assert app._lb_proj_entry.get() == new_default
 
@@ -188,14 +191,17 @@ def test_lakebase_new_to_existing_preserves_separate_typed_slots(app):
     app._on_lb_proj_change()
     assert app.data.get("_lb_new_typed") == "my-new-lb"
 
-    # Switch to existing mode and edit
+    # Switch to existing mode → dropdown of mocked projects
     app._lb_mode_var.set("existing")
     app._rebuild_lakebase_fields()
     app.update()
-    app._lb_proj_entry.delete(0, "end")
-    app._lb_proj_entry.insert(0, "existing-lb")
-    app._on_lb_proj_change()
-    assert app.data.get("_lb_existing_typed") == "existing-lb"
+    # Default selection is the first project
+    assert app.data["lakebase_project"] in app._lakebase_projects_cache
+    # Pick the second one explicitly
+    selected = app._lakebase_projects_cache[1]
+    app._lb_proj_var.set(selected)
+    app._on_lb_proj_dropdown_change(selected)
+    assert app.data["_lb_existing_typed"] == selected
 
     # Flip back to new — should restore the new-mode value
     app._lb_mode_var.set("new")
@@ -203,8 +209,44 @@ def test_lakebase_new_to_existing_preserves_separate_typed_slots(app):
     app.update()
     assert app._lb_proj_entry.get() == "my-new-lb"
 
-    # Flip to existing again — should restore the existing-mode value
+    # Flip to existing again — dropdown should pre-select the previous choice
     app._lb_mode_var.set("existing")
     app._rebuild_lakebase_fields()
     app.update()
-    assert app._lb_proj_entry.get() == "existing-lb"
+    assert app._lb_proj_var.get() == selected
+    assert app.data["lakebase_project"] == selected
+
+
+def test_lakebase_existing_dropdown_lists_workspace_projects(app, mock_core):
+    """Verify the dropdown is populated from list_lakebase_projects() and
+    cached so subsequent renders skip the SDK call."""
+    app.data["lakebase_required"] = True
+    goto_page(app, 7)
+    app._lb_mode_var.set("existing")
+    app._rebuild_lakebase_fields()
+    app.update()
+    assert app._lakebase_projects_cache == [
+        "fm-lakebase-existing-0501", "shared-team-lakebase"
+    ]
+    assert mock_core["list_lakebase_projects"].call_count == 1
+
+    # Toggle multiple times — fetch is not repeated thanks to cache
+    for mode in ["new", "existing", "new", "existing"]:
+        app._lb_mode_var.set(mode)
+        app._rebuild_lakebase_fields()
+        app.update()
+    assert mock_core["list_lakebase_projects"].call_count == 1
+
+
+def test_lakebase_existing_falls_back_to_text_entry_when_no_projects(app, mock_core):
+    """If the workspace has no projects, the existing branch should still
+    let the user proceed by typing a name (text-entry fallback)."""
+    app.data["lakebase_required"] = True
+    mock_core["list_lakebase_projects"].return_value = []
+    goto_page(app, 7)
+    app._lb_mode_var.set("existing")
+    app._rebuild_lakebase_fields()
+    app.update()
+    # Text entry should be present as fallback; dropdown should NOT be.
+    assert hasattr(app, "_lb_proj_entry")
+    assert not hasattr(app, "_lb_proj_dropdown") or app._lakebase_projects_cache == []

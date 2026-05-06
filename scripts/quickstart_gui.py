@@ -1597,6 +1597,10 @@ class QuickstartWizard(customtkinter.CTk):
             ).pack(pady=20)
             return
 
+        # 既存 Lakebase プロジェクト一覧キャッシュ — 「既存」モード初回のみフェッチ
+        if not hasattr(self, "_lakebase_projects_cache"):
+            self._lakebase_projects_cache = None
+
         self._lb_mode_var = customtkinter.StringVar(
             value=self.data.get("lakebase_mode", "new")
         )
@@ -1678,30 +1682,77 @@ class QuickstartWizard(customtkinter.CTk):
         else:
             customtkinter.CTkLabel(
                 self._lb_fields_frame,
-                text=t("プロジェクト名:", "Project name:"),
+                text=t("既存のプロジェクトから選択:", "Select existing project:"),
             ).pack(anchor="w", pady=(5, 2))
-            self._lb_proj_entry = customtkinter.CTkEntry(
-                self._lb_fields_frame, width=400,
-                validate="key",
-                validatecommand=self._maxlen_vcmd(core.LAKEBASE_PROJECT_MAX_LENGTH),
-            )
-            self._lb_proj_entry.pack(pady=(0, 5))
-            # 「既存」モードの自分の typed slot のみから復元（モード間漏洩を避ける）
-            existing_typed = self.data.get("_lb_existing_typed", "")
-            if existing_typed:
-                self._lb_proj_entry.insert(0, existing_typed)
-                self.data["lakebase_project"] = existing_typed
 
-            self._lb_proj_validation_label = customtkinter.CTkLabel(
-                self._lb_fields_frame, text="", wraplength=400,
-            )
-            self._lb_proj_validation_label.pack(anchor="w")
+            # 既存プロジェクト一覧を取得（同一ページ滞在中はキャッシュを使い回す）
+            if self._lakebase_projects_cache is None:
+                loading = customtkinter.CTkLabel(
+                    self._lb_fields_frame,
+                    text=t("既存プロジェクトを取得中...", "Fetching existing projects..."),
+                    text_color="gray",
+                )
+                loading.pack(pady=5)
+                self.update_idletasks()
+                try:
+                    self._lakebase_projects_cache = core.list_lakebase_projects(
+                        self.data.get("profile_name", "")
+                    )
+                except Exception:
+                    self._lakebase_projects_cache = []
+                loading.destroy()
 
-            self._lb_proj_entry.bind("<KeyRelease>", lambda _: self._on_lb_proj_change())
+            projects = self._lakebase_projects_cache or []
 
-            # Run initial validation if there's a pre-filled value
-            if existing_typed:
-                self._on_lb_proj_change()
+            if projects:
+                # ドロップダウン: 前回選択値があれば優先、なければ先頭
+                previous = self.data.get("_lb_existing_typed", "")
+                default = previous if previous in projects else projects[0]
+
+                self._lb_proj_var = customtkinter.StringVar(value=default)
+                self._lb_proj_dropdown = customtkinter.CTkOptionMenu(
+                    self._lb_fields_frame,
+                    variable=self._lb_proj_var,
+                    values=projects,
+                    width=400,
+                    command=self._on_lb_proj_dropdown_change,
+                )
+                self._lb_proj_dropdown.pack(pady=(0, 5))
+                self.data["lakebase_project"] = default
+                self.data["_lb_existing_typed"] = default
+                # 互換のため空のバリデーションラベルを置く（ドロップダウン値は常に有効）
+                self._lb_proj_validation_label = customtkinter.CTkLabel(
+                    self._lb_fields_frame, text="", wraplength=400,
+                )
+                self._lb_proj_validation_label.pack(anchor="w")
+            else:
+                # 既存プロジェクトが見つからない場合はテキスト入力にフォールバック
+                customtkinter.CTkLabel(
+                    self._lb_fields_frame,
+                    text=t(
+                        "既存プロジェクトが見つかりませんでした。プロジェクト名を直接入力してください：",
+                        "No existing projects found. Enter project name directly:",
+                    ),
+                    text_color="orange",
+                    wraplength=400,
+                ).pack(anchor="w", pady=(0, 5))
+                self._lb_proj_entry = customtkinter.CTkEntry(
+                    self._lb_fields_frame, width=400,
+                    validate="key",
+                    validatecommand=self._maxlen_vcmd(core.LAKEBASE_PROJECT_MAX_LENGTH),
+                )
+                self._lb_proj_entry.pack(pady=(0, 5))
+                existing_typed = self.data.get("_lb_existing_typed", "")
+                if existing_typed:
+                    self._lb_proj_entry.insert(0, existing_typed)
+                    self.data["lakebase_project"] = existing_typed
+                self._lb_proj_validation_label = customtkinter.CTkLabel(
+                    self._lb_fields_frame, text="", wraplength=400,
+                )
+                self._lb_proj_validation_label.pack(anchor="w")
+                self._lb_proj_entry.bind("<KeyRelease>", lambda _: self._on_lb_proj_change())
+                if existing_typed:
+                    self._on_lb_proj_change()
 
             customtkinter.CTkLabel(
                 self._lb_fields_frame,
@@ -1760,6 +1811,11 @@ class QuickstartWizard(customtkinter.CTk):
 
     def _sync_lb_project(self):
         self.data["lakebase_project"] = self._lb_proj_entry.get().strip()
+
+    def _on_lb_proj_dropdown_change(self, selection: str):
+        """既存モードのドロップダウンで選択された project_id を保存。"""
+        self.data["lakebase_project"] = selection
+        self.data["_lb_existing_typed"] = selection
 
     def _sync_lb_branch(self):
         self.data["lakebase_branch"] = self._lb_branch_entry.get().strip()

@@ -136,6 +136,13 @@ def mock_core(monkeypatch):
     monkeypatch.setattr(core, "get_workspace_client", mocks["get_workspace_client"])
     mocks["workspace_client"] = fake_ws
 
+    # --- list_lakebase_projects (Lakebase existing-mode dropdown) ---
+    # Default: two existing projects so the dropdown branch renders.
+    mocks["list_lakebase_projects"] = MagicMock(
+        return_value=["fm-lakebase-existing-0501", "shared-team-lakebase"]
+    )
+    monkeypatch.setattr(core, "list_lakebase_projects", mocks["list_lakebase_projects"])
+
     # --- list_chat_models (LLM page) ---
     mocks["list_chat_models"] = MagicMock(return_value=DEFAULT_LLM_MODELS)
     monkeypatch.setattr(core, "list_chat_models", mocks["list_chat_models"])

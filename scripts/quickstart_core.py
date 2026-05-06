@@ -706,6 +706,29 @@ def get_workspace_client(profile_name: str):
         return None
 
 
+def list_lakebase_projects(profile_name: str) -> list[str]:
+    """ワークスペースで参照できる Lakebase オートスケーリングプロジェクトIDの一覧を返す。
+
+    GUI の「既存を使用」モードでドロップダウンを構築するために使う。
+    SDK を呼べない／API エラー時は空リスト。
+    """
+    w = get_workspace_client(profile_name)
+    if w is None:
+        return []
+    try:
+        ids: list[str] = []
+        for proj in w.postgres.list_projects():
+            # Project.name は "projects/{id}" 形式。短縮 ID を取り出す。
+            full = getattr(proj, "name", "") or ""
+            short = full.removeprefix("projects/") if full.startswith("projects/") else full
+            if short:
+                ids.append(short)
+        ids.sort()
+        return ids
+    except Exception:
+        return []
+
+
 def create_lakebase_instance(profile_name: str, default_name: str | None = None) -> dict:
     """Create a new Lakebase autoscaling instance (project + branch).
 
