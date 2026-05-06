@@ -1500,7 +1500,7 @@ def update_databricks_yml_resources(genie_space_id: str, vs_index: str) -> None:
 #   - 小文字英数字とハイフンのみ
 #   - 英字で始まり、英数で終わる
 #   - 2〜30 文字
-APP_NAME_PREFIX = "freshmart-agent"
+APP_NAME_PREFIX = "fm-agent"  # 短縮（旧: "freshmart-agent"。30 字上限に余裕を持たせるため）
 APP_NAME_MIN_LENGTH = 2
 APP_NAME_MAX_LENGTH = 30
 
@@ -1526,7 +1526,7 @@ def sanitize_app_name_part(value: str, prefer_first_segment: bool = True) -> str
 
 
 def compute_default_app_name(username: str, today: str | None = None) -> str:
-    """`freshmart-agent-{user}-{MMDD}` を生成。Databricks App 名の 30 文字制限を守る。
+    """`fm-agent-{user}-{MMDD}` を生成。Databricks App 名の 30 文字制限を守る。
 
     today: YYYY-MM-DD 形式の文字列（省略時は本日）。テスト用に注入可能。
     """
@@ -1556,7 +1556,7 @@ def is_valid_app_name(name: str) -> bool:
 #   出典: docs.databricks.com/.../oltp/projects/limitations
 # プロジェクト名は 56 文字に制限する。"new" モードでは branch_id が `{project}-branch`（+7）で
 # 自動生成されるため、project ≤ 56 にしておけば branch も 63 以内に収まる。
-LAKEBASE_PROJECT_PREFIX = "freshmart-lakebase"
+LAKEBASE_PROJECT_PREFIX = "fm-lakebase"  # 短縮（旧: "freshmart-lakebase"）
 LAKEBASE_PROJECT_MAX_LENGTH = 56  # branch="{project}-branch" でも 63 以内に収まる
 LAKEBASE_BRANCH_MAX_LENGTH = 63   # API の絶対上限
 
@@ -1665,6 +1665,82 @@ def validate_vs_endpoint_name(name: str) -> tuple[bool, str]:
     return True, ""
 
 
+# ── デフォルト値生成ヘルパー ──
+# ユーザーが「次へ」ボタンだけで進められるように、各新規リソースのデフォルト名を
+# ユーザーIDベースで自動生成する。Catalog/Schema は階層構造で一意性が確保されるため
+# 日付は付けない。Warehouse / VS endpoint / Lakebase / App は workspace-level の
+# フラットな名前空間なので {user}-{MMDD} で一意化する。
+
+def sanitize_uc_name_part(value: str) -> str:
+    """email / username を UC 識別子（catalog/schema 名）に正規化する。
+    英数字 + アンダースコアのみ、英字/アンダースコア始まり。
+
+    例:
+        'hiroshi.ouchiyama@databricks.com' -> 'hiroshi_ouchiyama'
+        'Tanaka.Taro@example.com'          -> 'tanaka_taro'
+    """
+    s = value.split("@", 1)[0].lower()
+    s = re.sub(r"[^a-z0-9]+", "_", s)
+    s = re.sub(r"_+", "_", s).strip("_")
+    if s and s[0].isdigit():
+        s = "u_" + s  # 英字始まりにする
+    return s
+
+
+def compute_default_catalog_name(username: str) -> str:
+    """`{user}` 形式の UC 識別子。ユーザー固有のため日付なし。"""
+    s = sanitize_uc_name_part(username) or "user"
+    if len(s) > UC_NAME_MAX_LENGTH:
+        s = s[:UC_NAME_MAX_LENGTH].rstrip("_")
+    return s
+
+
+def compute_default_schema_name(username: str | None = None, today: str | None = None) -> str:
+    """`retail_agent_{user}` 形式。同一カタログを複数ユーザーで共有する場合の
+    名前衝突を避けるため、ユーザーIDを suffix として付ける。日付は付けない
+    （同じユーザーが再実行しても同じスキーマを再利用したいため）。
+    username 未指定なら `retail_agent`。
+    """
+    if not username:
+        return "retail_agent"
+    user_part = sanitize_uc_name_part(username)
+    if not user_part:
+        return "retail_agent"
+    base = "retail_agent_"
+    budget = UC_NAME_MAX_LENGTH - len(base)
+    if len(user_part) > budget:
+        user_part = user_part[:budget].rstrip("_")
+    return f"{base}{user_part}"
+
+
+def compute_default_warehouse_name(username: str, today: str | None = None) -> str:
+    """`fm-wh-{user}-{MMDD}` 形式。"""
+    if today is None:
+        today = datetime.now().strftime("%Y-%m-%d")
+    mmdd = today.replace("-", "")[4:8]
+    user_part = sanitize_app_name_part(username) or "user"
+    suffix = f"-{mmdd}"
+    base = "fm-wh-"
+    budget = SQL_WAREHOUSE_NAME_MAX_LENGTH - len(base) - len(suffix)
+    if len(user_part) > budget:
+        user_part = user_part[:budget].rstrip("-")
+    return f"{base}{user_part}{suffix}"
+
+
+def compute_default_vs_endpoint_name(username: str, today: str | None = None) -> str:
+    """`fm-vs-{user}-{MMDD}` 形式。"""
+    if today is None:
+        today = datetime.now().strftime("%Y-%m-%d")
+    mmdd = today.replace("-", "")[4:8]
+    user_part = sanitize_app_name_part(username) or "user"
+    suffix = f"-{mmdd}"
+    base = "fm-vs-"
+    budget = VS_ENDPOINT_NAME_MAX_LENGTH - len(base) - len(suffix)
+    if len(user_part) > budget:
+        user_part = user_part[:budget].rstrip("-")
+    return f"{base}{user_part}{suffix}"
+
+
 def update_databricks_yml_app_name(app_name: str) -> None:
     """databricks.yml の resources.apps.*.name を更新（dev/prod 両方）。
 
@@ -1676,15 +1752,16 @@ def update_databricks_yml_app_name(app_name: str) -> None:
         return
 
     content = yml_path.read_text()
+    # 旧 (freshmart-agent...) と新 (fm-agent...) 両方のパターンを置換対象にする。
     # quote ありバージョン
     new_content = re.sub(
-        r'(\bname:\s*)"freshmart-agent[A-Za-z0-9._-]*"',
+        r'(\bname:\s*)"(?:freshmart-agent|fm-agent)[A-Za-z0-9._-]*"',
         f'\\1"{app_name}"',
         content,
     )
     # quote なしバージョン（行末まで）
     new_content = re.sub(
-        r'(\bname:\s*)freshmart-agent[A-Za-z0-9._-]*(\s*$)',
+        r'(\bname:\s*)(?:freshmart-agent|fm-agent)[A-Za-z0-9._-]*(\s*$)',
         f'\\1{app_name}\\2',
         new_content,
         flags=re.MULTILINE,
@@ -2015,8 +2092,12 @@ except ImportError:
 # ── Interactive selectors ────────────────────────────────────────────
 
 
-def select_vs_endpoint_interactive(token: str, host: str) -> str:
+def select_vs_endpoint_interactive(token: str, host: str, username: str = "") -> str:
     """List Vector Search endpoints, or offer to create a new one.
+
+    Args:
+        username: Databricks email or username; used to compute the default name
+            for newly-created endpoints (`fm-vs-{user}-{MMDD}`).
 
     Returns the endpoint name (existing or newly created).
     """
@@ -2050,10 +2131,11 @@ def select_vs_endpoint_interactive(token: str, host: str) -> str:
         choice = input(t(f"\n  選択 [{default_choice}]: ",
                           f"\n  Selection [{default_choice}]: ")).strip() or default_choice
         if choice.lower() == "n":
+            default_ep = compute_default_vs_endpoint_name(username)
             while True:
-                new_name = input(t("    新規エンドポイント名を入力 [freshmart-vs-endpoint]: ",
-                                    "    Enter new endpoint name [freshmart-vs-endpoint]: ")).strip() \
-                    or "freshmart-vs-endpoint"
+                new_name = input(t(f"    新規エンドポイント名を入力 [{default_ep}]: ",
+                                    f"    Enter new endpoint name [{default_ep}]: ")).strip() \
+                    or default_ep
                 ok, msg = validate_vs_endpoint_name(new_name)
                 if ok:
                     break
@@ -2138,10 +2220,11 @@ def select_warehouse_interactive(
         choice = input(t(f"\n  選択 [{default_choice}]: ",
                           f"\n  Selection [{default_choice}]: ")).strip() or default_choice
         if choice.lower() == "n":
+            default_wh = compute_default_warehouse_name(user)
             while True:
-                new_name = input(t("    新規ウェアハウス名を入力 [freshmart-warehouse]: ",
-                                    "    Enter new warehouse name [freshmart-warehouse]: ")).strip() \
-                    or "freshmart-warehouse"
+                new_name = input(t(f"    新規ウェアハウス名を入力 [{default_wh}]: ",
+                                    f"    Enter new warehouse name [{default_wh}]: ")).strip() \
+                    or default_wh
                 ok, msg = validate_sql_warehouse_name(new_name)
                 if ok:
                     break

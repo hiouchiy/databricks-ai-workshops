@@ -246,7 +246,7 @@ class QuickstartWizard(customtkinter.CTk):
             # Capture the latest name from the entry field.
             if self.data.get("_warehouse_create_pending"):
                 if hasattr(self, "_wh_new_name_entry"):
-                    name = self._wh_new_name_entry.get().strip() or "freshmart-warehouse"
+                    name = self._wh_new_name_entry.get().strip() or core.compute_default_warehouse_name(self.data.get("username", ""))
                     valid, msg = core.validate_sql_warehouse_name(name)
                     if not valid:
                         self._show_error(msg)
@@ -387,6 +387,18 @@ class QuickstartWizard(customtkinter.CTk):
     def _validate_uc_name(self, name: str) -> tuple[bool, str]:
         """Delegate to core for consistent UC name rules across CLI/GUI."""
         return core.validate_uc_object_name(name)
+
+    def _maxlen_vcmd(self, max_len: int):
+        """Return a tkinter validatecommand tuple that prevents typing past max_len.
+
+        Used as `validate="key", validatecommand=self._maxlen_vcmd(N)` on Entry widgets.
+        Programmatic `.insert()` is NOT blocked by tk's validatecommand under validate="key"
+        (it bypasses validation), so default-fill via insert() still works as long as the
+        default itself is shorter than max_len.
+        """
+        def _check(new_value: str) -> bool:
+            return len(new_value) <= max_len
+        return (self.register(_check), "%P")
 
     def _validate_lakebase_name(self, name: str, kind: str = "project") -> tuple[bool, str]:
         """Validate a Lakebase project/branch name.
@@ -912,16 +924,19 @@ class QuickstartWizard(customtkinter.CTk):
                 text=t("カタログ名:", "Catalog name:"),
             ).pack(anchor="w", pady=(5, 2))
 
+            # デフォルト値: .env > 既存 self.data > ユーザー名ベース自動生成
             env_val = core.get_env_value("CATALOG") or self.data.get("catalog", "")
+            if not env_val:
+                env_val = core.compute_default_catalog_name(self.data.get("username", ""))
 
             self._catalog_entry = customtkinter.CTkEntry(
                 self._catalog_fields_frame, width=400,
-                placeholder_text="e.g. my_catalog",
+                validate="key",
+                validatecommand=self._maxlen_vcmd(core.UC_NAME_MAX_LENGTH),
             )
             self._catalog_entry.pack(pady=(0, 5))
-            if env_val:
-                self._catalog_entry.insert(0, env_val)
-                self.data["catalog"] = env_val
+            self._catalog_entry.insert(0, env_val)
+            self.data["catalog"] = env_val
 
             self._catalog_validation_label = customtkinter.CTkLabel(
                 self._catalog_fields_frame, text="", wraplength=400,
@@ -930,9 +945,8 @@ class QuickstartWizard(customtkinter.CTk):
 
             self._catalog_entry.bind("<KeyRelease>", lambda _: self._on_catalog_entry_change())
 
-            # Run initial validation if there's a pre-filled value
-            if env_val:
-                self._on_catalog_entry_change()
+            # 即時バリデーション（pre-fill 済み）
+            self._on_catalog_entry_change()
 
     def _on_catalog_dropdown_change(self, selection: str):
         self.data["catalog"] = selection
@@ -972,15 +986,19 @@ class QuickstartWizard(customtkinter.CTk):
             wraplength=500,
         ).pack(pady=(0, 10))
 
+        # デフォルト値: .env > 既存 self.data > `retail_agent_{user}`（複数ユーザー間の衝突回避）
         env_val = core.get_env_value("SCHEMA") or self.data.get("schema", "")
+        if not env_val:
+            env_val = core.compute_default_schema_name(self.data.get("username", ""))
 
         self._schema_entry = customtkinter.CTkEntry(
-            frame, width=400, placeholder_text="e.g. retail_agent"
+            frame, width=400,
+            validate="key",
+            validatecommand=self._maxlen_vcmd(core.UC_NAME_MAX_LENGTH),
         )
         self._schema_entry.pack(pady=10, padx=40)
-        if env_val:
-            self._schema_entry.insert(0, env_val)
-            self.data["schema"] = env_val
+        self._schema_entry.insert(0, env_val)
+        self.data["schema"] = env_val
 
         self._schema_validation_label = customtkinter.CTkLabel(
             frame, text="", wraplength=400,
@@ -1115,9 +1133,14 @@ class QuickstartWizard(customtkinter.CTk):
                    "New warehouse name:"),
         ).pack(anchor="w", pady=(5, 2))
 
-        default_name = self.data.get("warehouse_name") or "freshmart-warehouse"
+        # デフォルト名: ユーザーID + 日付ベースで一意化
+        default_name = self.data.get("warehouse_name") or core.compute_default_warehouse_name(
+            self.data.get("username", "")
+        )
         self._wh_new_name_entry = customtkinter.CTkEntry(
             self._wh_fields_frame, width=400,
+            validate="key",
+            validatecommand=self._maxlen_vcmd(core.SQL_WAREHOUSE_NAME_MAX_LENGTH),
         )
         self._wh_new_name_entry.insert(0, default_name)
         self._wh_new_name_entry.pack(pady=(0, 10))
@@ -1244,9 +1267,14 @@ class QuickstartWizard(customtkinter.CTk):
             text=t("新規エンドポイント名:", "New endpoint name:"),
         ).pack(anchor="w", pady=(5, 2))
 
-        default_name = self.data.get("vs_endpoint") or "freshmart-vs-endpoint"
+        # デフォルト名: ユーザーID + 日付ベースで一意化
+        default_name = self.data.get("vs_endpoint") or core.compute_default_vs_endpoint_name(
+            self.data.get("username", "")
+        )
         self._ep_new_name_entry = customtkinter.CTkEntry(
             self._ep_fields_frame, width=400,
+            validate="key",
+            validatecommand=self._maxlen_vcmd(core.VS_ENDPOINT_NAME_MAX_LENGTH),
         )
         self._ep_new_name_entry.insert(0, default_name)
         self._ep_new_name_entry.pack(pady=(0, 10))
@@ -1411,6 +1439,8 @@ class QuickstartWizard(customtkinter.CTk):
 
             self._lb_proj_entry = customtkinter.CTkEntry(
                 self._lb_fields_frame, width=400,
+                validate="key",
+                validatecommand=self._maxlen_vcmd(core.LAKEBASE_PROJECT_MAX_LENGTH),
             )
             self._lb_proj_entry.pack(pady=(0, 5))
             self._lb_proj_entry.insert(0, default_proj)
@@ -1441,6 +1471,8 @@ class QuickstartWizard(customtkinter.CTk):
             ).pack(anchor="w", pady=(5, 2))
             self._lb_proj_entry = customtkinter.CTkEntry(
                 self._lb_fields_frame, width=400,
+                validate="key",
+                validatecommand=self._maxlen_vcmd(core.LAKEBASE_PROJECT_MAX_LENGTH),
             )
             self._lb_proj_entry.pack(pady=(0, 5))
             if self.data.get("lakebase_project"):
@@ -1472,6 +1504,8 @@ class QuickstartWizard(customtkinter.CTk):
             self._lb_branch_entry = customtkinter.CTkEntry(
                 self._lb_fields_frame, width=400,
                 placeholder_text=default_branch or "e.g. fresh-mart-alice",
+                validate="key",
+                validatecommand=self._maxlen_vcmd(core.LAKEBASE_BRANCH_MAX_LENGTH),
             )
             self._lb_branch_entry.pack(pady=(0, 5))
             existing = self.data.get("lakebase_branch") or default_branch
@@ -1912,10 +1946,10 @@ class QuickstartWizard(customtkinter.CTk):
             frame,
             text=t(
                 "デプロイする Databricks App の名前を設定します。\n"
-                "デフォルト: freshmart-agent-{username}-{MMDD}\n"
+                "デフォルト: fm-agent-{username}-{MMDD}\n"
                 "制約: 小文字英数字とハイフン、英字で始まり英数で終わる、30文字以内。",
                 "Set the name of the Databricks App to deploy.\n"
-                "Default: freshmart-agent-{username}-{MMDD}\n"
+                "Default: fm-agent-{username}-{MMDD}\n"
                 "Constraints: lowercase alphanumeric+hyphen, start with letter, end with alphanumeric, ≤30 chars.",
             ),
             wraplength=580,
@@ -1933,7 +1967,11 @@ class QuickstartWizard(customtkinter.CTk):
             text=t("App 名:", "App name:"),
         ).pack(pady=(5, 2))
 
-        self._app_name_entry = customtkinter.CTkEntry(frame, width=500)
+        self._app_name_entry = customtkinter.CTkEntry(
+            frame, width=500,
+            validate="key",
+            validatecommand=self._maxlen_vcmd(core.APP_NAME_MAX_LENGTH),
+        )
         self._app_name_entry.insert(0, default_name)
         self._app_name_entry.pack(pady=(0, 10), padx=40)
 

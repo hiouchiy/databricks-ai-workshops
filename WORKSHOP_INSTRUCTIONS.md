@@ -560,7 +560,7 @@ uv run agent-evaluate-advanced
 export DATABRICKS_CONFIG_PROFILE="<あなたのプロファイル名>"   # 例: DEFAULT / demoenv-azure-eastus2 など
 
 # アプリ名（クイックスタート使用済みなら .env の DATABRICKS_APP_NAME と同じ値、または databricks.yml の name と同じ値）
-export APP_NAME="<あなたのアプリ名>"   # 例: freshmart-agent-taro-0413
+export APP_NAME="<あなたのアプリ名>"   # 例: fm-agent-taro-0413
 
 # あなたの Databricks メールアドレス（以降のコマンドで自動取得）
 export MY_EMAIL=$(databricks current-user me -o json | jq -r .userName)
@@ -583,7 +583,7 @@ echo "MY_EMAIL:  $MY_EMAIL"
 **アプリ名**（参加者ごとにユニークにしてください）：
 
 ```yaml
-      name: "<あなたのアプリ名>"  # 例: freshmart-agent-taro-0413
+      name: "<あなたのアプリ名>"  # 例: fm-agent-taro-0413
 ```
 
 > `name:` はファイル内に 2 箇所あります（`dev` と `prod` の両方）。両方とも同じ名前にしてください。
@@ -1372,7 +1372,7 @@ Set frequently used values as environment variables for the commands that follow
 export DATABRICKS_CONFIG_PROFILE="<YOUR-PROFILE>"   # e.g., DEFAULT / demoenv-azure-eastus2
 
 # App name (matches DATABRICKS_APP_NAME in .env if you used quickstart, or the name: in databricks.yml)
-export APP_NAME="<YOUR-APP-NAME>"   # e.g., freshmart-agent-taro-0413
+export APP_NAME="<YOUR-APP-NAME>"   # e.g., fm-agent-taro-0413
 
 # Your Databricks email address (auto-fetched in subsequent commands)
 export MY_EMAIL=$(databricks current-user me -o json | jq -r .userName)
@@ -1395,7 +1395,7 @@ Open `databricks.yml` and edit the following sections to match your environment.
 **App name** (must be unique per participant):
 
 ```yaml
-      name: "<YOUR-APP-NAME>"  # e.g., freshmart-agent-taro-0413
+      name: "<YOUR-APP-NAME>"  # e.g., fm-agent-taro-0413
 ```
 
 > `name:` appears in 2 places in the file (`dev` and `prod`). Set both to the same name.

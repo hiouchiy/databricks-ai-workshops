@@ -129,7 +129,7 @@ def main():
                              "Default: databricks-claude-sonnet-4-6 (interactively selectable)")
     parser.add_argument("--app-name", default=None,
                         help="Databricks App name. "
-                             "Default: freshmart-agent-{username}-{MMDD} (interactively selectable)")
+                             "Default: fm-agent-{username}-{MMDD} (interactively selectable)")
     parser.add_argument(
         "--lakebase-autoscaling-project",
         help="Lakebase autoscaling project name",
@@ -425,7 +425,7 @@ def main():
                          f"  Warning: Endpoint {vs_endpoint} not found."))
                 vs_endpoint = ""
         else:
-            vs_endpoint = select_vs_endpoint_interactive(token, host)
+            vs_endpoint = select_vs_endpoint_interactive(token, host, username)
 
         # If the chosen endpoint was newly created, track it for rollback
         if vs_endpoint and vs_endpoint not in existing_ep_names:
