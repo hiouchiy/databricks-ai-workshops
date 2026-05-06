@@ -973,6 +973,10 @@ class QuickstartWizard(customtkinter.CTk):
             font=customtkinter.CTkFont(size=22, weight="bold"),
         ).pack(pady=(20, 10))
 
+        # 既存カタログ一覧キャッシュ — ページ初回のみフェッチする
+        if not hasattr(self, "_catalogs_cache"):
+            self._catalogs_cache = None
+
         self._catalog_mode_var = customtkinter.StringVar(
             value=self.data.get("_catalog_mode", "existing")
         )
@@ -1007,18 +1011,23 @@ class QuickstartWizard(customtkinter.CTk):
 
         if mode == "existing":
             # Fetch catalogs via Unity Catalog REST API (no permission filter — too slow)
-            token = self.data.get("token", "")
-            host = self.data.get("host", "")
-            catalogs: list[str] = []
-            if token and host:
-                try:
-                    result = core.api_get("/api/2.1/unity-catalog/catalogs", token, host)
-                    for cat in result.get("catalogs", []):
-                        catalogs.append(cat.get("name", ""))
-                    catalogs = [c for c in catalogs if c]
-                    catalogs.sort()
-                except Exception:
-                    pass
+            # キャッシュがあれば再フェッチしない
+            if self._catalogs_cache is not None:
+                catalogs = self._catalogs_cache
+            else:
+                token = self.data.get("token", "")
+                host = self.data.get("host", "")
+                catalogs: list[str] = []
+                if token and host:
+                    try:
+                        result = core.api_get("/api/2.1/unity-catalog/catalogs", token, host)
+                        for cat in result.get("catalogs", []):
+                            catalogs.append(cat.get("name", ""))
+                        catalogs = [c for c in catalogs if c]
+                        catalogs.sort()
+                    except Exception:
+                        pass
+                self._catalogs_cache = catalogs
 
             if not catalogs:
                 customtkinter.CTkLabel(
@@ -1187,6 +1196,11 @@ class QuickstartWizard(customtkinter.CTk):
             font=customtkinter.CTkFont(size=22, weight="bold"),
         ).pack(pady=(20, 10))
 
+        # 既存ウェアハウス一覧キャッシュ — ページ初回表示でのみフェッチ。
+        # モード切替ごとに再フェッチすると遅延 / ハングの原因になるため。
+        if not hasattr(self, "_warehouses_cache"):
+            self._warehouses_cache = None
+
         self._wh_mode_var = customtkinter.StringVar(
             value=self.data.get("_wh_mode", "existing")
         )
@@ -1224,26 +1238,30 @@ class QuickstartWizard(customtkinter.CTk):
             self._render_wh_new()
 
     def _render_wh_existing(self):
-        loading = customtkinter.CTkLabel(
-            self._wh_fields_frame,
-            text=t("使用権限のあるウェアハウスを検索中...",
-                   "Checking which warehouses you can use..."),
-            text_color="gray",
-        )
-        loading.pack(pady=5)
-        self.update_idletasks()
-
-        token = self.data.get("token", "")
-        host = self.data.get("host", "")
-        user = self.data.get("username", "")
-        try:
-            self._warehouses = core.filter_usable_warehouses(
-                self.data["profile_name"], token, host, user
+        # キャッシュがあれば再フェッチしない（モード切替の度にハング防止）
+        if self._warehouses_cache is not None:
+            self._warehouses = self._warehouses_cache
+        else:
+            loading = customtkinter.CTkLabel(
+                self._wh_fields_frame,
+                text=t("使用権限のあるウェアハウスを検索中...",
+                       "Checking which warehouses you can use..."),
+                text_color="gray",
             )
-        except Exception:
-            self._warehouses = []
+            loading.pack(pady=5)
+            self.update_idletasks()
 
-        loading.destroy()
+            token = self.data.get("token", "")
+            host = self.data.get("host", "")
+            user = self.data.get("username", "")
+            try:
+                self._warehouses = core.filter_usable_warehouses(
+                    self.data["profile_name"], token, host, user
+                )
+            except Exception:
+                self._warehouses = []
+            self._warehouses_cache = self._warehouses
+            loading.destroy()
 
         if not self._warehouses:
             customtkinter.CTkLabel(
@@ -1343,6 +1361,10 @@ class QuickstartWizard(customtkinter.CTk):
             font=customtkinter.CTkFont(size=22, weight="bold"),
         ).pack(pady=(20, 10))
 
+        # 既存 VS エンドポイント一覧キャッシュ — ページ初回のみフェッチ
+        if not hasattr(self, "_vs_endpoints_cache"):
+            self._vs_endpoints_cache = None
+
         self._ep_mode_var = customtkinter.StringVar(
             value=self.data.get("_ep_mode", "existing")
         )
@@ -1380,20 +1402,25 @@ class QuickstartWizard(customtkinter.CTk):
             self._render_ep_new()
 
     def _render_ep_existing(self):
-        token = self.data.get("token", "")
-        host = self.data.get("host", "")
-        self._vs_endpoints = []
-        if token and host:
-            data = core.api_get("/api/2.0/vector-search/endpoints", token, host)
-            if isinstance(data, dict):
-                self._vs_endpoints = data.get("endpoints", [])
-            state_order = {"ONLINE": 0, "PROVISIONING": 1}
-            self._vs_endpoints.sort(
-                key=lambda e: (
-                    state_order.get(e.get("endpoint_status", {}).get("state", ""), 9),
-                    e.get("name", ""),
+        # キャッシュがあれば再フェッチしない（モード切替ハング防止）
+        if self._vs_endpoints_cache is not None:
+            self._vs_endpoints = self._vs_endpoints_cache
+        else:
+            token = self.data.get("token", "")
+            host = self.data.get("host", "")
+            self._vs_endpoints = []
+            if token and host:
+                data = core.api_get("/api/2.0/vector-search/endpoints", token, host)
+                if isinstance(data, dict):
+                    self._vs_endpoints = data.get("endpoints", [])
+                state_order = {"ONLINE": 0, "PROVISIONING": 1}
+                self._vs_endpoints.sort(
+                    key=lambda e: (
+                        state_order.get(e.get("endpoint_status", {}).get("state", ""), 9),
+                        e.get("name", ""),
+                    )
                 )
-            )
+            self._vs_endpoints_cache = self._vs_endpoints
 
         if not self._vs_endpoints:
             customtkinter.CTkLabel(
