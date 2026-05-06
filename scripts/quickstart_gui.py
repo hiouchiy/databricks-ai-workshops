@@ -1062,10 +1062,19 @@ class QuickstartWizard(customtkinter.CTk):
                 text=t("カタログ名:", "Catalog name:"),
             ).pack(anchor="w", pady=(5, 2))
 
-            # デフォルト値: .env > 既存 self.data > ユーザー名ベース自動生成
-            env_val = core.get_env_value("CATALOG") or self.data.get("catalog", "")
-            if not env_val:
-                env_val = core.compute_default_catalog_name(self.data.get("username", ""))
+            # デフォルト値の決定優先度（重要）:
+            # 1. .env の CATALOG 値（再開時の継続性のため）
+            # 2. 「新規」モードで前回ユーザーが手動編集した値（_catalog_new_typed）
+            # 3. ユーザー名ベース自動生成（fm_handson_{user}）
+            #
+            # 注: self.data["catalog"] は「既存」モードでドロップダウン選択された値が
+            # 入っているケースがあるため、ここでは使わない（モード切替時に既存リストの
+            # 先頭が新規入力欄に出てしまうバグの原因だった）。
+            env_val = (
+                core.get_env_value("CATALOG")
+                or self.data.get("_catalog_new_typed", "")
+                or core.compute_default_catalog_name(self.data.get("username", ""))
+            )
 
             self._catalog_entry = customtkinter.CTkEntry(
                 self._catalog_fields_frame, width=400,
@@ -1075,6 +1084,7 @@ class QuickstartWizard(customtkinter.CTk):
             self._catalog_entry.pack(pady=(0, 5))
             self._catalog_entry.insert(0, env_val)
             self.data["catalog"] = env_val
+            self.data["_catalog_new_typed"] = env_val
 
             self._catalog_validation_label = customtkinter.CTkLabel(
                 self._catalog_fields_frame, text="", wraplength=400,
@@ -1092,6 +1102,8 @@ class QuickstartWizard(customtkinter.CTk):
     def _on_catalog_entry_change(self):
         name = self._catalog_entry.get().strip()
         self.data["catalog"] = name
+        # 「新規」モードで手動編集された値を保持（モード切替時に復元するため）
+        self.data["_catalog_new_typed"] = name
         valid, msg = self._validate_uc_name(name)
         if valid:
             self._catalog_validation_label.configure(
@@ -1271,9 +1283,13 @@ class QuickstartWizard(customtkinter.CTk):
                    "New warehouse name:"),
         ).pack(anchor="w", pady=(5, 2))
 
-        # デフォルト名: ユーザーID + 日付ベースで一意化
-        default_name = self.data.get("warehouse_name") or core.compute_default_warehouse_name(
-            self.data.get("username", "")
+        # デフォルト名の優先度:
+        # 1. 「新規」モードで前回ユーザーが入力した値 (_warehouse_new_typed)
+        # 2. ユーザー名 + 日付ベース (compute_default_warehouse_name)
+        # 注: self.data["warehouse_name"] は「既存」モードで選んだ値が入っているため使わない。
+        default_name = (
+            self.data.get("_warehouse_new_typed")
+            or core.compute_default_warehouse_name(self.data.get("username", ""))
         )
         self._wh_new_name_entry = customtkinter.CTkEntry(
             self._wh_fields_frame, width=400,
@@ -1281,6 +1297,16 @@ class QuickstartWizard(customtkinter.CTk):
             validatecommand=self._maxlen_vcmd(core.SQL_WAREHOUSE_NAME_MAX_LENGTH),
         )
         self._wh_new_name_entry.insert(0, default_name)
+        # 即座に self.data に反映（次へ押したときに参照される）
+        self.data["warehouse_name"] = default_name
+        self.data["_warehouse_new_typed"] = default_name
+        # 手動編集を捕捉
+        self._wh_new_name_entry.bind(
+            "<KeyRelease>", lambda _: self.data.update({
+                "warehouse_name": self._wh_new_name_entry.get().strip(),
+                "_warehouse_new_typed": self._wh_new_name_entry.get().strip(),
+            })
+        )
         self._wh_new_name_entry.pack(pady=(0, 10))
 
         customtkinter.CTkLabel(
@@ -1405,9 +1431,13 @@ class QuickstartWizard(customtkinter.CTk):
             text=t("新規エンドポイント名:", "New endpoint name:"),
         ).pack(anchor="w", pady=(5, 2))
 
-        # デフォルト名: ユーザーID + 日付ベースで一意化
-        default_name = self.data.get("vs_endpoint") or core.compute_default_vs_endpoint_name(
-            self.data.get("username", "")
+        # デフォルト名の優先度:
+        # 1. 「新規」モードで前回ユーザーが入力した値 (_ep_new_typed)
+        # 2. ユーザー名 + 日付ベース (compute_default_vs_endpoint_name)
+        # 注: self.data["vs_endpoint"] は「既存」モードで選んだ値が入っているため使わない。
+        default_name = (
+            self.data.get("_ep_new_typed")
+            or core.compute_default_vs_endpoint_name(self.data.get("username", ""))
         )
         self._ep_new_name_entry = customtkinter.CTkEntry(
             self._ep_fields_frame, width=400,
@@ -1416,6 +1446,13 @@ class QuickstartWizard(customtkinter.CTk):
         )
         self._ep_new_name_entry.insert(0, default_name)
         self._ep_new_name_entry.pack(pady=(0, 10))
+        # 手動編集を捕捉
+        self._ep_new_name_entry.bind(
+            "<KeyRelease>", lambda _: self.data.update({
+                "vs_endpoint": self._ep_new_name_entry.get().strip(),
+                "_ep_new_typed": self._ep_new_name_entry.get().strip(),
+            })
+        )
 
         customtkinter.CTkLabel(
             self._ep_fields_frame,
@@ -1428,6 +1465,7 @@ class QuickstartWizard(customtkinter.CTk):
         ).pack(anchor="w", pady=5)
 
         self.data["vs_endpoint"] = default_name
+        self.data["_ep_new_typed"] = default_name
         self.data["_ep_create_pending"] = True
 
     def _on_ep_change(self, selection: str):
@@ -1570,10 +1608,18 @@ class QuickstartWizard(customtkinter.CTk):
                 text=t("プロジェクト名:", "Project name:"),
             ).pack(anchor="w", pady=(5, 2))
 
-            # ユーザー名 + 日付ベースのデフォルト名を計算
+            # デフォルト名の優先度:
+            # 1. 「新規」モードで前回ユーザーが入力した値 (_lb_new_typed)
+            # 2. ユーザー名 + 日付ベース (compute_default_lakebase_project_name)
+            # 注: self.data["lakebase_project"] は「既存」モードで入力された値が入って
+            #     いる可能性があるため、ここでは使わない。
             username = self.data.get("username", "") or "user"
-            default_proj = self.data.get("lakebase_project") or core.compute_default_lakebase_project_name(username)
-            self.data.setdefault("lakebase_project", default_proj)
+            default_proj = (
+                self.data.get("_lb_new_typed")
+                or core.compute_default_lakebase_project_name(username)
+            )
+            self.data["lakebase_project"] = default_proj
+            self.data["_lb_new_typed"] = default_proj
 
             self._lb_proj_entry = customtkinter.CTkEntry(
                 self._lb_fields_frame, width=400,
@@ -1613,8 +1659,11 @@ class QuickstartWizard(customtkinter.CTk):
                 validatecommand=self._maxlen_vcmd(core.LAKEBASE_PROJECT_MAX_LENGTH),
             )
             self._lb_proj_entry.pack(pady=(0, 5))
-            if self.data.get("lakebase_project"):
-                self._lb_proj_entry.insert(0, self.data["lakebase_project"])
+            # 「既存」モードの自分の typed slot のみから復元（モード間漏洩を避ける）
+            existing_typed = self.data.get("_lb_existing_typed", "")
+            if existing_typed:
+                self._lb_proj_entry.insert(0, existing_typed)
+                self.data["lakebase_project"] = existing_typed
 
             self._lb_proj_validation_label = customtkinter.CTkLabel(
                 self._lb_fields_frame, text="", wraplength=400,
@@ -1624,7 +1673,7 @@ class QuickstartWizard(customtkinter.CTk):
             self._lb_proj_entry.bind("<KeyRelease>", lambda _: self._on_lb_proj_change())
 
             # Run initial validation if there's a pre-filled value
-            if self.data.get("lakebase_project"):
+            if existing_typed:
                 self._on_lb_proj_change()
 
             customtkinter.CTkLabel(
@@ -1664,6 +1713,12 @@ class QuickstartWizard(customtkinter.CTk):
     def _on_lb_proj_change(self):
         name = self._lb_proj_entry.get().strip()
         self.data["lakebase_project"] = name
+        # 現在のモードに応じて新規 / 既存の typed-value スロットを保持する
+        mode = self.data.get("lakebase_mode", "new")
+        if mode == "new":
+            self.data["_lb_new_typed"] = name
+        else:
+            self.data["_lb_existing_typed"] = name
         valid, msg = self._validate_lakebase_name(name)
         if valid:
             self._lb_proj_validation_label.configure(
