@@ -21,10 +21,8 @@ Vector Search に DatabricksVectorSearch（ネイティブ実装）を使用し�
   - Code Interpreter MCP — Python コード実行
 """
 
-import json
 import logging
 import os
-import subprocess
 from datetime import datetime
 from typing import Any, AsyncGenerator, Optional, Sequence, TypedDict
 
@@ -264,25 +262,14 @@ def load_system_prompt() -> str:
 # DatabricksVectorSearch を使うことで、MLflow が RETRIEVER スパンを自動生成する。
 # これが agent.py（MCP 版）との唯一の違い。
 
-# 認証トークンを取得（VectorSearchClient が必要とする）
-_headers = sp_workspace_client.config.authenticate()
-_token = _headers.get("Authorization", "").replace("Bearer ", "")
-if not _token:
-    _result = subprocess.run(
-        ["databricks", "auth", "token", "--profile",
-         os.getenv("DATABRICKS_CONFIG_PROFILE", "DEFAULT"), "-o", "json"],
-        capture_output=True, text=True,
-    )
-    _token = json.loads(_result.stdout)["access_token"]
-
+# Databricks Apps（SP 実行）でも、CLI ローカル開発（OAuth U2M / PAT）でも
+# 同一コードで動くよう、認証は WorkspaceClient に委譲する。
+# ここでトークンを取り出してキャッシュすると Apps の SP M2M トークンが
+# VS エンドポイントで "Invalid Token" として弾かれる。
 _vector_store = DatabricksVectorSearch(
     index_name=VECTOR_SEARCH_INDEX_NATIVE,
     columns=["chunk_id", "doc_name", "content"],
-    client_args={
-        "workspace_url": sp_workspace_client.config.host,
-        "personal_access_token": _token,
-        "disable_notice": True,
-    },
+    workspace_client=sp_workspace_client,
 )
 _retriever = _vector_store.as_retriever(search_kwargs={"k": 5})
 
