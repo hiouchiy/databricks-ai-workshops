@@ -142,6 +142,14 @@ def main():
         "--lang", choices=["ja", "en"], default=None,
         help="Language (ja/en). Skips interactive language selection.",
     )
+    parser.add_argument(
+        "--tracing-destination",
+        default=None,
+        help="MLflow トレース送信先の Unity Catalog スキーマ "
+             "(format: CATALOG.SCHEMA)。指定すると非対話モードでも "
+             "Delta Table へのトレース送信が有効化される。"
+             "未指定なら MLflow Experiment（デフォルト）に送信。",
+    )
     args = parser.parse_args()
 
     if args.lang:
@@ -722,13 +730,62 @@ def main():
             print_success(t(f"トレース送信先: Unity Catalog ({tracing_dest})（既存 Experiment から検出）",
                              f"Trace destination: Unity Catalog ({tracing_dest}) (detected from existing Experiment)"))
         elif non_interactive:
-            # 前回のランで設定された MLFLOW_TRACING_DESTINATION を削除
-            update_env_file("MLFLOW_TRACING_DESTINATION", "")
-            remove_env_from_app_yaml("MLFLOW_TRACING_DESTINATION")
-            remove_env_from_app_yaml("MLFLOW_TRACING_SQL_WAREHOUSE_ID")
-            print_success(t("トレース送信先: MLflow Experiment（デフォルト）",
-                             "Trace destination: MLflow Experiment (default)"))
-            use_delta = "n"
+            if args.tracing_destination:
+                # 非対話モード + Delta Table トレース指定
+                tracing_dest = args.tracing_destination
+                if "." not in tracing_dest:
+                    print_error(t(
+                        f"--tracing-destination は CATALOG.SCHEMA 形式で指定してください: {tracing_dest}",
+                        f"--tracing-destination must be in CATALOG.SCHEMA format: {tracing_dest}",
+                    ))
+                    raise AbortSetup("Invalid --tracing-destination")
+
+                _t_cat, _t_sch = tracing_dest.split(".", 1)
+                # スキーマがなければ作成
+                verify = run_sql_statement(
+                    f"DESCRIBE SCHEMA `{_t_cat}`.`{_t_sch}`", token, host, warehouse_id,
+                )
+                if verify.get("status", {}).get("state") not in ("SUCCEEDED", "CLOSED"):
+                    print(t(f"  スキーマ {tracing_dest} が存在しません。作成します...",
+                             f"  Schema {tracing_dest} does not exist. Creating..."))
+                    run_sql_statement(f"CREATE CATALOG IF NOT EXISTS `{_t_cat}`",
+                                       token, host, warehouse_id)
+                    run_sql_statement(f"CREATE SCHEMA IF NOT EXISTS `{_t_cat}`.`{_t_sch}`",
+                                       token, host, warehouse_id)
+
+                update_env_file("MLFLOW_TRACING_DESTINATION", tracing_dest)
+                update_env_file("MLFLOW_TRACING_SQL_WAREHOUSE_ID", warehouse_id)
+                append_env_to_app_yaml("MLFLOW_TRACING_DESTINATION", tracing_dest)
+                append_env_to_app_yaml("MLFLOW_TRACING_SQL_WAREHOUSE_ID", warehouse_id)
+                print_success(t(f"トレース送信先: Unity Catalog ({tracing_dest})",
+                                 f"Trace destination: Unity Catalog ({tracing_dest})"))
+
+                # トレーステーブルの初期作成
+                trace_setup_ok = run_trace_setup_on_databricks(
+                    profile_name=profile_name,
+                    username=username,
+                    catalog=_t_cat,
+                    schema=_t_sch,
+                    warehouse_id=warehouse_id,
+                    experiment_id=monitoring_id,
+                )
+                if trace_setup_ok:
+                    print_success(t("トレーステーブル作成完了",
+                                     "Trace table setup complete"))
+                else:
+                    print_error(t(
+                        "トレーステーブル作成に失敗しました（手動実行を推奨）",
+                        "Trace table creation failed (manual setup recommended)",
+                    ))
+                use_delta = "y"
+            else:
+                # 前回のランで設定された MLFLOW_TRACING_DESTINATION を削除
+                update_env_file("MLFLOW_TRACING_DESTINATION", "")
+                remove_env_from_app_yaml("MLFLOW_TRACING_DESTINATION")
+                remove_env_from_app_yaml("MLFLOW_TRACING_SQL_WAREHOUSE_ID")
+                print_success(t("トレース送信先: MLflow Experiment（デフォルト）",
+                                 "Trace destination: MLflow Experiment (default)"))
+                use_delta = "n"
         else:
             print()
             print(t("  トレース送信先の選択:", "  Select trace destination:"))
