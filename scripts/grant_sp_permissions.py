@@ -88,6 +88,72 @@ def grant_uc_permissions(
         return False
 
 
+def grant_vs_endpoint_permission(
+    token: str, host: str, vs_index: str, sp_id: str,
+) -> bool:
+    """Grant the App SP CAN_USE on the Vector Search endpoint that hosts vs_index.
+
+    新規エンドポイントの ACL は creator + admins のみで、App SP は持たない。
+    SP に CAN_USE を付けないと VS API が "Invalid Token" として弾く。
+    既存共有エンドポイントの場合は既に他の経路で権限が付いていることが
+    多いので冪等に動作する（PATCH なので重複許容）。
+    """
+    # 1. インデックスから endpoint 名と ID を取得
+    idx_req = urllib.request.Request(
+        f"{host}/api/2.0/vector-search/indexes/{vs_index}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    try:
+        with urllib.request.urlopen(idx_req, timeout=30) as resp:
+            idx_info = json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        print_warn(f"VS インデックス情報取得失敗: {str(e)[:200]} → 権限付与スキップ")
+        return False
+    endpoint_name = idx_info.get("endpoint_name", "")
+    if not endpoint_name:
+        print_warn("VS インデックスから endpoint 名を解決できず → 権限付与スキップ")
+        return False
+
+    ep_req = urllib.request.Request(
+        f"{host}/api/2.0/vector-search/endpoints/{endpoint_name}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    try:
+        with urllib.request.urlopen(ep_req, timeout=30) as resp:
+            ep_info = json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        print_warn(f"VS エンドポイント情報取得失敗: {str(e)[:200]} → 権限付与スキップ")
+        return False
+    endpoint_id = ep_info.get("id", "")
+    if not endpoint_id:
+        print_warn(f"VS エンドポイント '{endpoint_name}' の ID を取得できず → 権限付与スキップ")
+        return False
+
+    # 2. PATCH で CAN_USE を付与
+    payload = json.dumps({
+        "access_control_list": [{
+            "service_principal_name": sp_id,
+            "permission_level": "CAN_USE",
+        }],
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        f"{host}/api/2.0/permissions/vector-search-endpoints/{endpoint_id}",
+        data=payload,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="PATCH",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return True
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8")[:200]
+        print_error(f"VS エンドポイント権限付与失敗 ({endpoint_name}): HTTP {e.code}: {body}")
+        return False
+    except Exception as e:
+        print_error(f"VS エンドポイント権限付与失敗: {str(e)[:200]}")
+        return False
+
+
 def get_sp_client_id(app_name: str, profile: str) -> str:
     """アプリ名から SP Client ID を取得する。"""
     result = subprocess.run(
@@ -301,8 +367,18 @@ def main():
         # 同一スキーマの場合、MODIFY は既にデータスキーマ権限で付与済み
         print_success(f"トレーススキーマ（データスキーマと同一、権限付与済み）: {tc}.{ts}")
 
-    # ── 3. Lakebase PostgreSQL 権限 ──
-    print("\n=== 3. Lakebase PostgreSQL 権限 ===")
+    # ── 3. Vector Search エンドポイント権限 ──
+    print("\n=== 3. Vector Search エンドポイント権限 ===")
+    if vs_index:
+        if grant_vs_endpoint_permission(token, host, vs_index, sp_id):
+            print_success(f"VS エンドポイント: CAN_USE on (endpoint hosting {vs_index})")
+        else:
+            print_warn("VS エンドポイント権限付与をスキップしました（手動で確認してください）")
+    else:
+        print_warn("VECTOR_SEARCH_INDEX 未設定 → VS エンドポイント権限付与スキップ")
+
+    # ── 4. Lakebase PostgreSQL 権限 ──
+    print("\n=== 4. Lakebase PostgreSQL 権限 ===")
     grant_lakebase_permissions(sp_id)
 
     print(f"\n{'='*60}")

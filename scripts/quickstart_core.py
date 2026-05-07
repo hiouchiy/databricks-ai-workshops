@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 
@@ -2487,63 +2487,63 @@ def enable_cdf(token: str, host: str, warehouse_id: str, catalog: str, schema: s
 
 
 def create_vector_search_index(token: str, host: str, catalog: str, schema: str, vs_endpoint: str) -> str:
-    """Create Vector Search index and wait for READY."""
+    """Create Vector Search index and wait for READY.
+
+    SDK の create_delta_sync_index_and_wait を使用：エンドポイントの
+    ONLINE 詐欺（state は ONLINE だがクエリ可能になるまで数分かかる）を
+    SDK 側で吸収してくれる。
+    """
+    from databricks.vector_search.client import VectorSearchClient
+
     index_name = f"{catalog}.{schema}.policy_docs_index"
     print_step(t(f"Vector Search インデックスの作成 ({index_name})...",
                   f"Creating Vector Search index ({index_name})..."))
 
-    # Check if already exists
+    # 既存を再利用（READY ならスキップ）
     existing = api_get(f"/api/2.0/vector-search/indexes/{index_name}", token, host)
-    if "error" not in existing and existing.get("status", {}).get("ready") == True:
+    if "error" not in existing and existing.get("status", {}).get("ready") is True:
         print_success(t(f"インデックス {index_name} は既に READY です（スキップ）",
                          f"Index {index_name} is already READY (skipping)"))
         return index_name
 
-    # Create
-    body = {
-        "name": index_name,
-        "endpoint_name": vs_endpoint,
-        "primary_key": "chunk_id",
-        "delta_sync_index_spec": {
-            "source_table": f"{catalog}.{schema}.policy_docs_chunked",
-            "pipeline_type": "TRIGGERED",
-            "embedding_source_columns": [
-                {
-                    "name": "content",
-                    "embedding_model_endpoint_name": "databricks-qwen3-embedding-0-6b",
-                }
-            ],
-        },
-    }
-    result = api_post("/api/2.0/vector-search/indexes", token, host, body)
-    if "error" in result:
-        # May already exist
-        if "ALREADY_EXISTS" in str(result.get("error", "")):
-            print(t("  インデックスは既に存在します。ステータス確認中...",
+    vsc = VectorSearchClient(
+        workspace_url=host,
+        personal_access_token=token,
+        disable_notice=True,
+    )
+    print(t("  作成 + READY 待ち（最大 60 分、SDK が状態遷移を内部追跡）...",
+             "  Creating + waiting for READY (up to 60 min, SDK handles state)..."))
+    try:
+        vsc.create_delta_sync_index_and_wait(
+            endpoint_name=vs_endpoint,
+            index_name=index_name,
+            primary_key="chunk_id",
+            source_table_name=f"{catalog}.{schema}.policy_docs_chunked",
+            pipeline_type="TRIGGERED",
+            embedding_source_column="content",
+            embedding_model_endpoint_name="databricks-qwen3-embedding-0-6b",
+            verbose=True,
+            timeout=timedelta(minutes=60),
+        )
+    except Exception as e:
+        # ALREADY_EXISTS は再利用可能なので最終ステータスだけ確認
+        msg = str(e)
+        if "ALREADY_EXISTS" in msg or "already exists" in msg.lower():
+            print(t("  インデックスは既に存在。ステータス確認中...",
                      "  Index already exists. Checking status..."))
         else:
-            print_error(t(f"インデックス作成失敗: {result['error']}",
-                           f"Index creation failed: {result['error']}"))
-            # 失敗を呼び出し側に伝える（ロールバック用）
-            raise RuntimeError(f"VS Index creation failed: {result['error'][:300]}")
+            print_error(t(f"インデックス作成失敗: {msg[:200]}",
+                           f"Index creation failed: {msg[:200]}"))
+            raise RuntimeError(f"VS Index creation failed: {msg[:300]}") from e
+
+    # SDK が wait を返した時点で READY だが、最終確認
+    status = api_get(f"/api/2.0/vector-search/indexes/{index_name}", token, host)
+    if status.get("status", {}).get("ready") is True:
+        print_success(t(f"インデックス READY: {index_name}",
+                         f"Index READY: {index_name}"))
     else:
-        print_success(t("インデックス作成開始", "Index creation started"))
-
-    # Poll for READY
-    print(t("  READY 待ち（最大10分）...", "  Waiting for READY (up to 10 min)..."), end="", flush=True)
-    for i in range(40):  # 40 * 15s = 10 min
-        time.sleep(15)
-        print(".", end="", flush=True)
-        status = api_get(f"/api/2.0/vector-search/indexes/{index_name}", token, host)
-        if status.get("status", {}).get("ready") == True:
-            print()
-            print_success(t(f"インデックス READY: {index_name}",
-                             f"Index READY: {index_name}"))
-            return index_name
-
-    print()
-    print(t("  ⚠ タイムアウト。Databricks UI でステータスを確認してください。",
-             "  Warning: Timeout. Please check the status in the Databricks UI."))
+        print(t("  ⚠ wait 完了後も ready=False。Databricks UI で確認してください。",
+                 "  Warning: wait returned but ready=False. Please check the Databricks UI."))
     return index_name
 
 
@@ -3101,15 +3101,19 @@ def create_sql_warehouse(
 def create_vs_endpoint_new(
     token: str, host: str, name: str, endpoint_type: str = "STANDARD"
 ) -> dict:
-    """Create a new Vector Search endpoint via REST API（冪等化）。
+    """Create a new Vector Search endpoint and wait until ONLINE（冪等化）。
 
     同名エンドポイントが既に存在する場合は **作成せず既存のものを再利用** する。
-    新規作成は 10〜15 分かかるので、再利用できれば大幅な時間節約になる。
+    新規作成は 10〜15 分かかるが、SDK の create_endpoint_and_wait は内部で
+    state 遷移を追跡しつつ待機する。endpoint_status.state="ONLINE" を返した
+    直後でもクエリ可能になるまで遅延がある「ONLINE 詐欺」問題は、後段の
+    create_delta_sync_index_and_wait が吸収する。
 
     Returns:
-        dict with 'name' / 'endpoint_status' (and 'reused' bool if reused),
-        or {'error': ...} on failure.
+        dict with 'name' / 'endpoint_status' (and 'reused' bool if reused).
     """
+    from databricks.vector_search.client import VectorSearchClient
+
     # 1. 既存エンドポイントの確認
     existing = api_get(f"/api/2.0/vector-search/endpoints/{name}", token, host)
     if isinstance(existing, dict) and "error" not in existing and existing.get("name") == name:
@@ -3120,9 +3124,27 @@ def create_vs_endpoint_new(
         ))
         return {**existing, "reused": True}
 
-    # 2. 存在しなければ新規作成
-    body = {"name": name, "endpoint_type": endpoint_type}
-    return api_post("/api/2.0/vector-search/endpoints", token, host, body)
+    # 2. SDK で作成 + ONLINE まで待機
+    print(t(f"  VS エンドポイント '{name}' を作成中（最大 60 分、ONLINE まで待機）...",
+             f"  Creating VS endpoint '{name}' (up to 60 min, waiting until ONLINE)..."))
+    vsc = VectorSearchClient(
+        workspace_url=host,
+        personal_access_token=token,
+        disable_notice=True,
+    )
+    try:
+        vsc.create_endpoint_and_wait(
+            name=name,
+            endpoint_type=endpoint_type,
+            verbose=True,
+            timeout=timedelta(minutes=60),
+        )
+    except Exception as e:
+        print_error(t(f"VS エンドポイント作成失敗: {str(e)[:200]}",
+                       f"VS endpoint creation failed: {str(e)[:200]}"))
+        return {"error": str(e)}
+    info = api_get(f"/api/2.0/vector-search/endpoints/{name}", token, host)
+    return info if isinstance(info, dict) else {"name": name}
 
 
 def wait_for_vs_endpoint_ready(
