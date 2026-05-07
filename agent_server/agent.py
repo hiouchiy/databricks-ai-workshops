@@ -262,15 +262,29 @@ def load_system_prompt() -> str:
 # DatabricksVectorSearch を使うことで、MLflow が RETRIEVER スパンを自動生成する。
 # これが agent.py（MCP 版）との唯一の違い。
 
-# Databricks Apps（SP 実行）でも、CLI ローカル開発（OAuth U2M / PAT）でも
-# 同一コードで動くよう、認証は WorkspaceClient に委譲する。
-# ここでトークンを取り出してキャッシュすると Apps の SP M2M トークンが
-# VS エンドポイントで "Invalid Token" として弾かれる。
-_vector_store = DatabricksVectorSearch(
-    index_name=VECTOR_SEARCH_INDEX_NATIVE,
-    columns=["chunk_id", "doc_name", "content"],
-    workspace_client=sp_workspace_client,
-)
+# DatabricksVectorSearch は workspace_client から auth_type が
+# `oauth-m2m`（Apps 上の SP）または `model_serving_user_credentials` の
+# ときだけ自動で認証情報を組み立ててくれる。
+# CLI ローカル開発では auth_type=`databricks-cli` で client_args が空のまま
+# `VectorSearchClient` がエラーを投げるので、その場合のみ手動で PAT を抽出する。
+# Apps 上で SP の M2M トークンを personal_access_token として渡すと VS API に
+# "Invalid Token" で弾かれるので、Apps 経路では絶対にトークン引き渡しをしない。
+_dvs_kwargs: dict = {
+    "index_name": VECTOR_SEARCH_INDEX_NATIVE,
+    "columns": ["chunk_id", "doc_name", "content"],
+}
+_auth_type = getattr(sp_workspace_client.config, "auth_type", "")
+if _auth_type in ("oauth-m2m", "model_serving_user_credentials"):
+    _dvs_kwargs["workspace_client"] = sp_workspace_client
+else:
+    _headers = sp_workspace_client.config.authenticate()
+    _token = _headers.get("Authorization", "").replace("Bearer ", "")
+    _dvs_kwargs["client_args"] = {
+        "workspace_url": sp_workspace_client.config.host,
+        "personal_access_token": _token,
+        "disable_notice": True,
+    }
+_vector_store = DatabricksVectorSearch(**_dvs_kwargs)
 _retriever = _vector_store.as_retriever(search_kwargs={"k": 5})
 
 
