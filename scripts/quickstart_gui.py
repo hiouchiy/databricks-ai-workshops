@@ -42,6 +42,7 @@ class QuickstartWizard(customtkinter.CTk):
         self.geometry("700x550")
         self.resizable(False, False)
         self._center_window(700, 550)
+        self._apply_app_icon()
 
         # ── State ───────────────────────────────────────────────────────
         self.data: dict = {
@@ -130,6 +131,28 @@ class QuickstartWizard(customtkinter.CTk):
         self.attributes("-topmost", True)
         self.after(500, lambda: self.attributes("-topmost", False))
         self.focus_force()
+
+    # ── App icon (window + dock) ────────────────────────────────────────
+    def _apply_app_icon(self):
+        """assets/quickstart_icon.png を window / dock icon に設定する。
+
+        Tk 8.6 の `wm iconphoto -default` は macOS で dock icon にも
+        反映される（完全には差し替わらないが、デフォルトの白い書類アイコン
+        よりはマシになる）。Linux/Windows はタスクバー/ウィンドウ両方に
+        反映。
+        """
+        icon_path = Path(__file__).resolve().parent.parent / "assets" / "quickstart_icon.png"
+        if not icon_path.exists():
+            return
+        try:
+            photo = tk.PhotoImage(file=str(icon_path))
+            # ガベージコレクション対策のため self に参照を保持
+            self._app_icon_ref = photo
+            # -default を付けると以降生成される子ウィンドウにも引き継がれる
+            self.tk.call("wm", "iconphoto", self._w, "-default", photo)
+        except Exception:
+            # アイコン未設定でも GUI 自体は動作する
+            pass
 
     # ── Window centering ────────────────────────────────────────────────
     def _center_window(self, w: int, h: int):
