@@ -101,6 +101,10 @@ def get_current_time() -> str:
 # Configuration（agent.py と同一）
 ############################################
 LLM_ENDPOINT_NAME = os.getenv("LLM_ENDPOINT_NAME", "databricks-claude-sonnet-4-6")
+# Unity AI Gateway 経由で呼び出すかどうか（デフォルトは direct 呼び出し）
+LLM_USE_AI_GATEWAY = os.getenv("LLM_USE_AI_GATEWAY", "").lower() in ("true", "1", "yes")
+# Gateway 経由時のモデルサービス名（Unity Catalog full name）
+LLM_MODEL_SERVICE = os.getenv("LLM_MODEL_SERVICE", "system.ai.claude-sonnet-5")
 _LAKEBASE_INSTANCE_NAME_RAW = os.getenv("LAKEBASE_INSTANCE_NAME") or None
 EMBEDDING_ENDPOINT = "databricks-qwen3-embedding-0-6b"
 EMBEDDING_DIMS = 1024
@@ -324,17 +328,45 @@ def init_mcp_client(workspace_client: WorkspaceClient) -> DatabricksMultiServerM
     )
 
 
+def _build_llm(workspace_client: WorkspaceClient):
+    """LangChain 互換の Chat モデルを構築する。
+
+    LLM_USE_AI_GATEWAY=true のときは Unity AI Gateway (OpenAI 互換 API) 経由。
+    それ以外は従来の ChatDatabricks による direct 呼び出し。
+    """
+    if not LLM_USE_AI_GATEWAY:
+        return ChatDatabricks(endpoint=LLM_ENDPOINT_NAME)
+
+    from langchain_openai import ChatOpenAI
+    # DatabricksVectorSearch と同じハイブリッド認証パターン：
+    #   Apps（SP oauth-m2m / model_serving_user_credentials）→ SDK 経由でトークン取得
+    #   ローカル CLI（databricks-cli / pat）→ config.authenticate() から抽出
+    auth_type = getattr(workspace_client.config, "auth_type", "")
+    if auth_type in ("oauth-m2m", "model_serving_user_credentials"):
+        token = workspace_client.config.oauth_token().access_token
+    else:
+        headers = workspace_client.config.authenticate()
+        token = headers.get("Authorization", "").replace("Bearer ", "")
+    host = workspace_client.config.host
+    return ChatOpenAI(
+        base_url=f"{host}/ai-gateway/mlflow/v1",
+        api_key=token,
+        model=LLM_MODEL_SERVICE,
+    )
+
+
 async def init_agent(
     store: BaseStore,
     workspace_client: Optional[WorkspaceClient] = None,
     checkpointer: Optional[Any] = None,
 ):
-    mcp_client = init_mcp_client(workspace_client or sp_workspace_client)
+    wc = workspace_client or sp_workspace_client
+    mcp_client = init_mcp_client(wc)
     # MCP ツール（Genie + Code Interpreter）+ ネイティブ policy_search + メモリ + 時刻
     tools = [get_current_time, policy_search] + memory_tools() + await mcp_client.get_tools()
 
     return create_agent(
-        model=ChatDatabricks(endpoint=LLM_ENDPOINT_NAME),
+        model=_build_llm(wc),
         tools=tools,
         system_prompt=load_system_prompt(),
         store=store,
