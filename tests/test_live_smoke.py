@@ -71,13 +71,16 @@ def test_live_list_vs_endpoints(live_auth):
         assert isinstance(r["endpoints"], list)
 
 
-def test_live_list_chat_models(live_auth):
-    """Foundation Model API endpoints reachable. Must contain at least one chat model."""
-    models = core.list_chat_models(live_auth["token"], live_auth["host"])
-    assert isinstance(models, list)
-    # On Free Edition there's typically at least one default chat endpoint
-    if models:
-        assert all(m.get("task") == "llm/v1/chat" for m in models)
+def test_live_list_gateway_chat_model_services(live_auth):
+    """Unity AI Gateway model services reachable. Must contain at least one chat model."""
+    names = core.list_gateway_chat_model_services(
+        live_auth["token"], live_auth["host"]
+    )
+    assert isinstance(names, list)
+    # On any reasonably provisioned workspace there's usually at least one
+    if names:
+        # All returned names are bare (no "model-services/" prefix)
+        assert all(not n.startswith("model-services/") for n in names)
 
 
 def test_live_default_app_name_under_30_chars(live_auth):

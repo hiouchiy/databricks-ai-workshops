@@ -100,11 +100,13 @@ def get_current_time() -> str:
 ############################################
 # Configuration（agent.py と同一）
 ############################################
-LLM_ENDPOINT_NAME = os.getenv("LLM_ENDPOINT_NAME", "databricks-claude-sonnet-4-6")
-# Unity AI Gateway 経由で呼び出すかどうか（デフォルトは direct 呼び出し）
-LLM_USE_AI_GATEWAY = os.getenv("LLM_USE_AI_GATEWAY", "").lower() in ("true", "1", "yes")
+# Unity AI Gateway 経由でモデルを呼び出す（デフォルト）。
+# 明示的に "false" にすると従来の direct 呼び出し（ChatDatabricks + serving endpoint）にフォールバック。
+LLM_USE_AI_GATEWAY = os.getenv("LLM_USE_AI_GATEWAY", "true").lower() in ("true", "1", "yes")
 # Gateway 経由時のモデルサービス名（Unity Catalog full name）
 LLM_MODEL_SERVICE = os.getenv("LLM_MODEL_SERVICE", "system.ai.claude-sonnet-5")
+# Direct モード時のみ使用する serving endpoint 名（後方互換用）
+LLM_ENDPOINT_NAME = os.getenv("LLM_ENDPOINT_NAME", "databricks-claude-sonnet-4-6")
 _LAKEBASE_INSTANCE_NAME_RAW = os.getenv("LAKEBASE_INSTANCE_NAME") or None
 EMBEDDING_ENDPOINT = "databricks-qwen3-embedding-0-6b"
 EMBEDDING_DIMS = 1024

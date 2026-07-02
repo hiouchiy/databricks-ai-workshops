@@ -65,6 +65,11 @@ DEFAULT_LLM_MODELS = [
     {"name": "databricks-claude-sonnet-4-6", "task": "llm/v1/chat", "state": {"ready": "READY"}},
     {"name": "databricks-claude-haiku-4-5", "task": "llm/v1/chat", "state": {"ready": "READY"}},
 ]
+DEFAULT_GATEWAY_MODEL_SERVICES = [
+    "system.ai.claude-sonnet-5",
+    "system.ai.claude-opus-4-6",
+    "system.ai.gpt-oss-120b",
+]
 
 
 @pytest.fixture
@@ -143,9 +148,14 @@ def mock_core(monkeypatch):
     )
     monkeypatch.setattr(core, "list_lakebase_projects", mocks["list_lakebase_projects"])
 
-    # --- list_chat_models (LLM page) ---
-    mocks["list_chat_models"] = MagicMock(return_value=DEFAULT_LLM_MODELS)
-    monkeypatch.setattr(core, "list_chat_models", mocks["list_chat_models"])
+    # --- list_gateway_chat_model_services (LLM page, Unity AI Gateway) ---
+    mocks["list_gateway_chat_model_services"] = MagicMock(return_value=DEFAULT_GATEWAY_MODEL_SERVICES)
+    monkeypatch.setattr(
+        core, "list_gateway_chat_model_services", mocks["list_gateway_chat_model_services"]
+    )
+    # --- check_ai_gateway_available (assume enabled in tests) ---
+    mocks["check_ai_gateway_available"] = MagicMock(return_value=True)
+    monkeypatch.setattr(core, "check_ai_gateway_available", mocks["check_ai_gateway_available"])
 
     # --- get_env_value (.env reader) ---
     mocks["get_env_value"] = MagicMock(return_value="")

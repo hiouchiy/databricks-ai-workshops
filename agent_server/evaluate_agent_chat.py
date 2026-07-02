@@ -260,6 +260,8 @@ def _create_native_agent():
     ws = WorkspaceClient()
     host_name = get_databricks_host_from_env()
 
+    LLM_USE_AI_GATEWAY = os.getenv("LLM_USE_AI_GATEWAY", "true").lower() in ("true", "1", "yes")
+    LLM_MODEL_SERVICE = os.getenv("LLM_MODEL_SERVICE", "system.ai.claude-sonnet-5")
     LLM_ENDPOINT_NAME = os.getenv("LLM_ENDPOINT_NAME", "databricks-claude-sonnet-4-6")
     GENIE_SPACE_ID = os.getenv("GENIE_SPACE_ID", "")
     VECTOR_SEARCH_INDEX = os.getenv("VECTOR_SEARCH_INDEX", "")
@@ -324,7 +326,15 @@ def _create_native_agent():
     loop.close()
 
     all_tools = [get_current_time, policy_search] + mcp_tools
-    llm = ChatDatabricks(endpoint=LLM_ENDPOINT_NAME)
+    if LLM_USE_AI_GATEWAY:
+        from langchain_openai import ChatOpenAI
+        llm = ChatOpenAI(
+            base_url=f"{ws.config.host}/ai-gateway/mlflow/v1",
+            api_key=_token,
+            model=LLM_MODEL_SERVICE,
+        )
+    else:
+        llm = ChatDatabricks(endpoint=LLM_ENDPOINT_NAME)
 
     return create_agent(
         model=llm,

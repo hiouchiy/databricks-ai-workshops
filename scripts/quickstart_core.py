@@ -2754,54 +2754,64 @@ def init_lakebase_tables() -> bool:
 # ── Permission-aware resource filtering & creation ───────────────────
 
 
-DEFAULT_LLM_ENDPOINT = "databricks-claude-sonnet-4-6"
+DEFAULT_LLM_MODEL_SERVICE = "system.ai.claude-sonnet-5"
 
 
-def list_chat_models(token: str, host: str) -> list[dict]:
-    """Return READY chat-task FM API endpoints in the workspace.
+def list_gateway_chat_model_services(
+    token: str, host: str, catalog: str = "system", schema: str = "ai",
+) -> list[str]:
+    """Return chat-capable Unity AI Gateway model service names in a UC schema.
 
-    Filters /api/2.0/serving-endpoints by:
-      - task == "llm/v1/chat"
-      - state.ready == "READY"
-    Sorted alphabetically by name.
+    Filters `/api/2.1/unity-catalog/model-services?catalog_name=...&schema_name=...`
+    by `supported_api_types` containing `"mlflow/v1/chat/completions"`
+    (excludes embeddings-only services). Returns bare names
+    (e.g. `"system.ai.claude-sonnet-5"`) sorted alphabetically.
     """
-    result = api_get("/api/2.0/serving-endpoints", token, host)
-    eps = result.get("endpoints", []) if isinstance(result, dict) else []
-    chat = [
-        ep for ep in eps
-        if ep.get("task") == "llm/v1/chat"
-        and ep.get("state", {}).get("ready") == "READY"
-    ]
-    chat.sort(key=lambda e: e.get("name", ""))
-    return chat
+    result = api_get(
+        f"/api/2.1/unity-catalog/model-services?catalog_name={catalog}&schema_name={schema}",
+        token, host,
+    )
+    services = result.get("model_services", []) if isinstance(result, dict) else []
+    chat_names = []
+    for ms in services:
+        api_types = ms.get("supported_api_types") or []
+        if "mlflow/v1/chat/completions" not in api_types:
+            continue
+        raw_name = ms.get("name", "")
+        # "model-services/system.ai.claude-sonnet-5" -> "system.ai.claude-sonnet-5"
+        bare = raw_name.removeprefix("model-services/") if raw_name.startswith("model-services/") else raw_name
+        if bare:
+            chat_names.append(bare)
+    chat_names.sort()
+    return chat_names
 
 
-def select_llm_endpoint_interactive(
-    token: str, host: str, default: str = DEFAULT_LLM_ENDPOINT
+def select_llm_model_service_interactive(
+    token: str, host: str, default: str = DEFAULT_LLM_MODEL_SERVICE,
 ) -> str:
-    """Show available chat models and let the user pick one.
+    """Show Unity AI Gateway chat model services and let the user pick one.
 
     Default is highlighted with ★ but the user must explicitly confirm
     (no implicit fallback if the default is missing).
     """
-    print_step(t("LLM エンドポイントの選択...",
-                  "Selecting LLM endpoint..."))
-    models = list_chat_models(token, host)
-    if not models:
+    print_step(t("LLM モデルサービスの選択（Unity AI Gateway 経由）...",
+                  "Selecting LLM model service (via Unity AI Gateway)..."))
+    names = list_gateway_chat_model_services(token, host)
+    if not names:
         print_error(t(
-            "利用可能なチャット用 LLM エンドポイントが見つかりません。\n"
-            "ワークスペースで Foundation Model API が有効か確認してください。",
-            "No chat-task LLM endpoints available.\n"
-            "Please verify Foundation Model API is enabled in your workspace.",
+            "利用可能なチャット用モデルサービスが見つかりません。\n"
+            "ワークスペースで Unity AI Gateway が有効化されているか、"
+            "account admin に確認してください。",
+            "No chat-capable model services available.\n"
+            "Please ask your account admin to verify Unity AI Gateway is enabled.",
         ))
-        manual = input(t("\n  エンドポイント名を手動入力 [{0}]: ".format(default),
-                          "\n  Enter endpoint name manually [{0}]: ".format(default))).strip()
+        manual = input(t(f"\n  モデルサービス名を手動入力 [{default}]: ",
+                          f"\n  Enter model service name manually [{default}]: ")).strip()
         return manual or default
 
-    names = [m.get("name", "") for m in models if m.get("name")]
     print()
-    print(t("  利用可能なチャット LLM エンドポイント:",
-            "  Available chat LLM endpoints:"))
+    print(t("  利用可能なチャットモデルサービス:",
+            "  Available chat model services:"))
     default_idx = -1
     for i, name in enumerate(names, 1):
         marker = " ★ (推奨デフォルト)" if name == default else ""
@@ -2823,11 +2833,34 @@ def select_llm_endpoint_interactive(
             idx = int(choice) - 1
             if 0 <= idx < len(names):
                 selected = names[idx]
-                print_success(f"LLM endpoint: {selected}")
+                print_success(f"LLM model service: {selected}")
                 return selected
         except ValueError:
             pass
         print(t("  無効な選択です。", "  Invalid selection."))
+
+
+def check_ai_gateway_available(token: str, host: str) -> bool:
+    """Return True if the Unity AI Gateway URL responds (any 2xx/4xx)
+
+    404 = feature not enabled (account admin needs to turn on the Preview).
+    401/403 = auth issue.
+    2xx / 4xx (other) = endpoint exists.
+    """
+    # A HEAD on /chat/completions should return 405 (Method Not Allowed) or
+    # 4xx-family, which we still count as "endpoint exists". A plain GET on
+    # the base path is safer.
+    import urllib.request, urllib.error
+    url = f"{host}/ai-gateway/mlflow/v1/models"
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return 200 <= resp.status < 500
+    except urllib.error.HTTPError as e:
+        # 404 = not enabled
+        return e.code != 404
+    except Exception:
+        return False
 
 
 def select_catalog_interactive(
