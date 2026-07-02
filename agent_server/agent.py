@@ -350,10 +350,15 @@ def _build_llm(workspace_client: WorkspaceClient):
         headers = workspace_client.config.authenticate()
         token = headers.get("Authorization", "").replace("Bearer ", "")
     host = workspace_client.config.host
+    # Claude 系（Sonnet 5 など）は extended thinking がデフォルト ON で、
+    # content を「reasoning + text の list」で返すが、MLflow の
+    # ResponsesAgentStreamEvent は content=str を期待するため 500 になる。
+    # Anthropic 独自の thinking パラメータで無効化する（Gateway はこれを受け付ける）。
     return ChatOpenAI(
         base_url=f"{host}/ai-gateway/mlflow/v1",
         api_key=token,
         model=LLM_MODEL_SERVICE,
+        extra_body={"thinking": {"type": "disabled"}},
     )
 
 

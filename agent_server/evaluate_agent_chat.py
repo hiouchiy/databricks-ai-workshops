@@ -328,10 +328,14 @@ def _create_native_agent():
     all_tools = [get_current_time, policy_search] + mcp_tools
     if LLM_USE_AI_GATEWAY:
         from langchain_openai import ChatOpenAI
+        # Claude 5 の extended thinking を無効化（agent.py と同じ理由）：
+        # content=list を返すと MLflow の ResponsesAgentStreamEvent が str を
+        # 期待していて validation error になる。
         llm = ChatOpenAI(
             base_url=f"{ws.config.host}/ai-gateway/mlflow/v1",
             api_key=_token,
             model=LLM_MODEL_SERVICE,
+            extra_body={"thinking": {"type": "disabled"}},
         )
     else:
         llm = ChatDatabricks(endpoint=LLM_ENDPOINT_NAME)
