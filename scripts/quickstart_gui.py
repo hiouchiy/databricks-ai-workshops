@@ -78,8 +78,10 @@ class QuickstartWizard(customtkinter.CTk):
             "existing_trace_dest": "",
             # Prompt Registry
             "use_prompt_registry": "no",
-            # LLM model service (Unity AI Gateway 経由)
+            # LLM: gateway mode uses llm_model_service; direct fallback uses llm_endpoint
             "llm_model_service": "",
+            "llm_endpoint": "",
+            "_llm_mode": "gateway",  # or "direct"
             # App name
             "app_name": "",
             # Prerequisites
@@ -387,13 +389,15 @@ class QuickstartWizard(customtkinter.CTk):
                     ))
                     return False
         elif pg == 11:
-            # LLM model service page (Unity AI Gateway \u7d4c\u7531)
+            # LLM page: either gateway model service or direct endpoint depending on mode
+            mode = self.data.get("_llm_mode", "gateway")
+            key = "llm_model_service" if mode == "gateway" else "llm_endpoint"
             if not self.data.get("_llm_models_available") and hasattr(self, "_llm_manual_entry"):
-                self.data["llm_model_service"] = self._llm_manual_entry.get().strip()
-            if not self.data.get("llm_model_service", "").strip():
+                self.data[key] = self._llm_manual_entry.get().strip()
+            if not self.data.get(key, "").strip():
                 self._show_error(t(
-                    "LLM \u30e2\u30c7\u30eb\u30b5\u30fc\u30d3\u30b9\u540d\u3092\u9078\u629e\u307e\u305f\u306f\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
-                    "Please select or enter an LLM model service name."
+                    "LLM \u30e2\u30c7\u30eb\u30b5\u30fc\u30d3\u30b9\u540d\u307e\u305f\u306f\u30a8\u30f3\u30c9\u30dd\u30a4\u30f3\u30c8\u540d\u3092\u9078\u629e\u307e\u305f\u306f\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                    "Please select or enter an LLM model service or endpoint name."
                 ))
                 return False
         elif pg == 12:
@@ -2106,41 +2110,82 @@ class QuickstartWizard(customtkinter.CTk):
 
     # ── Page 11: LLM Endpoint ───────────────────────────────────────────
     def _page_llm_endpoint(self, frame: customtkinter.CTkFrame):
-        customtkinter.CTkLabel(
-            frame,
-            text=t("LLM モデルサービス", "LLM Model Service"),
-            font=customtkinter.CTkFont(size=22, weight="bold"),
-        ).pack(pady=(20, 5))
+        # ── Gateway 可用性を確認して mode を決定 ─────────────────────────
+        token = self.data.get("token", "")
+        host = self.data.get("host", "")
+        gateway_available = False
+        if token and host:
+            try:
+                gateway_available = core.check_ai_gateway_available(token, host)
+            except Exception:
+                gateway_available = False
+        # Gateway あれば "gateway"、無ければ direct fallback
+        mode = "gateway" if gateway_available else "direct"
+        self.data["_llm_mode"] = mode
 
-        customtkinter.CTkLabel(
-            frame,
-            text=t(
+        if mode == "gateway":
+            title = t("LLM モデルサービス", "LLM Model Service")
+            subtitle = t(
                 "エージェントが使用するモデルサービスを選択してください（Unity AI Gateway 経由でルーティング）。\n"
                 "推奨デフォルト: system.ai.claude-sonnet-5",
                 "Choose the model service the agent will use (routed via Unity AI Gateway).\n"
                 "Recommended default: system.ai.claude-sonnet-5",
-            ),
-            wraplength=580,
-            justify="left",
-            text_color="gray",
+            )
+            fetching = t("利用可能なチャットモデルサービスを取得中...",
+                         "Fetching available chat model services...")
+            not_found_msg = t(
+                "利用可能なチャットモデルサービスが見つかりませんでした。",
+                "No chat-capable model services found.",
+            )
+            manual_label = t("モデルサービス名を手動入力:",
+                             "Or enter model service name manually:")
+            recommended = core.DEFAULT_LLM_MODEL_SERVICE
+            previously = self.data.get("llm_model_service", "")
+        else:
+            title = t("LLM エンドポイント（Gateway 未有効 → 直接呼び出し）",
+                      "LLM Endpoint (Gateway unavailable → direct calling)")
+            subtitle = t(
+                "このワークスペースでは Unity AI Gateway が有効化されていないため、\n"
+                "エンドポイント直接呼び出しにフォールバックします。\n"
+                "推奨デフォルト: databricks-claude-sonnet-4-6",
+                "Unity AI Gateway is not enabled on this workspace,\n"
+                "so we're falling back to direct endpoint calling.\n"
+                "Recommended default: databricks-claude-sonnet-4-6",
+            )
+            fetching = t("利用可能なチャット LLM エンドポイントを取得中...",
+                         "Fetching available chat LLM endpoints...")
+            not_found_msg = t(
+                "利用可能なチャット LLM エンドポイントが見つかりませんでした。",
+                "No chat LLM endpoints found.",
+            )
+            manual_label = t("エンドポイント名を手動入力:",
+                             "Or enter endpoint name manually:")
+            recommended = core.DEFAULT_LLM_ENDPOINT
+            previously = self.data.get("llm_endpoint", "")
+
+        customtkinter.CTkLabel(
+            frame, text=title,
+            font=customtkinter.CTkFont(size=22, weight="bold"),
+        ).pack(pady=(20, 5))
+
+        customtkinter.CTkLabel(
+            frame, text=subtitle,
+            wraplength=580, justify="left", text_color="gray",
         ).pack(pady=(0, 10), padx=40)
 
-        # Fetch model services
-        loading = customtkinter.CTkLabel(
-            frame,
-            text=t("利用可能なチャットモデルサービスを取得中...",
-                   "Fetching available chat model services..."),
-            text_color="gray",
-        )
+        # Fetch list according to mode
+        loading = customtkinter.CTkLabel(frame, text=fetching, text_color="gray")
         loading.pack(pady=5)
         self.update_idletasks()
 
-        token = self.data.get("token", "")
-        host = self.data.get("host", "")
         names: list[str] = []
         if token and host:
             try:
-                names = core.list_gateway_chat_model_services(token, host)
+                if mode == "gateway":
+                    names = core.list_gateway_chat_model_services(token, host)
+                else:
+                    models = core.list_chat_models(token, host)
+                    names = [m.get("name", "") for m in models if m.get("name")]
             except Exception:
                 names = []
 
@@ -2148,36 +2193,20 @@ class QuickstartWizard(customtkinter.CTk):
 
         if not names:
             customtkinter.CTkLabel(
-                frame,
-                text=t(
-                    "利用可能なチャットモデルサービスが見つかりませんでした。\n"
-                    "Unity AI Gateway が有効化されているか、account admin に確認してください。",
-                    "No chat-capable model services found.\n"
-                    "Please ask your account admin to verify Unity AI Gateway is enabled.",
-                ),
-                text_color="orange",
-                wraplength=520,
-                justify="left",
+                frame, text=not_found_msg,
+                text_color="orange", wraplength=520, justify="left",
             ).pack(pady=20)
 
-            # Allow manual entry as a fallback
-            customtkinter.CTkLabel(
-                frame,
-                text=t("モデルサービス名を手動入力:", "Or enter model service name manually:"),
-            ).pack(pady=(5, 2))
+            customtkinter.CTkLabel(frame, text=manual_label).pack(pady=(5, 2))
             self._llm_manual_entry = customtkinter.CTkEntry(frame, width=400)
-            self._llm_manual_entry.insert(
-                0, self.data.get("llm_model_service") or core.DEFAULT_LLM_MODEL_SERVICE
-            )
+            self._llm_manual_entry.insert(0, previously or recommended)
             self._llm_manual_entry.pack(pady=(0, 10))
             self.data["_llm_models_available"] = False
             return
 
         self.data["_llm_models_available"] = True
 
-        # Default selection logic
-        recommended = core.DEFAULT_LLM_MODEL_SERVICE
-        previously = self.data.get("llm_model_service", "")
+        # Default selection
         if previously and previously in names:
             default_value = previously
         elif recommended in names:
@@ -2195,19 +2224,13 @@ class QuickstartWizard(customtkinter.CTk):
                     f"⚠ Recommended default '{recommended}' is not available here."
                     " Please pick another model.",
                 ),
-                text_color="orange",
-                wraplength=560,
-                justify="left",
+                text_color="orange", wraplength=560, justify="left",
             ).pack(pady=(0, 5), padx=40)
 
-        # Make the dropdown labels show "★ recommended" when applicable
-        labels = []
-        for name in names:
-            if name == recommended:
-                labels.append(f"{name}  ★ (推奨デフォルト)")
-            else:
-                labels.append(name)
-        # Map label → model service name
+        labels = [
+            f"{name}  ★ (推奨デフォルト)" if name == recommended else name
+            for name in names
+        ]
         self._llm_label_to_name = {lbl: name for lbl, name in zip(labels, names)}
         default_label = next(
             (lbl for lbl, n in zip(labels, names) if n == default_value),
@@ -2215,8 +2238,7 @@ class QuickstartWizard(customtkinter.CTk):
         )
 
         customtkinter.CTkLabel(
-            frame,
-            text=t("モデルを選択:", "Select a model:"),
+            frame, text=t("モデルを選択:", "Select a model:"),
         ).pack(pady=(5, 2))
 
         self._llm_var = customtkinter.StringVar(value=default_label)
@@ -2225,12 +2247,15 @@ class QuickstartWizard(customtkinter.CTk):
             command=self._on_llm_change,
         ).pack(pady=(0, 10), padx=40)
 
-        # Initialize data
         self._on_llm_change(default_label)
 
     def _on_llm_change(self, label: str):
         name = getattr(self, "_llm_label_to_name", {}).get(label, label)
-        self.data["llm_model_service"] = name
+        # mode に応じて保存キーを切り替える（両方セットする形にしておくと保存側もシンプル）
+        if self.data.get("_llm_mode") == "gateway":
+            self.data["llm_model_service"] = name
+        else:
+            self.data["llm_endpoint"] = name
 
     # ── Page 12: App Name ───────────────────────────────────
     def _page_app_name(self, frame: customtkinter.CTkFrame):
@@ -2331,7 +2356,14 @@ class QuickstartWizard(customtkinter.CTk):
         else:
             lines.append(f"Prompt Registry: {t('\u4f7f\u7528\u3057\u306a\u3044', 'Disabled')}")
 
-        lines.append(f"LLM Model Service: {self.data.get('llm_model_service', '')}  (via Unity AI Gateway)")
+        if self.data.get("_llm_mode") == "gateway":
+            lines.append(
+                f"LLM Model Service: {self.data.get('llm_model_service', '')}  (via Unity AI Gateway)"
+            )
+        else:
+            lines.append(
+                f"LLM Endpoint: {self.data.get('llm_endpoint', '')}  (direct call, Gateway unavailable)"
+            )
         lines.append(f"App Name: {self.data.get('app_name', '')}")
 
         textbox.insert("0.0", "\n".join(lines))
@@ -2866,12 +2898,26 @@ class QuickstartWizard(customtkinter.CTk):
                 core.update_env_file("MLFLOW_EVAL_EXPERIMENT_ID", eval_id)
                 core.update_env_file("GENIE_SPACE_ID", genie_space_id)
                 core.update_env_file("VECTOR_SEARCH_INDEX", vs_index_val)
-                # Persist LLM model service selection (Unity AI Gateway 経由)
-                llm_model_service = s.get("llm_model_service", "") or core.DEFAULT_LLM_MODEL_SERVICE
-                core.update_env_file("LLM_USE_AI_GATEWAY", "true")
-                core.update_env_file("LLM_MODEL_SERVICE", llm_model_service)
-                core.append_env_to_app_yaml("LLM_USE_AI_GATEWAY", "true")
-                core.append_env_to_app_yaml("LLM_MODEL_SERVICE", llm_model_service)
+                # Persist LLM selection：mode に応じて Gateway or direct を書き込む
+                if s.get("_llm_mode") == "gateway":
+                    llm_model_service = s.get("llm_model_service", "") or core.DEFAULT_LLM_MODEL_SERVICE
+                    core.update_env_file("LLM_USE_AI_GATEWAY", "true")
+                    core.update_env_file("LLM_MODEL_SERVICE", llm_model_service)
+                    # direct モードの残骸をクリア
+                    core.update_env_file("LLM_ENDPOINT_NAME", "")
+                    core.append_env_to_app_yaml("LLM_USE_AI_GATEWAY", "true")
+                    core.append_env_to_app_yaml("LLM_MODEL_SERVICE", llm_model_service)
+                    core.remove_env_from_app_yaml("LLM_ENDPOINT_NAME")
+                else:
+                    # Gateway 未有効化 → direct fallback
+                    llm_endpoint = s.get("llm_endpoint", "") or core.DEFAULT_LLM_ENDPOINT
+                    core.update_env_file("LLM_USE_AI_GATEWAY", "false")
+                    core.update_env_file("LLM_ENDPOINT_NAME", llm_endpoint)
+                    # gateway モードの残骸をクリア
+                    core.update_env_file("LLM_MODEL_SERVICE", "")
+                    core.append_env_to_app_yaml("LLM_USE_AI_GATEWAY", "false")
+                    core.append_env_to_app_yaml("LLM_ENDPOINT_NAME", llm_endpoint)
+                    core.remove_env_from_app_yaml("LLM_MODEL_SERVICE")
                 # Persist Databricks App name
                 app_name = s.get("app_name", "") or core.compute_default_app_name(
                     s.get("username", "user")

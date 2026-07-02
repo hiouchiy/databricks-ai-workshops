@@ -97,6 +97,7 @@ databricks-ai-workshops/
 
 - 以下にアクセスできる **Databricks ワークスペース**：
   - Foundation Model API エンドポイント
+  - **Unity AI Gateway（推奨、Beta）** — account admin が [Previews ページ](https://docs.databricks.com/aws/ja/ai-gateway/) で有効化しておく必要があります。有効化されていない場合は自動的に serving endpoint への直接呼び出しにフォールバックしますが、ガバナンス／レート制限／使用量トラッキングなどの機能は Gateway 経由でのみ得られます。
   - Genie Spaces
   - Vector Search
   - Lakebase（**オートスケーリングのみ対応**。Provisioned インスタンスは本コンテンツではサポートしていません）
@@ -540,6 +541,7 @@ databricks-ai-workshops/
 
 - **Databricks workspace** with access to:
   - Foundation Model API endpoints
+  - **Unity AI Gateway (recommended, Beta)** — your account admin must enable this on the [Previews page](https://docs.databricks.com/aws/en/ai-gateway/). If it isn't enabled the quickstart will automatically fall back to calling serving endpoints directly, but you'll miss the governance / rate-limiting / usage-tracking features that only come with Gateway.
   - Genie Spaces
   - Vector Search
   - Lakebase (**autoscaling only** — provisioned instances are not supported in this workshop)

@@ -23,6 +23,7 @@ Genie・Vector Search・長期メモリを組み合わせた会話型 AI エー�
 | 2   | SQL ウェアハウスの確認              | 共有ウェアハウスが RUNNING であることを確認し、Warehouse ID を参加者に共有                |
 | 3   | Vector Search エンドポイントの事前作成 | 新規作成に数分かかるため、共有エンドポイントを1つ用意し、エンドポイント名を参加者に共有                    |
 | 4   | Foundation Model API の確認   | `databricks-claude-sonnet-4-5` エンドポイントが利用可能であることを確認             |
+| 4a  | **Unity AI Gateway の有効化（推奨）** | account admin が [Previews ページ](https://docs.databricks.com/aws/ja/ai-gateway/) で有効化。未有効の場合は serving endpoint への直接呼び出しへ自動フォールバック |
 | 5   | Lakebase 機能の有効化確認          | ワークスペースで Lakebase が有効であることを確認                                   |
 | 6   | Databricks Apps の空きスロット確認  | 上限に近い場合、不要なアプリを事前に削除（Apps デプロイを行う場合のみ）                          |
 | 7   | PyPI / npm アクセスの確認         | ローカル環境からパッケージインストールが可能であることを確認                                  |
@@ -867,6 +868,7 @@ Only **one person** per team needs to complete the following steps; all particip
 | 2   | Verify SQL Warehouse                    | Confirm the shared warehouse is RUNNING and share the Warehouse ID with participants                        |
 | 3   | Pre-create Vector Search endpoint       | Creating a new endpoint takes several minutes; prepare one shared endpoint and share the endpoint name      |
 | 4   | Verify Foundation Model API             | Confirm the `databricks-claude-sonnet-4-5` endpoint is available                                            |
+| 4a  | **Enable Unity AI Gateway (recommended)** | Account admin enables the feature on the [Previews page](https://docs.databricks.com/aws/en/ai-gateway/). If not enabled, quickstart falls back to direct serving-endpoint calls |
 | 5   | Verify Lakebase is enabled              | Confirm Lakebase is enabled in the workspace                                                                |
 | 6   | Check Databricks Apps slot availability | If near the limit, delete unused apps beforehand (only needed if deploying Apps)                            |
 | 7   | Verify PyPI / npm access                | Confirm that package installation is possible from local environments                                       |

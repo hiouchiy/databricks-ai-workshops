@@ -2755,6 +2755,70 @@ def init_lakebase_tables() -> bool:
 
 
 DEFAULT_LLM_MODEL_SERVICE = "system.ai.claude-sonnet-5"
+# 直接呼び出し（Gateway 未有効時のフォールバック）用のデフォルト serving endpoint
+DEFAULT_LLM_ENDPOINT = "databricks-claude-sonnet-4-6"
+
+
+def list_chat_models(token: str, host: str) -> list[dict]:
+    """Return READY chat-task FM API serving endpoints (direct-mode fallback).
+
+    Used when Unity AI Gateway is not enabled on the workspace.
+    Filters `/api/2.0/serving-endpoints` by task == "llm/v1/chat"
+    and state.ready == "READY".
+    """
+    result = api_get("/api/2.0/serving-endpoints", token, host)
+    eps = result.get("endpoints", []) if isinstance(result, dict) else []
+    chat = [
+        ep for ep in eps
+        if ep.get("task") == "llm/v1/chat"
+        and ep.get("state", {}).get("ready") == "READY"
+    ]
+    chat.sort(key=lambda e: e.get("name", ""))
+    return chat
+
+
+def select_llm_endpoint_interactive(
+    token: str, host: str, default: str = DEFAULT_LLM_ENDPOINT,
+) -> str:
+    """Direct-mode LLM endpoint picker (used when Gateway isn't available)."""
+    print_step(t("LLM エンドポイントの選択（Gateway 未有効 → 直接呼び出し）...",
+                  "Selecting LLM endpoint (Gateway unavailable → direct calling)..."))
+    models = list_chat_models(token, host)
+    if not models:
+        print_error(t(
+            "利用可能なチャット用 LLM エンドポイントが見つかりません。\n"
+            "ワークスペースで Foundation Model API が有効か確認してください。",
+            "No chat-task LLM endpoints available.\n"
+            "Please verify Foundation Model API is enabled in your workspace.",
+        ))
+        manual = input(t(f"\n  エンドポイント名を手動入力 [{default}]: ",
+                          f"\n  Enter endpoint name manually [{default}]: ")).strip()
+        return manual or default
+
+    names = [m.get("name", "") for m in models if m.get("name")]
+    print()
+    print(t("  利用可能なチャット LLM エンドポイント:",
+            "  Available chat LLM endpoints:"))
+    default_idx = -1
+    for i, name in enumerate(names, 1):
+        marker = " ★ (推奨デフォルト)" if name == default else ""
+        if name == default:
+            default_idx = i
+        print(f"    {i}. {name}{marker}")
+
+    default_choice = str(default_idx) if default_idx != -1 else "1"
+    while True:
+        choice = input(t(f"\n  番号で選択 [{default_choice}]: ",
+                          f"\n  Select by number [{default_choice}]: ")).strip() or default_choice
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(names):
+                selected = names[idx]
+                print_success(f"LLM endpoint: {selected}")
+                return selected
+        except ValueError:
+            pass
+        print(t("  無効な選択です。", "  Invalid selection."))
 
 
 def list_gateway_chat_model_services(

@@ -78,7 +78,9 @@ from scripts.quickstart_core import (
     select_vs_endpoint_interactive,
     select_warehouse_interactive,
     select_llm_model_service_interactive,
+    select_llm_endpoint_interactive,
     DEFAULT_LLM_MODEL_SERVICE,
+    DEFAULT_LLM_ENDPOINT,
     check_ai_gateway_available,
     compute_default_app_name,
     is_valid_app_name,
@@ -128,6 +130,10 @@ def main():
     parser.add_argument("--llm-model-service", default=None,
                         help="Unity AI Gateway model service full name (UC securable). "
                              "Default: system.ai.claude-sonnet-5 (interactively selectable)")
+    parser.add_argument("--llm-endpoint", default=None,
+                        help="[Gateway 未有効化ワークスペース用のフォールバック] "
+                             "Foundation Model API serving endpoint name. "
+                             "Default: databricks-claude-sonnet-4-6")
     parser.add_argument("--app-name", default=None,
                         help="Databricks App name. "
                              "Default: fm-agent-{username}-{MMDD} (interactively selectable)")
@@ -450,28 +456,43 @@ def main():
         if vs_endpoint and vs_endpoint not in existing_ep_names:
             created_resources["vs_endpoint"] = vs_endpoint
 
-        # LLM Model Service (Unity AI Gateway 経由)
-        if not check_ai_gateway_available(token, host):
-            print_error(t(
-                "Unity AI Gateway が有効化されていません。\n"
-                "account admin に Previews で有効化してもらってください。",
-                "Unity AI Gateway is not enabled.\n"
-                "Ask your account admin to enable it in the Previews page.",
-            ))
-            raise AbortSetup("Unity AI Gateway not available")
+        # LLM: Unity AI Gateway 経由がデフォルト。Gateway 未有効ワークスペースでは
+        # 従来の direct 呼び出し（serving endpoint 直叩き）にフォールバックする。
+        gateway_available = check_ai_gateway_available(token, host)
+        llm_mode = "gateway" if gateway_available else "direct"
+        llm_model_service = ""
+        llm_endpoint = ""
 
-        if args.llm_model_service:
-            llm_model_service = args.llm_model_service
-            print_success(t(f"LLM モデルサービス: {llm_model_service}",
-                             f"LLM model service: {llm_model_service}"))
-        elif non_interactive:
-            llm_model_service = DEFAULT_LLM_MODEL_SERVICE
-            print_success(t(f"LLM モデルサービス（デフォルト）: {llm_model_service}",
-                             f"LLM model service (default): {llm_model_service}"))
+        if llm_mode == "gateway":
+            print_step(t("LLM: Unity AI Gateway 経由", "LLM: via Unity AI Gateway"))
+            if args.llm_model_service:
+                llm_model_service = args.llm_model_service
+                print_success(t(f"LLM モデルサービス: {llm_model_service}",
+                                 f"LLM model service: {llm_model_service}"))
+            elif non_interactive:
+                llm_model_service = DEFAULT_LLM_MODEL_SERVICE
+                print_success(t(f"LLM モデルサービス（デフォルト）: {llm_model_service}",
+                                 f"LLM model service (default): {llm_model_service}"))
+            else:
+                llm_model_service = select_llm_model_service_interactive(
+                    token, host, default=DEFAULT_LLM_MODEL_SERVICE,
+                )
         else:
-            llm_model_service = select_llm_model_service_interactive(
-                token, host, default=DEFAULT_LLM_MODEL_SERVICE,
-            )
+            print(t("  ⚠ Unity AI Gateway が有効化されていません。"
+                     "直接呼び出しにフォールバックします。",
+                     "  ⚠ Unity AI Gateway is not enabled. Falling back to direct calling."))
+            if args.llm_endpoint:
+                llm_endpoint = args.llm_endpoint
+                print_success(t(f"LLM エンドポイント: {llm_endpoint}",
+                                 f"LLM endpoint: {llm_endpoint}"))
+            elif non_interactive:
+                llm_endpoint = DEFAULT_LLM_ENDPOINT
+                print_success(t(f"LLM エンドポイント（デフォルト）: {llm_endpoint}",
+                                 f"LLM endpoint (default): {llm_endpoint}"))
+            else:
+                llm_endpoint = select_llm_endpoint_interactive(
+                    token, host, default=DEFAULT_LLM_ENDPOINT,
+                )
 
         # Databricks App 名
         default_app_name = compute_default_app_name(username)
@@ -702,11 +723,21 @@ def main():
         update_env_file("MLFLOW_EVAL_EXPERIMENT_ID", eval_id)
         update_env_file("GENIE_SPACE_ID", genie_space_id)
         update_env_file("VECTOR_SEARCH_INDEX", vs_index)
-        # Unity AI Gateway 経由でモデルを呼び出す（Gateway がデフォルト経路）
-        update_env_file("LLM_USE_AI_GATEWAY", "true")
-        update_env_file("LLM_MODEL_SERVICE", llm_model_service)
-        append_env_to_app_yaml("LLM_USE_AI_GATEWAY", "true")
-        append_env_to_app_yaml("LLM_MODEL_SERVICE", llm_model_service)
+        # LLM mode に応じて Gateway か direct のどちらの env var を書き込むか切替
+        if llm_mode == "gateway":
+            update_env_file("LLM_USE_AI_GATEWAY", "true")
+            update_env_file("LLM_MODEL_SERVICE", llm_model_service)
+            update_env_file("LLM_ENDPOINT_NAME", "")
+            append_env_to_app_yaml("LLM_USE_AI_GATEWAY", "true")
+            append_env_to_app_yaml("LLM_MODEL_SERVICE", llm_model_service)
+            remove_env_from_app_yaml("LLM_ENDPOINT_NAME")
+        else:
+            update_env_file("LLM_USE_AI_GATEWAY", "false")
+            update_env_file("LLM_ENDPOINT_NAME", llm_endpoint)
+            update_env_file("LLM_MODEL_SERVICE", "")
+            append_env_to_app_yaml("LLM_USE_AI_GATEWAY", "false")
+            append_env_to_app_yaml("LLM_ENDPOINT_NAME", llm_endpoint)
+            remove_env_from_app_yaml("LLM_MODEL_SERVICE")
         update_env_file("DATABRICKS_APP_NAME", app_name)
         update_databricks_yml_experiment(monitoring_id)
         update_databricks_yml_resources(genie_space_id, vs_index)
