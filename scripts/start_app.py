@@ -28,7 +28,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Readiness patterns
-BACKEND_READY = [r"Uvicorn running on", r"Application startup complete", r"Started server process"]
+# 「バックエンド起動完了」の判定は post-bind な "Uvicorn running on" のみに絞る。
+# "Started server process" や "Application startup complete" は bind 成功前にも
+# 発火することがあり、その状態で readiness を宣言するとポート競合による
+# 起動失敗を見逃してしまう。
+BACKEND_READY = [r"Uvicorn running on"]
 FRONTEND_READY = [r"Server is running on http://localhost"]
 
 
@@ -210,7 +214,12 @@ class ProcessManager:
 
     def run(self, backend_args=None):
         load_dotenv(dotenv_path=".env", override=True)
-        if not os.environ.get("DATABRICKS_APP_NAME"):
+        # Databricks Apps ランタイム上でのみ port チェックを skip する。
+        # 判定には Apps ランタイムが自動 set する DATABRICKS_APP_URL を使う。
+        # DATABRICKS_APP_NAME は quickstart が .env に書き込む値（App 名記憶用）
+        # なのでローカル環境でも set されており、判定材料に使うと port 競合を
+        # 事前検出できずに bind 段階で落ちる。
+        if not os.environ.get("DATABRICKS_APP_URL"):
             self.check_ports()
 
         if not self.no_ui:
