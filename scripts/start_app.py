@@ -47,11 +47,13 @@ def check_port_available(port: int) -> bool:
 
 
 class ProcessManager:
-    def __init__(self, port=8000, no_ui=False):
+    def __init__(self, port=8000, no_ui=False, supervisor=False):
         self.backend_process = None
         self.frontend_process = None
         self.backend_ready = False
         self.frontend_ready = False
+        # supervisor=True で Supervisor API 版バックエンド（start-server-supervisor）に切替
+        self.supervisor = supervisor
         self.failed = threading.Event()
         self.backend_log = None
         self.frontend_log = None
@@ -237,7 +239,8 @@ class ProcessManager:
 
         try:
             # Build backend command, passing through all arguments
-            backend_cmd = ["uv", "run", "start-server"]
+            server_script = "start-server-supervisor" if self.supervisor else "start-server"
+            backend_cmd = ["uv", "run", server_script]
             if backend_args:
                 backend_cmd.extend(backend_args)
 
@@ -322,6 +325,12 @@ def main():
         action="store_true",
         help="Run backend only, skip frontend UI",
     )
+    parser.add_argument(
+        "--supervisor",
+        action="store_true",
+        help="Use the Supervisor API-based agent (start-server-supervisor) "
+             "instead of the default LangGraph agent (start-server)",
+    )
     args, backend_args = parser.parse_known_args()
 
     # Extract port from backend_args if specified
@@ -334,7 +343,7 @@ def main():
                 pass
             break
 
-    sys.exit(ProcessManager(port=port, no_ui=args.no_ui).run(backend_args))
+    sys.exit(ProcessManager(port=port, no_ui=args.no_ui, supervisor=args.supervisor).run(backend_args))
 
 
 if __name__ == "__main__":
