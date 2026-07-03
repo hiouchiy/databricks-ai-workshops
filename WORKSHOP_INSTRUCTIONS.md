@@ -282,6 +282,8 @@ Databricks UI：**Genie > New Genie Space**
 
 ## ステップ 6：Lakebase オートスケーリングインスタンスの作成
 
+> **Supervisor API 版のみ使う場合はこのステップは不要** — Supervisor 版は Lakebase を使わない（現時点で Beta のため長期・短期メモリ機能が未対応）ので、Lakebase プロジェクトの作成・PostgreSQL 権限付与・`ai_chatbot` スキーマの管理などをスキップできます。LangGraph 版を使う場合、または後で切り替える可能性がある場合はこのステップを実施してください。
+
 ```bash
 # プロジェクトの作成
 databricks api post "/api/2.0/postgres/projects?project_id=<PROJECT-NAME>" --json '{}'
@@ -631,6 +633,18 @@ echo "MY_EMAIL:  $MY_EMAIL"
 >
 > **クイックスタートを使わなかった場合のみ：** 以下を手動で編集します。
 
+**LangGraph 版 vs Supervisor 版の切替**は `app.yaml` の `command` を書き換えます（デフォルトは LangGraph 版）：
+
+```yaml
+# LangGraph 版（デフォルト、長期・短期メモリあり）
+command: ["uv", "run", "start-app"]
+
+# Supervisor 版（Databricks 側でループ管理、Lakebase メモリなし）
+command: ["uv", "run", "start-app", "--supervisor"]
+```
+
+> 1 つの App で両方を同時にホストすることはできません。両方比較したい場合は別 App として 2 つデプロイしてください。
+
 `app.yaml` も `databricks.yml` と同様に Lakebase の値を設定します：
 
 ```yaml
@@ -665,18 +679,21 @@ databricks bundle deploy -t dev
 
 > **重要：** このステップを **アプリの起動・ソースコードデプロイの前に** 実行することで、アプリの初回起動時に必要な権限がすべて揃った状態にできます。これにより従来必要だった「権限付与後のアプリ再起動（5〜10 分）」が不要になります。
 
+> **Supervisor 版のみの場合の注意：** Supervisor 版は Lakebase を使わないため、以下の Lakebase 関連の権限付与は不要です（`grant-sp-permissions` を実行しても Lakebase 部分がスキップされるだけで害はないので、両版に対応させるため実行しておいて構いません）。UC / VS Endpoint への CAN_USE 付与は Supervisor 版でも必要です。
+
 リソースバインディングにより、以下の権限はデプロイ時に **自動付与** されます：
 
-| リソース | 自動付与される権限 |
-|---|---|
-| MLflow Experiment | CAN_MANAGE |
-| Genie Space | CAN_RUN |
-| Vector Search Index | SELECT |
-| Lakebase プロジェクト | CAN_CONNECT_AND_CREATE（接続権限） |
+| リソース | 自動付与される権限 | Supervisor 版で必要？ |
+|---|---|---|
+| MLflow Experiment | CAN_MANAGE | ✅ |
+| Genie Space | CAN_RUN | ✅ |
+| Vector Search Index | SELECT | ✅ |
+| Lakebase プロジェクト | CAN_CONNECT_AND_CREATE（接続権限） | ❌（未使用） |
 
 以下は**手動で付与**する必要があります：
-- **Unity Catalog スキーマ権限**（USE CATALOG, USE SCHEMA, SELECT, MODIFY）
-- **Lakebase PostgreSQL 内部権限**（スキーマ・テーブルレベルの USAGE, SELECT, INSERT 等）
+- **Unity Catalog スキーマ権限**（USE CATALOG, USE SCHEMA, SELECT, MODIFY）— 両版で必要
+- **VS Endpoint への CAN_USE**（`grant-sp-permissions` が実施）— 両版で必要
+- **Lakebase PostgreSQL 内部権限**（スキーマ・テーブルレベルの USAGE, SELECT, INSERT 等）— **LangGraph 版のみ必要**
 
 #### 方法 A：ワンコマンドで一括付与（推奨）
 
@@ -1095,6 +1112,8 @@ Databricks UI: **Genie > New Genie Space**
 
 ## Step 6: Create Lakebase Autoscaling Instance
 
+> **Skip this step if you only plan to run the Supervisor variant** — the Supervisor version does not use Lakebase (memory tiers are not part of the Beta yet), so project creation, PostgreSQL grants, and the `ai_chatbot` schema management can all be skipped. Complete this step if you will run the LangGraph variant, or if you want the option to switch to it later.
+
 ```bash
 # Create the project
 databricks api post "/api/2.0/postgres/projects?project_id=<PROJECT-NAME>" --json '{}'
@@ -1444,6 +1463,18 @@ Open `databricks.yml` and edit the following sections to match your environment.
 >
 > **Only if you did NOT use quickstart:** edit the file manually as below.
 
+**To choose LangGraph vs Supervisor at deploy time**, edit the `command` in `app.yaml` (default is LangGraph):
+
+```yaml
+# LangGraph (default, includes long-term + short-term memory)
+command: ["uv", "run", "start-app"]
+
+# Supervisor (Databricks-managed loop, no Lakebase memory)
+command: ["uv", "run", "start-app", "--supervisor"]
+```
+
+> A single App instance can only host one variant at a time. Deploy them as two separate Apps if you want to compare both.
+
 Set the Lakebase values in `app.yaml` similarly to `databricks.yml`:
 
 ```yaml
@@ -1478,18 +1509,21 @@ The first deployment takes several minutes as it includes app creation.
 
 > **Important:** Run this step **before starting the app and deploying source code** so that all required permissions are in place by the app's first start. This eliminates the previously-required app restart after permission grants (which used to add 5-10 minutes of waiting).
 
+> **For the Supervisor variant:** the Lakebase-related grants below are not required (Supervisor doesn't use Lakebase). Running `grant-sp-permissions` anyway is harmless — the Lakebase part simply no-ops if the project isn't set up. UC and VS Endpoint grants are still required for both variants.
+
 Resource bindings **automatically grant** the following permissions at deploy time:
 
-| Resource | Automatically Granted Permissions |
-|---|---|
-| MLflow Experiment | CAN_MANAGE |
-| Genie Space | CAN_RUN |
-| Vector Search Index | SELECT |
-| Lakebase project | CAN_CONNECT_AND_CREATE (connection permission) |
+| Resource | Automatically Granted Permissions | Needed for Supervisor? |
+|---|---|---|
+| MLflow Experiment | CAN_MANAGE | ✅ |
+| Genie Space | CAN_RUN | ✅ |
+| Vector Search Index | SELECT | ✅ |
+| Lakebase project | CAN_CONNECT_AND_CREATE (connection permission) | ❌ (unused) |
 
 The following must be **granted manually**:
-- **Unity Catalog schema permissions** (USE CATALOG, USE SCHEMA, SELECT, MODIFY)
-- **Lakebase PostgreSQL internal permissions** (schema/table level USAGE, SELECT, INSERT, etc.)
+- **Unity Catalog schema permissions** (USE CATALOG, USE SCHEMA, SELECT, MODIFY) — both variants
+- **VS Endpoint CAN_USE** (`grant-sp-permissions` handles this) — both variants
+- **Lakebase PostgreSQL internal permissions** (schema/table level USAGE, SELECT, INSERT, etc.) — **LangGraph only**
 
 #### Option A: One-command bulk grant (recommended)
 

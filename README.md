@@ -264,12 +264,35 @@ claude
 
 ## 主要コンポーネント
 
-### エージェントアーキテクチャ
+### エージェント実装の 2 つの選択肢
+
+本ワークショップでは、**同じエージェント要件を 2 つの実装スタイルで比較**できます。どちらも同じフロントエンド／API 契約で動作するため、比較・切り替えが容易です。
+
+| | **LangGraph 版**（デフォルト） | **Supervisor API 版**（オプトイン） |
+|---|---|---|
+| ファイル | `agent_server/agent.py` | `agent_server/agent_supervisor.py` |
+| エージェントループ | 自分でスクラッチ実装（LangGraph の `create_agent`） | **Databricks 側でマネージド**（`responses.create` を 1 回呼ぶだけ） |
+| コード量 | ~600 行 | ~150 行 |
+| Genie / Vector Search | MCP + ネイティブ retriever | 組み込みツール宣言のみ |
+| 長期記憶（好み・タスク履歴・会話サマリー） | ✅ Lakebase Store + セマンティック検索 | ❌ **未対応**（Supervisor が Beta のため） |
+| 短期記憶（thread state） | ✅ LangGraph checkpointer + Lakebase | ❌ **未対応**（クライアントが履歴を毎回送る想定） |
+| モデル | `system.ai.claude-sonnet-4-6`（デフォルト、Sonnet 5 も可） | `system.ai.claude-sonnet-4-6` のみ（**Sonnet 5 は Supervisor 未対応**） |
+| ストリーミング | ✅ | ✅ |
+| 起動 | `uv run start-app` | `uv run start-app --supervisor` |
+
+**LangGraph 版**は「エージェントループを自分で作りたい」「Lakebase による永続メモリが必要」というケースに最適。ただしループ制御・エラーハンドリング・checkpoint 管理を自分で書く必要があります。
+
+**Supervisor API 版**は Databricks がエージェントループを内部で回してくれるため、**開発者はツール宣言とプロンプトに集中できる**のが最大の利点。tool_call → tool_result → 次の LLM 呼び出し、といった「面倒だが本質的でない配線」を書かずに済みます。
+
+> **Supervisor API は現時点で Beta のため、Lakebase 連携（長期・短期メモリ）は未対応**、また対応モデルも一部制限あり（Sonnet 5 未対応）。今後 Public Preview / GA に進む過程でこれらの制約は緩和される見込みです。ワークショップとしては「Databricks がエージェント基盤を高レベル API で提供しつつある動き」を体感するデモとしてご活用ください。
+
+### 内部モジュール構成
 
 | コンポーネント | ファイル | 説明 |
 |---|---|---|
-| コアエージェント | `agent_server/agent.py` | LangGraph オーケストレーション・MCP ツール・ネイティブ Vector Search |
-| メモリツール | `agent_server/utils_memory.py` | 7つのメモリツール（ユーザー好み・タスク・会話サマリー） |
+| コアエージェント（LangGraph） | `agent_server/agent.py` | LangGraph オーケストレーション・MCP ツール・ネイティブ Vector Search |
+| コアエージェント（Supervisor） | `agent_server/agent_supervisor.py` | Supervisor API 版のミニマル実装（比較用） |
+| メモリツール | `agent_server/utils_memory.py` | 7つのメモリツール（LangGraph 版のみ使用） |
 | ユーティリティ | `agent_server/utils.py` | 認証・スレッド管理・ストリーミング |
 
 ### ツール構成
@@ -379,6 +402,23 @@ databricks apps start $APP_NAME
 databricks apps deploy $APP_NAME \
   --source-code-path "/Workspace/Users/$MY_EMAIL/.bundle/retail_grocery_ltm_memory/dev/files"
 ```
+
+### LangGraph 版と Supervisor 版のデプロイ切替
+
+現時点では **1 つの App につき 1 実装のみ** デプロイできます（両方を同一 App で同時に配信することは非対応）。切替は `app.yaml` の `command` の 1 箇所を書き換えるだけ：
+
+```yaml
+# app.yaml
+# LangGraph 版（デフォルト）
+command: ["uv", "run", "start-app"]
+
+# Supervisor 版に切り替える場合
+command: ["uv", "run", "start-app", "--supervisor"]
+```
+
+2 実装を並行して比較したい場合は、**別々の App 名でそれぞれデプロイ**するのが実務的です（例：`fm-agent-langgraph`、`fm-agent-supervisor`）。`databricks.yml` にターゲットを追加すれば `databricks bundle deploy -t supervisor` のように切り替えられます。
+
+**SP 権限付与について**：`grant-sp-permissions` は UC / VS / Lakebase の 3 系統を付与しますが、**Supervisor 版は Lakebase を使わない**ため、Lakebase 権限付与の失敗は無視して問題ありません（LangGraph 版と併用する場合に備え、スクリプトは 3 系統すべて付与する挙動のまま）。
 
 詳細な手順は [WORKSHOP_INSTRUCTIONS.md のステップ 11](WORKSHOP_INSTRUCTIONS.md#ステップ-11オプションdatabricks-apps-へのデプロイ) を参照してください。
 
@@ -707,12 +747,35 @@ For step-by-step workshop instructions, see **[WORKSHOP_INSTRUCTIONS.md (English
 
 ## Key Components
 
-### Agent Architecture
+### Two Agent Implementations
+
+This workshop ships the **same agent requirements in two different implementation styles** so you can compare them side by side. Both expose the same frontend / API contract, so switching between them is a one-liner.
+
+| | **LangGraph version** (default) | **Supervisor API version** (opt-in) |
+|---|---|---|
+| File | `agent_server/agent.py` | `agent_server/agent_supervisor.py` |
+| Agent loop | Hand-rolled with `create_agent` | **Managed by Databricks** — a single `responses.create` call |
+| Lines of code | ~600 | ~150 |
+| Genie / Vector Search | MCP + native retriever | Declared as built-in Supervisor tools |
+| Long-term memory (preferences, task history, summaries) | ✅ Lakebase Store + semantic search | ❌ **not supported** (Supervisor is Beta) |
+| Short-term memory (thread state) | ✅ LangGraph checkpointer + Lakebase | ❌ **not supported** (client resends history each turn) |
+| Model | `system.ai.claude-sonnet-4-6` (Sonnet 5 also allowed) | `system.ai.claude-sonnet-4-6` only (**Sonnet 5 not on Supervisor's supported list**) |
+| Streaming | ✅ | ✅ |
+| Launch | `uv run start-app` | `uv run start-app --supervisor` |
+
+**LangGraph** is the right choice when you want full control over the loop, or when Lakebase-backed memory is a hard requirement. You own the loop logic, error handling, and checkpoint management.
+
+**Supervisor API** hands the loop off to Databricks, so **you focus on tool declarations and the prompt**. The plumbing of tool_call → tool_result → next LLM call is done for you.
+
+> **Supervisor API is in Beta today**, which is why Lakebase integration (both memory tiers) isn't available yet and why a subset of models is supported (Sonnet 5 not yet). These gaps are expected to close as the API moves to Public Preview and then GA. Use this workshop as a preview of Databricks' higher-level agent primitives.
+
+### Internal Module Layout
 
 | Component | File | Description |
 |---|---|---|
-| Core Agent | `agent_server/agent.py` | LangGraph orchestration, MCP tools, native Vector Search |
-| Memory Tools | `agent_server/utils_memory.py` | 7 memory tools (user preferences, tasks, conversation summaries) |
+| Core Agent (LangGraph) | `agent_server/agent.py` | LangGraph orchestration, MCP tools, native Vector Search |
+| Core Agent (Supervisor) | `agent_server/agent_supervisor.py` | Minimal Supervisor-API-based variant (comparison) |
+| Memory Tools | `agent_server/utils_memory.py` | 7 memory tools (used by LangGraph only) |
 | Utilities | `agent_server/utils.py` | Auth, thread management, streaming |
 
 ### Tool Configuration
@@ -822,6 +885,23 @@ databricks apps start $APP_NAME
 databricks apps deploy $APP_NAME \
   --source-code-path "/Workspace/Users/$MY_EMAIL/.bundle/retail_grocery_ltm_memory/dev/files"
 ```
+
+### Switching between the LangGraph and Supervisor variants at deploy time
+
+An app instance can only host **one implementation at a time** (serving both from the same App isn't supported). Toggling comes down to one line in `app.yaml`:
+
+```yaml
+# app.yaml
+# LangGraph version (default)
+command: ["uv", "run", "start-app"]
+
+# Supervisor version
+command: ["uv", "run", "start-app", "--supervisor"]
+```
+
+If you want to compare the two side by side, **deploy them as two separate Apps** (e.g., `fm-agent-langgraph`, `fm-agent-supervisor`). You can add a second target to `databricks.yml` and run `databricks bundle deploy -t supervisor`.
+
+**On `grant-sp-permissions`**: the script grants UC / VS / Lakebase permissions all three. Since the **Supervisor variant doesn't use Lakebase**, the Lakebase grants aren't required for that variant — but the script always applies them so the same App can also work as the LangGraph variant if you switch back.
 
 For detailed deployment instructions, see [Step 11](WORKSHOP_INSTRUCTIONS.md#step-11-optional-deploying-to-databricks-apps) in WORKSHOP_INSTRUCTIONS.md.
 
