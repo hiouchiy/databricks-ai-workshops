@@ -675,6 +675,14 @@ databricks bundle deploy -t dev
 
 初回はアプリの作成が含まれるため数分かかります。
 
+**Supervisor 版をデプロイする場合**は `-t supervisor` に切り替えてください。`databricks.yml` に事前定義された `supervisor` target が `app.yaml` の `command` を `["uv", "run", "start-app", "--supervisor"]` に上書きするので、`app.yaml` を手動編集する必要はありません：
+
+```bash
+databricks bundle deploy -t supervisor
+```
+
+同一 App 名を上書きする形になるので、既に LangGraph 版がデプロイ済みなら **その App が Supervisor 版に置き換わります**（元に戻すには `-t dev` で再デプロイ）。両版を並行運用したい場合は `databricks.yml` の `supervisor` target の `resources.apps.retail_grocery_ltm_memory.name` を別名（例：`fm-agent-supervisor`）にしてからデプロイしてください。
+
 ### 11-4. サービスプリンシパルへのパーミッション付与（**先に実行**）
 
 > **重要：** このステップを **アプリの起動・ソースコードデプロイの前に** 実行することで、アプリの初回起動時に必要な権限がすべて揃った状態にできます。これにより従来必要だった「権限付与後のアプリ再起動（5〜10 分）」が不要になります。
@@ -1504,6 +1512,14 @@ databricks bundle deploy -t dev
 ```
 
 The first deployment takes several minutes as it includes app creation.
+
+**To deploy the Supervisor variant instead**, use `-t supervisor`. `databricks.yml` ships with a `supervisor` target that overrides the `app.yaml` `command` to `["uv", "run", "start-app", "--supervisor"]`, so you don't need to hand-edit `app.yaml`:
+
+```bash
+databricks bundle deploy -t supervisor
+```
+
+This overwrites the same App name, so **an existing LangGraph deployment gets replaced by the Supervisor variant** (redeploy with `-t dev` to switch back). To run both variants side by side, override `resources.apps.retail_grocery_ltm_memory.name` inside the `supervisor` target of `databricks.yml` (e.g., `fm-agent-supervisor`) before deploying.
 
 ### 11-4. Grant Service Principal Permissions (**run before app start**)
 

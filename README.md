@@ -405,7 +405,18 @@ databricks apps deploy $APP_NAME \
 
 ### LangGraph 版と Supervisor 版のデプロイ切替
 
-現時点では **1 つの App につき 1 実装のみ** デプロイできます（両方を同一 App で同時に配信することは非対応）。切替は `app.yaml` の `command` の 1 箇所を書き換えるだけ：
+現時点では **1 つの App につき 1 実装のみ** デプロイできます（両方を同一 App で同時に配信することは非対応）。切り替え方法は 2 つ：
+
+**方法 A（推奨）：bundle target で切替** — `databricks.yml` に `supervisor` target を予め用意してあるので、コマンド 1 発で切り替わります：
+
+```bash
+databricks bundle deploy -t dev          # LangGraph 版（デフォルト）
+databricks bundle deploy -t supervisor   # Supervisor 版
+```
+
+同じ App 名を上書きする形で再デプロイされるので、既存 App の設定を書き換えて Supervisor 版に切り替える運用になります（コンピュートリソースは再利用）。
+
+**方法 B：`app.yaml` を手動編集** — bundle を使わずに `databricks apps update-config` などで手動デプロイする場合：
 
 ```yaml
 # app.yaml
@@ -416,7 +427,7 @@ command: ["uv", "run", "start-app"]
 command: ["uv", "run", "start-app", "--supervisor"]
 ```
 
-2 実装を並行して比較したい場合は、**別々の App 名でそれぞれデプロイ**するのが実務的です（例：`fm-agent-langgraph`、`fm-agent-supervisor`）。`databricks.yml` にターゲットを追加すれば `databricks bundle deploy -t supervisor` のように切り替えられます。
+2 実装を **並行して比較したい場合** は、`databricks.yml` の `supervisor` target の `resources.apps.retail_grocery_ltm_memory.name` を別名（例：`fm-agent-supervisor`）に変更してからデプロイすると、LangGraph 版と Supervisor 版が別 App として共存します。
 
 **SP 権限付与について**：`grant-sp-permissions` は UC / VS / Lakebase の 3 系統を付与しますが、**Supervisor 版は Lakebase を使わない**ため、Lakebase 権限付与の失敗は無視して問題ありません（LangGraph 版と併用する場合に備え、スクリプトは 3 系統すべて付与する挙動のまま）。
 
@@ -888,7 +899,18 @@ databricks apps deploy $APP_NAME \
 
 ### Switching between the LangGraph and Supervisor variants at deploy time
 
-An app instance can only host **one implementation at a time** (serving both from the same App isn't supported). Toggling comes down to one line in `app.yaml`:
+An app instance can only host **one implementation at a time** (serving both from the same App isn't supported). Two ways to switch:
+
+**Option A (recommended): flip variants with a bundle target.** `databricks.yml` ships with a `supervisor` target already wired up, so a one-liner does it:
+
+```bash
+databricks bundle deploy -t dev          # LangGraph (default)
+databricks bundle deploy -t supervisor   # Supervisor variant
+```
+
+Both targets deploy to the same App name, so the second command rewrites the running App's config to the Supervisor variant (compute is reused).
+
+**Option B: hand-edit `app.yaml`.** If you're not using bundles:
 
 ```yaml
 # app.yaml
@@ -899,7 +921,8 @@ command: ["uv", "run", "start-app"]
 command: ["uv", "run", "start-app", "--supervisor"]
 ```
 
-If you want to compare the two side by side, **deploy them as two separate Apps** (e.g., `fm-agent-langgraph`, `fm-agent-supervisor`). You can add a second target to `databricks.yml` and run `databricks bundle deploy -t supervisor`.
+If you want the two variants to **coexist as separate Apps**, override
+`resources.apps.retail_grocery_ltm_memory.name` inside the `supervisor` target of `databricks.yml` (e.g. `fm-agent-supervisor`). Then `bundle deploy -t supervisor` creates a distinct App next to the LangGraph one.
 
 **On `grant-sp-permissions`**: the script grants UC / VS / Lakebase permissions all three. Since the **Supervisor variant doesn't use Lakebase**, the Lakebase grants aren't required for that variant — but the script always applies them so the same App can also work as the LangGraph variant if you switch back.
 

@@ -70,3 +70,21 @@ targets:
         retail_grocery_ltm_memory:
           name: freshmart-agent-hiroshi-v2
           source_code_path: ./
+
+  # Supervisor API 版エージェントを Databricks Apps にデプロイするための target。
+  # `databricks bundle deploy -t supervisor` で 1 コマンドで切り替えられる。
+  # 同一 App 名の config を上書きするので、LangGraph 版がすでにデプロイされている
+  # 場合はそれを Supervisor 版に置き換える形になる（コンピュートリソースは再利用）。
+  # 両版を並行して動かしたい場合は resources.apps.retail_grocery_ltm_memory.name
+  # を別名（例："fm-agent-supervisor-hiroshi"）に上書きする。
+  supervisor:
+    mode: development
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/retail_grocery_ltm_memory/${bundle.target}
+    resources:
+      apps:
+        retail_grocery_ltm_memory:
+          name: freshmart-agent-hiroshi-v2
+          source_code_path: ./
+          config:
+            command: ["uv", "run", "start-app", "--supervisor"]
