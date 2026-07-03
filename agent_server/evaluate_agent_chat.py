@@ -261,7 +261,7 @@ def _create_native_agent():
     host_name = get_databricks_host_from_env()
 
     LLM_USE_AI_GATEWAY = os.getenv("LLM_USE_AI_GATEWAY", "true").lower() in ("true", "1", "yes")
-    LLM_MODEL_SERVICE = os.getenv("LLM_MODEL_SERVICE", "system.ai.claude-sonnet-5")
+    LLM_MODEL_SERVICE = os.getenv("LLM_MODEL_SERVICE", "system.ai.claude-sonnet-4-6")
     LLM_ENDPOINT_NAME = os.getenv("LLM_ENDPOINT_NAME", "databricks-claude-sonnet-4-6")
     GENIE_SPACE_ID = os.getenv("GENIE_SPACE_ID", "")
     VECTOR_SEARCH_INDEX = os.getenv("VECTOR_SEARCH_INDEX", "")

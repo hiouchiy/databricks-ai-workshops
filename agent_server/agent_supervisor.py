@@ -37,9 +37,15 @@ mlflow.openai.autolog()
 ############################################
 # Configuration
 ############################################
-# Supervisor API が対応するモデル名（Foundation Model API の serving endpoint 名形式）。
-# system.ai.* 系ではないので注意。
-LLM_MODEL = os.getenv("LLM_MODEL_SUPERVISOR", "databricks-claude-sonnet-4-6")
+# Supervisor API は Unity Catalog の model service full name（例：
+# `system.ai.claude-sonnet-4-6`）と、Foundation Model API の生 endpoint 名
+# （例：`databricks-claude-sonnet-4-6`）の両方を受け付ける。
+# UC model service 名で指定すると Gateway のガバナンス・レート制限・
+# 使用量トラッキングが効くので、そちらをデフォルトにする。
+# LangGraph 版（agent.py）とモデルを揃えるため 4-6 に固定。
+# ただし基底モデルが Supervisor 対応リストに載っていないと 400 が返る
+# （例：`system.ai.claude-sonnet-5` は現時点で対応外）。
+LLM_MODEL = os.getenv("LLM_MODEL_SERVICE_SUPERVISOR", "system.ai.claude-sonnet-4-6")
 GENIE_SPACE_ID = os.getenv("GENIE_SPACE_ID", "")
 VECTOR_SEARCH_INDEX = os.getenv("VECTOR_SEARCH_INDEX", "")
 MAX_OUTPUT_TOKENS = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "2048"))

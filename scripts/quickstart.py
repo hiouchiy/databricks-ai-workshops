@@ -129,7 +129,7 @@ def main():
     parser.add_argument("--vs-endpoint", default=None, help="Vector Search endpoint name")
     parser.add_argument("--llm-model-service", default=None,
                         help="Unity AI Gateway model service full name (UC securable). "
-                             "Default: system.ai.claude-sonnet-5 (interactively selectable)")
+                             "Default: system.ai.claude-sonnet-4-6 (interactively selectable)")
     parser.add_argument("--llm-endpoint", default=None,
                         help="[Gateway 未有効化ワークスペース用のフォールバック] "
                              "Foundation Model API serving endpoint name. "

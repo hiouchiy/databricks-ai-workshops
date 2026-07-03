@@ -2127,9 +2127,9 @@ class QuickstartWizard(customtkinter.CTk):
             title = t("LLM モデルサービス", "LLM Model Service")
             subtitle = t(
                 "エージェントが使用するモデルサービスを選択してください（Unity AI Gateway 経由でルーティング）。\n"
-                "推奨デフォルト: system.ai.claude-sonnet-5",
+                "推奨デフォルト: system.ai.claude-sonnet-4-6",
                 "Choose the model service the agent will use (routed via Unity AI Gateway).\n"
-                "Recommended default: system.ai.claude-sonnet-5",
+                "Recommended default: system.ai.claude-sonnet-4-6",
             )
             fetching = t("利用可能なチャットモデルサービスを取得中...",
                          "Fetching available chat model services...")

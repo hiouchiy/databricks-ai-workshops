@@ -2754,7 +2754,7 @@ def init_lakebase_tables() -> bool:
 # ── Permission-aware resource filtering & creation ───────────────────
 
 
-DEFAULT_LLM_MODEL_SERVICE = "system.ai.claude-sonnet-5"
+DEFAULT_LLM_MODEL_SERVICE = "system.ai.claude-sonnet-4-6"
 # 直接呼び出し（Gateway 未有効時のフォールバック）用のデフォルト serving endpoint
 DEFAULT_LLM_ENDPOINT = "databricks-claude-sonnet-4-6"
 
@@ -2829,7 +2829,7 @@ def list_gateway_chat_model_services(
     Filters `/api/2.1/unity-catalog/model-services?catalog_name=...&schema_name=...`
     by `supported_api_types` containing `"mlflow/v1/chat/completions"`
     (excludes embeddings-only services). Returns bare names
-    (e.g. `"system.ai.claude-sonnet-5"`) sorted alphabetically.
+    (e.g. `"system.ai.claude-sonnet-4-6"`) sorted alphabetically.
     """
     result = api_get(
         f"/api/2.1/unity-catalog/model-services?catalog_name={catalog}&schema_name={schema}",
@@ -2842,7 +2842,7 @@ def list_gateway_chat_model_services(
         if "mlflow/v1/chat/completions" not in api_types:
             continue
         raw_name = ms.get("name", "")
-        # "model-services/system.ai.claude-sonnet-5" -> "system.ai.claude-sonnet-5"
+        # "model-services/system.ai.claude-sonnet-4-6" -> "system.ai.claude-sonnet-4-6"
         bare = raw_name.removeprefix("model-services/") if raw_name.startswith("model-services/") else raw_name
         if bare:
             chat_names.append(bare)

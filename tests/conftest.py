@@ -66,7 +66,7 @@ DEFAULT_LLM_MODELS = [
     {"name": "databricks-claude-haiku-4-5", "task": "llm/v1/chat", "state": {"ready": "READY"}},
 ]
 DEFAULT_GATEWAY_MODEL_SERVICES = [
-    "system.ai.claude-sonnet-5",
+    "system.ai.claude-sonnet-4-6",
     "system.ai.claude-opus-4-6",
     "system.ai.gpt-oss-120b",
 ]

@@ -121,14 +121,14 @@ CUI（コマンドライン）版と GUI（デスクトップアプリ）版の2
 git clone https://github.com/hiouchiy/databricks-ai-workshops.git
 cd databricks-ai-workshops
 
+# GUI 版（デスクトップウィザードが起動、推奨）
+uv run quickstart-ui
+
 # CUI 版（ターミナルで対話式に実行）
 uv run quickstart
-
-# GUI 版（デスクトップウィザードが起動）
-uv run quickstart-ui
 ```
 
-GUI 版はステップごとに1画面ずつ設定を進めるウィザード形式で、カタログの一覧選択・名前のバリデーション・進捗バー表示などの機能があります。ターミナル操作に不慣れな場合は GUI 版をお勧めします。
+GUI 版はステップごとに1画面ずつ設定を進めるウィザード形式で、カタログの一覧選択・名前のバリデーション・進捗バー表示などの機能があります。通常はこちらを推奨。CUI 版はスクリプトから非対話で回したいケースや、GUI が使えないリモート環境向け。
 
 クイックスタートが以下を対話式で実行します：
 1. 前提条件チェック（`uv`、`Node.js`、`Databricks CLI`）
@@ -565,14 +565,14 @@ Both a CUI (command-line) and GUI (desktop app) version are available. They perf
 git clone https://github.com/hiouchiy/databricks-ai-workshops.git
 cd databricks-ai-workshops
 
+# GUI version (desktop wizard with step-by-step pages, recommended)
+uv run quickstart-ui
+
 # CUI version (interactive terminal wizard)
 uv run quickstart
-
-# GUI version (desktop wizard with step-by-step pages)
-uv run quickstart-ui
 ```
 
-The GUI version guides you through one setting per page, with features like catalog dropdown selection, name validation, and a progress bar. Recommended if you prefer a visual interface.
+The GUI version guides you through one setting per page, with features like catalog dropdown selection, name validation, and a progress bar. Recommended as the default. Use the CUI version when you need to script it non-interactively or run from a remote environment without a display.
 
 The quickstart will interactively walk you through:
 1. Prerequisites check (`uv`, `Node.js`, `Databricks CLI`)
