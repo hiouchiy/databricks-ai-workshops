@@ -110,6 +110,37 @@ def test_app_name_default_is_user_derived(app):
     assert len(expected) <= core.APP_NAME_MAX_LENGTH
 
 
+# ── Page 15 (final): Complete page — both start commands are shown ──────────
+
+def test_complete_page_shows_both_start_commands(app):
+    # Simulate a successful setup so the "success" sub-renderer runs.
+    app.data["complete_state"] = "success"
+    app.data["setup_failed_steps"] = []
+    app.data.pop("aborted_at", None)
+
+    goto_page(app, 15)
+
+    # Walk the widget tree and collect readonly command entries.
+    def _collect_entries(widget):
+        out = []
+        try:
+            for child in widget.winfo_children():
+                cls = type(child).__name__
+                if cls == "CTkEntry":
+                    try:
+                        out.append(child.get())
+                    except Exception:
+                        pass
+                out.extend(_collect_entries(child))
+        except Exception:
+            pass
+        return out
+
+    entries = _collect_entries(app)
+    assert "uv run start-app" in entries, entries
+    assert "uv run start-app --supervisor" in entries, entries
+
+
 # ── Defaults are within their respective length limits ─────────────────────
 
 def test_all_defaults_pass_their_validators(app):

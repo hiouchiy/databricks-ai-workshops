@@ -3341,42 +3341,56 @@ class QuickstartWizard(customtkinter.CTk):
             command=self._copy_share_text,
         ).pack(pady=(10, 5))
 
-        # 次のステップ: コピー可能なコマンドエントリで表示
+        # 次のステップ: LangGraph 版 / Supervisor 版のどちらかをターミナルで実行
         customtkinter.CTkLabel(
             frame,
-            text=t("次のステップ — このコマンドをターミナルで実行:",
-                   "Next step — run this in your terminal:"),
+            text=t("次のステップ — 以下のいずれかのコマンドをターミナルで実行:",
+                   "Next step — run one of the following commands in your terminal:"),
             font=customtkinter.CTkFont(size=13),
             text_color="#3B8ED0",
         ).pack(pady=(10, 2))
 
-        next_cmd_frame = customtkinter.CTkFrame(frame, fg_color="transparent")
-        next_cmd_frame.pack(pady=(0, 10))
+        def _make_cmd_row(label_ja: str, label_en: str, cmd: str):
+            row = customtkinter.CTkFrame(frame, fg_color="transparent")
+            row.pack(pady=(0, 6))
 
-        next_cmd_entry = customtkinter.CTkEntry(
-            next_cmd_frame,
-            width=300,
-            font=customtkinter.CTkFont(family="Menlo", size=14, weight="bold"),
+            customtkinter.CTkLabel(
+                row,
+                text=t(label_ja, label_en),
+                width=140,
+                anchor="e",
+                font=customtkinter.CTkFont(size=12),
+            ).pack(side="left", padx=(0, 8))
+
+            entry = customtkinter.CTkEntry(
+                row,
+                width=300,
+                font=customtkinter.CTkFont(family="Menlo", size=14, weight="bold"),
+            )
+            entry.insert(0, cmd)
+            entry.configure(state="readonly")
+            entry.pack(side="left", padx=(0, 5))
+
+            def _copy():
+                # btn は下で束縛される。callback 実行時には LEGB で解決される。
+                self.clipboard_clear()
+                self.clipboard_append(cmd)
+                btn.configure(text=t("✓ コピー済み", "✓ Copied"))
+                self.after(1500, lambda: btn.configure(text=t("コピー", "Copy")))
+
+            btn = customtkinter.CTkButton(
+                row, text=t("コピー", "Copy"), width=80, command=_copy,
+            )
+            btn.pack(side="left")
+
+        _make_cmd_row(
+            "LangGraph 版はこちら:", "LangGraph variant:",
+            "uv run start-app",
         )
-        next_cmd_entry.insert(0, "uv run start-app")
-        next_cmd_entry.configure(state="readonly")
-        next_cmd_entry.pack(side="left", padx=(0, 5))
-
-        def _copy_next_cmd():
-            self.clipboard_clear()
-            self.clipboard_append("uv run start-app")
-            copy_btn.configure(text=t("✓ コピー済み", "✓ Copied"))
-            self.after(1500, lambda: copy_btn.configure(
-                text=t("コピー", "Copy")
-            ))
-
-        copy_btn = customtkinter.CTkButton(
-            next_cmd_frame,
-            text=t("コピー", "Copy"),
-            width=80,
-            command=_copy_next_cmd,
+        _make_cmd_row(
+            "Supervisor 版はこちら:", "Supervisor variant:",
+            "uv run start-app --supervisor",
         )
-        copy_btn.pack(side="left")
 
     def _render_complete_with_errors(self, frame):
         s = self.data
