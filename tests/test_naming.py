@@ -100,6 +100,16 @@ def test_default_lakebase_project(user, day, time, expected):
     assert len(n) + len("-branch") <= core.LAKEBASE_BRANCH_MAX_LENGTH
 
 
+@pytest.mark.parametrize("user, day, time, expected", [
+    ("alice@example.com", "2026-05-06", "1234", "/Users/alice@example.com/fm-agent-0506-1234"),
+    ("bob@x.com",         "2026-04-13", "0000", "/Users/bob@x.com/fm-agent-0413-0000"),
+])
+def test_default_mlflow_base_name(user, day, time, expected):
+    # HHMM 付きで quickstart 再実行時の experiment 名衝突を回避
+    n = core.compute_default_mlflow_base_name(user, today=day, hhmm=time)
+    assert n == expected
+
+
 @pytest.mark.parametrize("user, day, expected_len_max", [
     ("hiroshi.ouchiyama@databricks.com", "2026-05-06", 30),
     ("very.long.user.name.that.would.exceed@x.com", "2026-12-31", 30),

@@ -984,7 +984,10 @@ class QuickstartWizard(customtkinter.CTk):
         if not self.data["schema"]:
             self.data["schema"] = core.compute_default_schema_name(self.data.get("username", ""))
         if not self.data["mlflow_base_name"]:
-            self.data["mlflow_base_name"] = f"/Users/{self.data['username']}/fm-agent"
+            # HHMM 付きで quickstart 再実行時の experiment 名衝突を回避
+            self.data["mlflow_base_name"] = core.compute_default_mlflow_base_name(
+                self.data.get("username", "")
+            )
 
         self._auth_status.configure(
             text=t(
@@ -2844,7 +2847,7 @@ class QuickstartWizard(customtkinter.CTk):
             self._log(t("MLflow Experiments \u3092\u8a2d\u5b9a\u4e2d...", "Setting up MLflow Experiments..."))
             try:
                 if s.get("mlflow_mode") == "new":
-                    base = s.get("mlflow_base_name") or f"/Users/{username}/freshmart-agent"
+                    base = s.get("mlflow_base_name") or core.compute_default_mlflow_base_name(username)
                     buf = io.StringIO()
                     with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
                         m_name, m_id = core._create_single_experiment(profile, f"{base}-monitoring")

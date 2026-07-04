@@ -670,11 +670,14 @@ def create_mlflow_experiment(
     print_step(t("MLflow Experiment を新規作成中...",
                   "Creating new MLflow Experiments..."))
 
+    # HHMM を含めて quickstart 再実行時の name 衝突を回避
+    # （collision した場合の random-suffix fallback は _create_single_experiment 側に残る）
+    base = compute_default_mlflow_base_name(username)
     monitoring_name, monitoring_id = _create_single_experiment(
-        profile_name, f"/Users/{username}/freshmart-agent-monitoring"
+        profile_name, f"{base}-monitoring"
     )
     eval_name, eval_id = _create_single_experiment(
-        profile_name, f"/Users/{username}/freshmart-agent-evaluation"
+        profile_name, f"{base}-evaluation"
     )
 
     return monitoring_name, monitoring_id, eval_name, eval_id
@@ -1659,6 +1662,23 @@ def compute_default_lakebase_project_name(
     if len(user_part) > budget:
         user_part = user_part[:budget].rstrip("-")
     return f"{base}{user_part}{suffix}"
+
+
+def compute_default_mlflow_base_name(
+    username: str, today: str | None = None, hhmm: str | None = None,
+) -> str:
+    """`/Users/{username}/fm-agent-{MMDD}-{HHMM}` を生成。
+
+    MLflow experiment は workspace 内に累積し続けるため、quickstart 再実行の
+    たびに新規名を使えるよう **HHMM を含めてユニーク化**する。
+    caller はこの base に `-monitoring` / `-evaluation` を付与して 2 本作成する。
+    """
+    if today is None:
+        today = datetime.now().strftime("%Y-%m-%d")
+    if hhmm is None:
+        hhmm = datetime.now().strftime("%H%M")
+    mmdd = today.replace("-", "")[4:8]
+    return f"/Users/{username}/fm-agent-{mmdd}-{hhmm}"
 
 
 def find_available_lakebase_project_name(
