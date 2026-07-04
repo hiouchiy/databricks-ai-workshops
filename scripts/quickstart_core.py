@@ -3259,6 +3259,74 @@ def wait_for_vs_endpoint_ready(
     return False
 
 
+# ── Databricks Managed Memory (Unity Catalog memory-store) ────────────
+#
+# Supervisor 版エージェント（agent_supervisor.py）の長期メモリ用。
+# 現在 Beta 機能で、UC の securable として提供される。
+# 参考: https://docs.databricks.com/aws/en/agents/agent-memory/managed-memory
+
+
+def create_memory_store(
+    token: str, host: str, catalog: str, schema: str, name: str,
+    description: str = "Managed memory store for agent",
+) -> dict:
+    """UC memory-store を作成（冪等）。既存の場合はそのまま返す。"""
+    full_name = f"{catalog}.{schema}.{name}"
+    # 既存チェック
+    existing = api_get(
+        f"/api/2.1/unity-catalog/memory-stores/{full_name}", token, host,
+    )
+    if isinstance(existing, dict) and "error" not in existing and existing.get("full_name") == full_name:
+        print_success(t(
+            f"  既存の Memory Store '{full_name}' を再利用します",
+            f"  Reusing existing Memory Store '{full_name}'",
+        ))
+        return {**existing, "reused": True}
+
+    body = {
+        "name": name,
+        "catalog_name": catalog,
+        "schema_name": schema,
+        "description": description,
+    }
+    result = api_post("/api/2.1/unity-catalog/memory-stores", token, host, body)
+    if isinstance(result, dict) and "error" not in result:
+        print_success(t(
+            f"  Memory Store 作成完了: {full_name}",
+            f"  Memory Store created: {full_name}",
+        ))
+    return result
+
+
+def list_memory_stores(token: str, host: str, catalog: str, schema: str) -> list[str]:
+    """指定 schema 配下の memory-store 一覧（full_name のリスト）。エラー時は空。"""
+    resp = api_get(
+        f"/api/2.1/unity-catalog/memory-stores?catalog_name={catalog}&schema_name={schema}",
+        token, host,
+    )
+    if not isinstance(resp, dict) or "error" in resp:
+        return []
+    return sorted(
+        [ms.get("full_name", "") for ms in resp.get("memory_stores", [])]
+    )
+
+
+def delete_memory_store(token: str, host: str, full_name: str) -> bool:
+    """UC memory-store を削除。"""
+    import urllib.request, urllib.error
+    url = f"{host}/api/2.1/unity-catalog/memory-stores/{full_name}"
+    req = urllib.request.Request(
+        url, headers={"Authorization": f"Bearer {token}"}, method="DELETE",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30):
+            return True
+    except urllib.error.HTTPError as e:
+        return e.code == 404  # already gone
+    except Exception:
+        return False
+
+
 def wait_for_warehouse_ready(
     profile_name: str, warehouse_id: str, timeout_sec: int = 300, poll_sec: int = 5
 ) -> bool:

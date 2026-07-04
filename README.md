@@ -271,20 +271,20 @@ claude
 | | **LangGraph 版**（デフォルト） | **Supervisor API 版**（オプトイン） |
 |---|---|---|
 | ファイル | `agent_server/agent.py` | `agent_server/agent_supervisor.py` |
-| エージェントループ | 自分でスクラッチ実装（LangGraph の `create_agent`） | **Databricks 側でマネージド**（`responses.create` を 1 回呼ぶだけ） |
-| コード量 | ~600 行 | ~150 行 |
+| エージェントループ | 自分でスクラッチ実装（LangGraph の `create_agent`） | **Databricks 側でマネージド**（`responses.create` + client-side tool loop） |
+| コード量 | ~600 行 | ~350 行（Managed Memory 含む） |
 | Genie / Vector Search | MCP + ネイティブ retriever | 組み込みツール宣言のみ |
-| 長期記憶（好み・タスク履歴・会話サマリー） | ✅ Lakebase Store + セマンティック検索 | ❌ **未対応**（Supervisor が Beta のため） |
-| 短期記憶（thread state） | ✅ LangGraph checkpointer + Lakebase | ❌ **未対応**（クライアントが履歴を毎回送る想定） |
+| **長期記憶**（好み・タスク履歴等） | ✅ Lakebase Store + セマンティック検索（自作、~200 行の tool 実装） | ✅ **Databricks Managed Memory**（UC memory-store、5 個の tool でインフラ管理不要） |
+| 短期記憶（thread state） | ✅ LangGraph checkpointer + Lakebase | ❌ **未対応**（Supervisor conversations API がまだ auto-continue しないため、client が履歴を毎ターン送る） |
 | モデル | `system.ai.claude-sonnet-4-6`（デフォルト、Sonnet 5 も可） | `system.ai.claude-sonnet-4-6` のみ（**Sonnet 5 は Supervisor 未対応**） |
 | ストリーミング | ✅ | ✅ |
 | 起動 | `uv run start-app` | `uv run start-app --supervisor` |
 
-**LangGraph 版**は「エージェントループを自分で作りたい」「Lakebase による永続メモリが必要」というケースに最適。ただしループ制御・エラーハンドリング・checkpoint 管理を自分で書く必要があります。
+**LangGraph 版**は「エージェントループを自分で作りたい」「Lakebase による自作の永続メモリを見せたい」というケース向け。ループ制御・エラーハンドリング・checkpoint 管理を自分で書く必要があります。
 
-**Supervisor API 版**は Databricks がエージェントループを内部で回してくれるため、**開発者はツール宣言とプロンプトに集中できる**のが最大の利点。tool_call → tool_result → 次の LLM 呼び出し、といった「面倒だが本質的でない配線」を書かずに済みます。
+**Supervisor API 版 + Managed Memory** は Databricks がエージェントループと長期メモリの基盤を管理してくれるため、**開発者はツール宣言とプロンプトに集中できる**のが最大の利点。tool_call → tool_result → 次の LLM 呼び出し、Postgres のプロビジョニング、埋め込みモデルの設定などをすべてスキップできます。
 
-> **Supervisor API は現時点で Beta のため、Lakebase 連携（長期・短期メモリ）は未対応**、また対応モデルも一部制限あり（Sonnet 5 未対応）。今後 Public Preview / GA に進む過程でこれらの制約は緩和される見込みです。ワークショップとしては「Databricks がエージェント基盤を高レベル API で提供しつつある動き」を体感するデモとしてご活用ください。
+> **Managed Memory も Supervisor API も現時点で Beta**、対応モデルにも制限あり（Sonnet 5 未対応）、短期記憶（`conversations` API 自動継続）はまだ動きません。今後 Public Preview / GA に進む過程でこれらの制約は緩和される見込みです。ワークショップとしては「Databricks がエージェント基盤を高レベル API で提供しつつある動き」を体感するデモとしてご活用ください。
 
 ### 内部モジュール構成
 
@@ -765,28 +765,29 @@ This workshop ships the **same agent requirements in two different implementatio
 | | **LangGraph version** (default) | **Supervisor API version** (opt-in) |
 |---|---|---|
 | File | `agent_server/agent.py` | `agent_server/agent_supervisor.py` |
-| Agent loop | Hand-rolled with `create_agent` | **Managed by Databricks** — a single `responses.create` call |
-| Lines of code | ~600 | ~150 |
+| Agent loop | Hand-rolled with `create_agent` | **Managed by Databricks** — `responses.create` + a small client-side tool loop |
+| Lines of code | ~600 | ~350 (including Managed Memory) |
 | Genie / Vector Search | MCP + native retriever | Declared as built-in Supervisor tools |
-| Long-term memory (preferences, task history, summaries) | ✅ Lakebase Store + semantic search | ❌ **not supported** (Supervisor is Beta) |
-| Short-term memory (thread state) | ✅ LangGraph checkpointer + Lakebase | ❌ **not supported** (client resends history each turn) |
+| **Long-term memory** (preferences, task history, summaries) | ✅ Lakebase Store + semantic search (self-built, ~200 LOC of tool code) | ✅ **Databricks Managed Memory** (UC memory-store, 5 tools, no infra to run) |
+| Short-term memory (thread state) | ✅ LangGraph checkpointer + Lakebase | ❌ **not supported** (Supervisor `conversations` API doesn't auto-continue yet, so the client resends history each turn) |
 | Model | `system.ai.claude-sonnet-4-6` (Sonnet 5 also allowed) | `system.ai.claude-sonnet-4-6` only (**Sonnet 5 not on Supervisor's supported list**) |
 | Streaming | ✅ | ✅ |
 | Launch | `uv run start-app` | `uv run start-app --supervisor` |
 
-**LangGraph** is the right choice when you want full control over the loop, or when Lakebase-backed memory is a hard requirement. You own the loop logic, error handling, and checkpoint management.
+**LangGraph** is the right choice when you want full control over the loop, or when you want to demonstrate self-built Lakebase-backed memory. You own the loop logic, error handling, and checkpoint management.
 
-**Supervisor API** hands the loop off to Databricks, so **you focus on tool declarations and the prompt**. The plumbing of tool_call → tool_result → next LLM call is done for you.
+**Supervisor API + Managed Memory** hands both the agent loop and the long-term memory substrate to Databricks, so **you focus on tool declarations and the prompt**. No Postgres to provision, no embedding endpoint to configure, no tool_call → tool_result plumbing.
 
-> **Supervisor API is in Beta today**, which is why Lakebase integration (both memory tiers) isn't available yet and why a subset of models is supported (Sonnet 5 not yet). These gaps are expected to close as the API moves to Public Preview and then GA. Use this workshop as a preview of Databricks' higher-level agent primitives.
+> **Managed Memory and the Supervisor API are both in Beta today**, and short-term memory (auto-continue via the `conversations` API) doesn't work yet — the model list is also limited (Sonnet 5 not yet). These gaps are expected to close as both APIs move to Public Preview and then GA. Use this workshop as a preview of Databricks' higher-level agent primitives.
 
 ### Internal Module Layout
 
 | Component | File | Description |
 |---|---|---|
 | Core Agent (LangGraph) | `agent_server/agent.py` | LangGraph orchestration, MCP tools, native Vector Search |
-| Core Agent (Supervisor) | `agent_server/agent_supervisor.py` | Minimal Supervisor-API-based variant (comparison) |
-| Memory Tools | `agent_server/utils_memory.py` | 7 memory tools (used by LangGraph only) |
+| Core Agent (Supervisor) | `agent_server/agent_supervisor.py` | Supervisor API variant with client-side function-call loop |
+| Lakebase memory tools (LangGraph) | `agent_server/utils_memory.py` | 7 memory tools backed by Lakebase (LangGraph only) |
+| Managed Memory tools (Supervisor) | `agent_server/managed_memory.py` | 5 memory tools backed by Databricks Managed Memory (UC memory-store, Supervisor only) |
 | Utilities | `agent_server/utils.py` | Auth, thread management, streaming |
 
 ### Tool Configuration

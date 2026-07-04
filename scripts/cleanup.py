@@ -206,6 +206,39 @@ def delete_vs_endpoint(profile: str):
         print_error(f"削除に失敗: {result.stderr[:200]}")
 
 
+def delete_memory_store(profile: str):
+    """Managed Memory Store を削除（quickstart で新規作成したものに限る）。
+
+    `_NEW_MEMORY_STORE` が .env に書かれている場合のみ削除対象。
+    """
+    full = os.getenv("_NEW_MEMORY_STORE", "")
+    if not full:
+        print_skip("新規作成された Memory Store が記録されていません（既存利用 or 未作成）")
+        return
+
+    print(f"\n  Memory Store: {full}")
+    result = run_cmd([
+        "databricks", "api", "get",
+        f"/api/2.1/unity-catalog/memory-stores/{full}", "-p", profile,
+    ])
+    if result.returncode != 0:
+        print_skip(f"Memory Store {full} が既に存在しません")
+        return
+
+    if not confirm(f"Memory Store '{full}' を削除しますか？（配下の全メモリエントリも削除されます）"):
+        print_skip("ユーザーがキャンセル")
+        return
+
+    result = run_cmd([
+        "databricks", "api", "delete",
+        f"/api/2.1/unity-catalog/memory-stores/{full}", "-p", profile,
+    ])
+    if result.returncode == 0:
+        print_success(f"Memory Store '{full}' を削除しました")
+    else:
+        print_error(f"削除に失敗: {result.stderr[:200]}")
+
+
 def delete_sql_warehouse(profile: str):
     """SQL Warehouse を削除（quickstart で新規作成したものに限る）。
 
@@ -399,44 +432,49 @@ def main():
         return
 
     # 1. Databricks App
-    print_header("[1/10] Databricks App")
+    print_header("[1/11] Databricks App")
     delete_app(profile)
 
     # 2. MLflow Experiments
-    print_header("[2/10] MLflow Experiments")
+    print_header("[2/11] MLflow Experiments")
     delete_experiment(profile, os.getenv("MLFLOW_EXPERIMENT_ID", ""), "モニタリング Experiment")
     delete_experiment(profile, os.getenv("MLFLOW_EVAL_EXPERIMENT_ID", ""), "評価 Experiment")
 
     # 3. Vector Search Index
-    print_header("[3/10] Vector Search インデックス")
+    print_header("[3/11] Vector Search インデックス")
     delete_vector_search_index(profile)
 
     # 4. Vector Search Endpoint（quickstart で新規作成したもののみ）
-    print_header("[4/10] Vector Search エンドポイント")
+    print_header("[4/11] Vector Search エンドポイント")
     delete_vs_endpoint(profile)
 
     # 5. Genie Space
-    print_header("[5/10] Genie Space")
+    print_header("[5/11] Genie Space")
     delete_genie_space(profile)
 
     # 6. Lakebase
-    print_header("[6/10] Lakebase プロジェクト")
+    print_header("[6/11] Lakebase プロジェクト")
     delete_lakebase(profile)
 
-    # 7. Unity Catalog スキーマ（テーブル・トレーステーブルを含む）
-    print_header("[7/10] Unity Catalog スキーマ")
+    # 7. Managed Memory Store（quickstart で新規作成したもののみ）
+    print_header("[7/11] Managed Memory Store")
+    delete_memory_store(profile)
+
+    # 8. Unity Catalog スキーマ（テーブル・トレーステーブルを含む）
+    #    ⚠ Memory Store を先に消しておかないとスキーマ削除で参照エラーになる
+    print_header("[8/11] Unity Catalog スキーマ")
     delete_schema(profile)
 
-    # 8. SQL Warehouse（quickstart で新規作成したもののみ）
-    print_header("[8/10] SQL Warehouse")
+    # 9. SQL Warehouse（quickstart で新規作成したもののみ）
+    print_header("[9/11] SQL Warehouse")
     delete_sql_warehouse(profile)
 
-    # 9. ワークスペースのバンドルファイル
-    print_header("[9/10] ワークスペースのバンドルファイル")
+    # 10. ワークスペースのバンドルファイル
+    print_header("[10/11] ワークスペースのバンドルファイル")
     delete_bundle_workspace(profile)
 
-    # 10. ローカルファイル
-    print_header("[10/10] ローカルファイル")
+    # 11. ローカルファイル
+    print_header("[11/11] ローカルファイル")
     delete_local_files()
 
     print_header("クリーンアップ完了")

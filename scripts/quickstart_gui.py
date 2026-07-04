@@ -82,6 +82,8 @@ class QuickstartWizard(customtkinter.CTk):
             "llm_model_service": "",
             "llm_endpoint": "",
             "_llm_mode": "gateway",  # or "direct"
+            # Managed Memory Store (UC full name, populated during setup)
+            "memory_store": "",
             # App name
             "app_name": "",
             # Prerequisites
@@ -2456,6 +2458,7 @@ class QuickstartWizard(customtkinter.CTk):
             "lakebase_project": None,
             "monitoring_id": None,
             "eval_id": None,
+            "memory_store": None,    # UC memory-store full name (Supervisor 版用)
         }
 
         # Track newly-created catalog/schema based on mode flag from the GUI
@@ -2836,6 +2839,32 @@ class QuickstartWizard(customtkinter.CTk):
             except Exception as e:
                 fail(t("MLflow", "MLflow"), str(e)[:200])
 
+            # Step 7.5: Managed Memory Store (Supervisor 版エージェント用の長期メモリ)
+            self._log(t("Managed Memory Store を作成中（Supervisor 版 agent 用）...",
+                         "Creating Managed Memory Store (for Supervisor agent)..."))
+            try:
+                ms_name = "fm_agent_memory"
+                ms_full = f"{catalog}.{schema}.{ms_name}"
+                pre = core.api_get(
+                    f"/api/2.1/unity-catalog/memory-stores/{ms_full}", token, host,
+                )
+                was_new = "error" in pre
+                result = core.create_memory_store(
+                    token, host, catalog, schema, ms_name,
+                    description="Long-term memory for the FreshMart Supervisor agent",
+                )
+                if isinstance(result, dict) and "error" not in result:
+                    s["memory_store"] = ms_full
+                    if was_new:
+                        s["created_resources"]["memory_store"] = ms_full
+                    advance(t(f"Memory Store: {ms_full}",
+                               f"Memory Store: {ms_full}"))
+                else:
+                    fail(t("Memory Store", "Memory Store"),
+                         str(result.get("error", "unknown"))[:200])
+            except Exception as e:
+                fail(t("Memory Store", "Memory Store"), str(e)[:200])
+
             # Step 8: Run trace setup
             if s.get("trace_dest_mode") == "delta" and s.get("trace_dest_schema"):
                 self._log(t("トレーステーブルを作成中...", "Creating trace tables..."))
@@ -2923,6 +2952,11 @@ class QuickstartWizard(customtkinter.CTk):
                     s.get("username", "user")
                 )
                 core.update_env_file("DATABRICKS_APP_NAME", app_name)
+                # Managed Memory Store (Supervisor 版 agent の長期メモリ)
+                memory_store = s.get("memory_store", "")
+                if memory_store:
+                    core.update_env_file("DATABRICKS_MEMORY_STORE", memory_store)
+                    core.append_env_to_app_yaml("DATABRICKS_MEMORY_STORE", memory_store)
 
                 buf = io.StringIO()
                 with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
@@ -3022,6 +3056,8 @@ class QuickstartWizard(customtkinter.CTk):
                     core.update_env_file("_NEW_WAREHOUSE_ID", created["warehouse_id"])
                 if created.get("vs_endpoint"):
                     core.update_env_file("_NEW_VS_ENDPOINT", created["vs_endpoint"])
+                if created.get("memory_store"):
+                    core.update_env_file("_NEW_MEMORY_STORE", created["memory_store"])
                 self._log(t("\nセットアップ完了！", "\nSetup complete!"))
             self._signal_done()
 
@@ -3196,6 +3232,24 @@ class QuickstartWizard(customtkinter.CTk):
                                  f"  ⚠ VS endpoint delete failed: {result.stderr[:100]}"))
             except Exception as e:
                 self._log(f"  ⚠ VS endpoint delete error: {str(e)[:100]}")
+
+        # 9. Managed Memory Store (only if newly created)
+        new_ms = created.get("memory_store")
+        if new_ms:
+            try:
+                result = subprocess.run(
+                    ["databricks", "api", "delete",
+                     f"/api/2.1/unity-catalog/memory-stores/{new_ms}", "-p", profile],
+                    capture_output=True, text=True,
+                )
+                if result.returncode == 0:
+                    self._log(t(f"  ✓ Memory Store 削除: {new_ms}",
+                                 f"  ✓ Memory Store deleted: {new_ms}"))
+                else:
+                    self._log(t(f"  ⚠ Memory Store 削除失敗: {result.stderr[:100]}",
+                                 f"  ⚠ Memory Store delete failed: {result.stderr[:100]}"))
+            except Exception as e:
+                self._log(f"  ⚠ Memory Store delete error: {str(e)[:100]}")
 
         self._log(t(
             "\n✓ ロールバック完了。",

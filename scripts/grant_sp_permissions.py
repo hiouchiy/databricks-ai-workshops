@@ -154,6 +154,39 @@ def grant_vs_endpoint_permission(
         return False
 
 
+def grant_memory_store_permission(
+    token: str, host: str, memory_store: str, sp_id: str,
+) -> bool:
+    """Grant the App SP READ_MEMORY_STORE + WRITE_MEMORY_STORE on the UC memory-store.
+
+    Supervisor 版エージェント（agent_supervisor.py）の Managed Memory 機能を
+    有効化するために必要。LangGraph 版のみの場合は memory_store が未設定で
+    このステップはスキップされる。冪等（PATCH）。
+    """
+    payload = json.dumps({
+        "changes": [{
+            "principal": sp_id,
+            "add": ["READ_MEMORY_STORE", "WRITE_MEMORY_STORE"],
+        }],
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        f"{host}/api/2.1/unity-catalog/permissions/memory_store/{memory_store}",
+        data=payload,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="PATCH",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30):
+            return True
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8")[:200]
+        print_error(f"Memory Store 権限付与失敗 ({memory_store}): HTTP {e.code}: {body}")
+        return False
+    except Exception as e:
+        print_error(f"Memory Store 権限付与失敗: {str(e)[:200]}")
+        return False
+
+
 def get_sp_client_id(app_name: str, profile: str) -> str:
     """アプリ名から SP Client ID を取得する。"""
     result = subprocess.run(
@@ -377,8 +410,24 @@ def main():
     else:
         print_warn("VECTOR_SEARCH_INDEX 未設定 → VS エンドポイント権限付与スキップ")
 
-    # ── 4. Lakebase PostgreSQL 権限 ──
-    print("\n=== 4. Lakebase PostgreSQL 権限 ===")
+    # ── 4. Managed Memory Store 権限（Supervisor 版エージェント用）──
+    print("\n=== 4. Managed Memory Store 権限（Supervisor 版用）===")
+    memory_store = os.getenv("DATABRICKS_MEMORY_STORE", "").strip()
+    if memory_store:
+        if grant_memory_store_permission(token, host, memory_store, sp_id):
+            print_success(
+                f"Memory Store: READ_MEMORY_STORE + WRITE_MEMORY_STORE on {memory_store}"
+            )
+        else:
+            print_warn("Memory Store 権限付与をスキップしました（手動で確認してください）")
+    else:
+        print_warn(
+            "DATABRICKS_MEMORY_STORE 未設定 → Memory Store 権限付与スキップ "
+            "(Supervisor 版で長期メモリを使わないなら OK)"
+        )
+
+    # ── 5. Lakebase PostgreSQL 権限 ──
+    print("\n=== 5. Lakebase PostgreSQL 権限 ===")
     grant_lakebase_permissions(sp_id)
 
     print(f"\n{'='*60}")

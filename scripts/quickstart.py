@@ -82,6 +82,7 @@ from scripts.quickstart_core import (
     DEFAULT_LLM_MODEL_SERVICE,
     DEFAULT_LLM_ENDPOINT,
     check_ai_gateway_available,
+    create_memory_store,
     compute_default_app_name,
     is_valid_app_name,
     select_app_name_interactive,
@@ -183,6 +184,7 @@ def main():
         "lakebase_branch": None,
         "monitoring_id": None,
         "eval_id": None,
+        "memory_store": None,      # UC memory-store full name（Supervisor 版用）
     }
 
     class AbortSetup(Exception):
@@ -322,6 +324,20 @@ def main():
             else:
                 print(t(f"  ⚠ VS エンドポイント削除失敗: {new_ep}",
                          f"  ⚠ VS endpoint delete failed: {new_ep}"))
+
+        # 9. Managed Memory Store (only if newly created)
+        new_ms = created_resources.get("memory_store")
+        if new_ms:
+            r = run_command(
+                ["databricks", "api", "delete",
+                 f"/api/2.1/unity-catalog/memory-stores/{new_ms}",
+                 "-p", args.profile or "DEFAULT"], check=False)
+            if r.returncode == 0:
+                print_success(t(f"Memory Store 削除: {new_ms}",
+                                 f"Memory Store deleted: {new_ms}"))
+            else:
+                print(t(f"  ⚠ Memory Store 削除失敗: {new_ms}",
+                         f"  ⚠ Memory Store delete failed: {new_ms}"))
 
         print()
         print(t("✓ ロールバック完了。", "✓ Rollback complete."))
@@ -716,6 +732,23 @@ def main():
         if eval_id:
             created_resources["eval_id"] = eval_id
 
+        # 4-9: Managed Memory Store（Supervisor 版エージェントの長期メモリ用）
+        # 冪等：同名 store が存在すれば再利用、なければ作成。
+        print_step(t("Managed Memory Store の作成（Supervisor 版 agent 用）...",
+                      "Creating Managed Memory Store (for the Supervisor agent)..."))
+        memory_store_name = "fm_agent_memory"
+        memory_store_full = f"{catalog}.{schema}.{memory_store_name}"
+        _pre_check = api_get(
+            f"/api/2.1/unity-catalog/memory-stores/{memory_store_full}", token, host,
+        )
+        memory_store_was_new = "error" in _pre_check
+        _ms_result = create_memory_store(
+            token, host, catalog, schema, memory_store_name,
+            description="Long-term memory for the FreshMart Supervisor agent",
+        )
+        if isinstance(_ms_result, dict) and "error" not in _ms_result and memory_store_was_new:
+            created_resources["memory_store"] = memory_store_full
+
         # ── Phase 5: .env 更新 ──
         print_step(t("[5/8] 環境設定 (.env)", "[5/8] Environment configuration (.env)"))
         update_env_file("DATABRICKS_HOST", host)
@@ -739,6 +772,9 @@ def main():
             append_env_to_app_yaml("LLM_ENDPOINT_NAME", llm_endpoint)
             remove_env_from_app_yaml("LLM_MODEL_SERVICE")
         update_env_file("DATABRICKS_APP_NAME", app_name)
+        # Managed Memory Store（Supervisor 版が読む env var）
+        update_env_file("DATABRICKS_MEMORY_STORE", memory_store_full)
+        append_env_to_app_yaml("DATABRICKS_MEMORY_STORE", memory_store_full)
         update_databricks_yml_experiment(monitoring_id)
         update_databricks_yml_resources(genie_space_id, vs_index)
         update_databricks_yml_app_name(app_name)
@@ -991,6 +1027,8 @@ def main():
             update_env_file("_NEW_WAREHOUSE_ID", created_resources["warehouse_id"])
         if created_resources.get("vs_endpoint"):
             update_env_file("_NEW_VS_ENDPOINT", created_resources["vs_endpoint"])
+        if created_resources.get("memory_store"):
+            update_env_file("_NEW_MEMORY_STORE", created_resources["memory_store"])
 
         # ── Phase 8: サマリー ──
         print_header(t("セットアップ完了！", "Setup Complete!"))

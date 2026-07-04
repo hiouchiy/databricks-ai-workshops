@@ -51,9 +51,11 @@ def test_cleanup_no_new_resources_skips_warehouse_and_endpoint(tmp_path):
     rc, out, err = _run_cleanup(tmp_path, env_lines=env_lines)
     assert rc == 0, f"Cleanup failed: {err}"
     # The two new sections must announce they're skipping
-    assert "[4/10] Vector Search エンドポイント" in out
-    assert "[8/10] SQL Warehouse" in out
+    assert "[4/11] Vector Search エンドポイント" in out
+    assert "[7/11] Managed Memory Store" in out
+    assert "[9/11] SQL Warehouse" in out
     assert "新規作成された VS Endpoint が記録されていません" in out
+    assert "新規作成された Memory Store が記録されていません" in out
     assert "新規作成された SQL Warehouse が記録されていません" in out
 
 
@@ -63,6 +65,7 @@ def test_cleanup_with_yes_flag_no_prompts_block(tmp_path):
         "DATABRICKS_CONFIG_PROFILE=free-edition",
         "_NEW_WAREHOUSE_ID=wh-doesnotexist-12345",
         "_NEW_VS_ENDPOINT=ep-doesnotexist-99",
+        "_NEW_MEMORY_STORE=cat.sch.doesnotexist",
     ]
     rc, out, err = _run_cleanup(tmp_path, env_lines=env_lines)
     assert rc == 0, f"Cleanup failed: {err}"
@@ -72,10 +75,10 @@ def test_cleanup_with_yes_flag_no_prompts_block(tmp_path):
     assert "クリーンアップ完了" in out
 
 
-def test_cleanup_step_numbering_is_10(tmp_path):
-    """Make sure the renumbering 8 -> 10 is consistent."""
+def test_cleanup_step_numbering_is_11(tmp_path):
+    """Cleanup now has 11 steps (memory-store step inserted between Lakebase and schema)."""
     rc, out, err = _run_cleanup(tmp_path, env_lines=["DATABRICKS_CONFIG_PROFILE=free-edition"])
     assert rc == 0, err
-    # All 10 step headers should appear
-    for n in range(1, 11):
-        assert f"[{n}/10]" in out, f"Missing step header [{n}/10]"
+    # All 11 step headers should appear
+    for n in range(1, 12):
+        assert f"[{n}/11]" in out, f"Missing step header [{n}/11]"
