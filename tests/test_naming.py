@@ -87,12 +87,13 @@ def test_default_vs_endpoint_name(user, day, expected):
     assert core.validate_vs_endpoint_name(n)[0]
 
 
-@pytest.mark.parametrize("user, day, expected", [
-    ("hiroshi.ouchiyama@databricks.com", "2026-05-06", "fm-lakebase-hiroshi-0506"),
-    ("alice@x.com",                      "2026-04-13", "fm-lakebase-alice-0413"),
+@pytest.mark.parametrize("user, day, time, expected", [
+    ("hiroshi.ouchiyama@databricks.com", "2026-05-06", "1234", "fm-lakebase-hiroshi-0506-1234"),
+    ("alice@x.com",                      "2026-04-13", "0959", "fm-lakebase-alice-0413-0959"),
 ])
-def test_default_lakebase_project(user, day, expected):
-    n = core.compute_default_lakebase_project_name(user, today=day)
+def test_default_lakebase_project(user, day, time, expected):
+    # HHMM 付きでソフト削除された project との衝突を避ける（quickstart_core.py 参照）
+    n = core.compute_default_lakebase_project_name(user, today=day, hhmm=time)
     assert n == expected
     assert core.is_valid_lakebase_project_name(n)
     # Branch auto-name `{name}-branch` must also fit within the 63-char API limit.

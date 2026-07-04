@@ -1630,13 +1630,30 @@ LAKEBASE_PROJECT_MAX_LENGTH = 56  # branch="{project}-branch" でも 63 以内�
 LAKEBASE_BRANCH_MAX_LENGTH = 63   # API の絶対上限
 
 
-def compute_default_lakebase_project_name(username: str, today: str | None = None) -> str:
-    """`freshmart-lakebase-{user}-{MMDD}` を生成。`{project}-branch` も 63 文字に収まるよう制約。"""
+def compute_default_lakebase_project_name(
+    username: str, today: str | None = None, hhmm: str | None = None,
+) -> str:
+    """`fm-lakebase-{user}-{MMDD}-{HHMM}` を生成。
+
+    Lakebase の DELETE はソフト削除のみで project_id が 7 日間予約されるため、
+    同名の連続生成は failure を招く。デフォルト名に **HHMM を含めて事実上の
+    ユニーク性を担保**する（同分内の再実行のみ soft-delete fallback で吸収）。
+
+    `{project}-{user_slug}` の branch 名（63 文字上限）にも収まるよう
+    user_part を必要に応じて切り詰める。
+
+    Args:
+        username: 例 "alice@example.com"
+        today: "YYYY-MM-DD"（省略時は当日）
+        hhmm: "HHMM"（省略時は現時刻）
+    """
     if today is None:
         today = datetime.now().strftime("%Y-%m-%d")
+    if hhmm is None:
+        hhmm = datetime.now().strftime("%H%M")
     mmdd = today.replace("-", "")[4:8]
     user_part = sanitize_app_name_part(username) or "user"
-    suffix = f"-{mmdd}"
+    suffix = f"-{mmdd}-{hhmm}"
     base = f"{LAKEBASE_PROJECT_PREFIX}-"
     budget = LAKEBASE_PROJECT_MAX_LENGTH - len(base) - len(suffix)
     if len(user_part) > budget:

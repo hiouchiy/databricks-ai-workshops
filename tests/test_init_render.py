@@ -89,9 +89,15 @@ def test_lakebase_project_default_is_user_derived(app):
     app.data["lakebase_required"] = True
     goto_page(app, 7)
     # Default mode is "new"
-    expected = core.compute_default_lakebase_project_name(app.data["username"])
-    assert app._lb_proj_entry.get() == expected
-    assert expected.startswith("fm-lakebase-")
+    # デフォルト名には HHMM が入るため厳密一致だと分境界で flaky になる。
+    # GUI 側の値がユーザー派生の想定 prefix (`fm-lakebase-{user}-{MMDD}-`) で
+    # 始まっていることと、validator を通ることだけを検証する。
+    from datetime import datetime
+    mmdd = datetime.now().strftime("%m%d")
+    user_slug = core.sanitize_app_name_part(app.data["username"]) or "user"
+    entry = app._lb_proj_entry.get()
+    assert entry.startswith(f"fm-lakebase-{user_slug}-{mmdd}-")
+    assert core.is_valid_lakebase_project_name(entry)
 
 
 # ── Page 13: App name ───────────────────────────────────────────────────────
