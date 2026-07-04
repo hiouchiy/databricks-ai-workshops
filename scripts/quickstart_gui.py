@@ -2704,11 +2704,37 @@ class QuickstartWizard(customtkinter.CTk):
                     )
                     w = core.get_workspace_client(profile)
 
-                    # プロジェクト存在確認
+                    # プロジェクト存在確認。ソフト削除された project は get で
+                    # 200 が返るが `delete_time` が入っており、7 日間 project_id
+                    # が予約されて再作成不可。`find_available_lakebase_project_name`
+                    # で代替名（例: <name>-2, <name>-3）を自動探索して使う。
+                    original_project = project_name
+                    project_name, alt_status = core.find_available_lakebase_project_name(
+                        token, host, project_name,
+                    )
+                    if alt_status == "exhausted":
+                        fail("Lakebase", t(
+                            f"'{original_project}' がソフト削除中で、代替候補も全て使用済み。"
+                            f"別名を Lakebase ページで指定してください。",
+                            f"'{original_project}' is soft-deleted and all fallbacks are "
+                            f"taken. Please pick a different name on the Lakebase page.",
+                        ))
+                        raise RuntimeError("lakebase project name space exhausted")
+                    if alt_status.startswith("alt:"):
+                        self._log(t(
+                            f"  ⚠ '{original_project}' はソフト削除中のため '{project_name}' を使用します",
+                            f"  ⚠ '{original_project}' is soft-deleted; using '{project_name}' instead",
+                        ))
+                        # branch 名も派生している場合は再計算（初期 default_branch を上書き）
+                        if not branch_name.startswith(project_name):
+                            branch_name = f"{project_name}-{user_slug}"
+                            self._log(t(f"  ブランチ名も更新: {branch_name}",
+                                         f"  Branch name updated: {branch_name}"))
+                    # ここで project_name は必ず使える名前
                     proj_check = core.api_get(
                         f"/api/2.0/postgres/projects/{project_name}", token, host,
                     )
-                    project_exists = "error" not in proj_check
+                    project_exists = isinstance(proj_check, dict) and "error" not in proj_check
 
                     # ブランチ存在確認
                     branch_exists = False

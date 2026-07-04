@@ -609,7 +609,32 @@ def main():
                 project = args.lakebase_autoscaling_project
                 branch = args.lakebase_autoscaling_branch
 
-                # プロジェクト存在確認
+                # プロジェクト存在確認。ソフト削除された project は get で 200 が
+                # 返るが `delete_time` が入っており、7 日間 project_id が予約されて
+                # 再作成不可（branch 作成時に "not found" になる）。
+                # `find_available_lakebase_project_name` で代替名を自動探索し、
+                # 使える名前に差し替える。
+                from scripts.quickstart_core import find_available_lakebase_project_name
+                original_project = project
+                project, alt_status = find_available_lakebase_project_name(
+                    token, host, project,
+                )
+                if alt_status == "exhausted":
+                    print_error(t(
+                        f"Lakebase プロジェクト '{original_project}' がソフト削除中で、"
+                        f"代替名 {original_project}-2..-11 も全て使用済み。"
+                        f"別名を --lakebase-autoscaling-project で明示指定してください。",
+                        f"Lakebase project '{original_project}' is soft-deleted and "
+                        f"all fallbacks {original_project}-2..-11 are taken. "
+                        f"Please pass an explicit --lakebase-autoscaling-project.",
+                    ))
+                    raise AbortSetup(f"Lakebase project name space exhausted")
+                if alt_status.startswith("alt:"):
+                    print_step(t(
+                        f"⚠ '{original_project}' はソフト削除中のため '{project}' を使用します",
+                        f"⚠ '{original_project}' is soft-deleted; using '{project}' instead",
+                    ))
+                # 上記後に project は必ず使える名前になっている
                 proj_check = run_command(
                     ["databricks", "api", "get", f"/api/2.0/postgres/projects/{project}",
                      "-p", profile_name, "-o", "json"],

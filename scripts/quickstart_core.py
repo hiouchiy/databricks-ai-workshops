@@ -1644,6 +1644,48 @@ def compute_default_lakebase_project_name(username: str, today: str | None = Non
     return f"{base}{user_part}{suffix}"
 
 
+def find_available_lakebase_project_name(
+    token: str, host: str, base_name: str, max_attempts: int = 10,
+) -> tuple[str, str]:
+    """`base_name` が使えるかチェックし、soft-delete 中なら `-b`, `-c`... と
+    suffix を付けて空いてる名前を探す。
+
+    Lakebase の DELETE は soft-delete のみで 7 日間 project_id が予約されるため、
+    同名で連続 run すると `NOT_FOUND` が branch 作成時に発生してしまう。
+    これを回避するため、pre-check で soft-deleted を検出して代替名を返す。
+
+    Returns:
+        (available_name, status) — status は
+        "same" (base_name そのまま使える)
+        | "alt:<name>" (別名で通った)
+        | "exhausted" (`max_attempts` 個試して全滅、base_name を返す)
+    """
+    def _get_state(name: str) -> str:
+        """not-exist | live | soft-deleted のいずれかを返す。"""
+        result = api_get(f"/api/2.0/postgres/projects/{name}", token, host)
+        if not isinstance(result, dict) or "error" in result:
+            return "not-exist"
+        if result.get("delete_time"):
+            return "soft-deleted"
+        return "live"
+
+    first_state = _get_state(base_name)
+    if first_state != "soft-deleted":
+        # not-exist または live どちらも呼び出し側でそのまま扱える
+        return base_name, "same"
+
+    # soft-deleted なので suffix 探し
+    # 63 文字上限に注意（suffix は数文字なので実質問題なし）
+    for suffix_idx in range(2, 2 + max_attempts):  # -2, -3, ... -11
+        candidate = f"{base_name}-{suffix_idx}"
+        if len(candidate) > LAKEBASE_PROJECT_MAX_LENGTH:
+            break
+        state = _get_state(candidate)
+        if state == "not-exist" or state == "live":
+            return candidate, f"alt:{candidate}"
+    return base_name, "exhausted"
+
+
 def is_valid_lakebase_project_name(name: str) -> bool:
     """Lakebase プロジェクト名のバリデーション（branch="{project}-branch" 自動生成も考慮）。"""
     if not name or len(name) > LAKEBASE_PROJECT_MAX_LENGTH:
