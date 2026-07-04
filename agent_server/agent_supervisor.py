@@ -34,6 +34,10 @@ from mlflow.types.responses import (
     ResponsesAgentStreamEvent,
 )
 from openai import OpenAI
+from openai import APIError as _OpenAIAPIError
+from openai import NotFoundError as _OpenAINotFoundError
+from openai import PermissionDeniedError as _OpenAIPermissionDeniedError
+from fastapi import HTTPException
 
 from agent_server import managed_memory
 from agent_server.utils_memory import get_user_id
@@ -188,6 +192,45 @@ def _item_to_dict(item: Any) -> dict:
     return {}
 
 
+# ── Supervisor API 未有効化時の親切なエラーメッセージ ─────────────────
+#
+# Supervisor API は現時点で Beta 機能で、Databricks Free Edition では
+# **有効化されていない**（account admin が Previews で ON にする必要すら
+# ない — Free Edition ではそもそも提供されていない）。
+# 呼び出し時に 404 や 400 が返ってきた場合、原因を明示するメッセージに
+# 変換して呼び出し元に返す。
+_SUPERVISOR_UNAVAILABLE_HINT = (
+    "Supervisor API is not available on this workspace. This is expected "
+    "on Databricks Free Edition (Supervisor API is not offered there). "
+    "On other workspaces, ask your account admin to enable Agent Bricks / "
+    "Supervisor API on the Previews page. Details: "
+    "https://docs.databricks.com/aws/en/generative-ai/agent-bricks/supervisor-api"
+    " ｜ Original error: "
+)
+
+
+def _wrap_supervisor_error(exc: Exception) -> Exception:
+    """Supervisor が有効化されていないと思われる例外を、ユーザー向けの
+    HTTPException に置き換える。それ以外の例外はそのまま返す。"""
+    msg = str(exc)
+    # NotFoundError: `/ai-gateway/mlflow/v1/responses` エンドポイントが無い
+    # PermissionDeniedError: workspace が feature に enroll されていない
+    # 400 with specific keywords: model not on supported list など
+    is_not_available = (
+        isinstance(exc, _OpenAINotFoundError)
+        or isinstance(exc, _OpenAIPermissionDeniedError)
+        or "Responses API passthrough is not supported" in msg
+        or "not supported by the Supervisor API" in msg
+        or "not enabled" in msg.lower()
+        or "feature not available" in msg.lower()
+    )
+    if is_not_available:
+        detail = _SUPERVISOR_UNAVAILABLE_HINT + msg[:400]
+        logger.error(f"[supervisor unavailable] {detail}")
+        return HTTPException(status_code=503, detail=detail)
+    return exc
+
+
 ############################################
 # Handlers
 ############################################
@@ -209,12 +252,15 @@ async def invoke_handler(request: ResponsesAgentRequest) -> ResponsesAgentRespon
     all_outputs: list[dict[str, Any]] = []
 
     for _iteration in range(MAX_TOOL_ITERATIONS):
-        response = _client.responses.create(
-            model=LLM_MODEL,
-            input=input_items,
-            tools=tools if tools else None,
-            max_output_tokens=MAX_OUTPUT_TOKENS,
-        )
+        try:
+            response = _client.responses.create(
+                model=LLM_MODEL,
+                input=input_items,
+                tools=tools if tools else None,
+                max_output_tokens=MAX_OUTPUT_TOKENS,
+            )
+        except _OpenAIAPIError as e:
+            raise _wrap_supervisor_error(e) from e
         iter_items = list(response.output or [])
 
         # このイテレーションの出力を全部積む（message / server-side function_call /
@@ -271,13 +317,16 @@ async def stream_handler(
     input_items = _request_to_input(request, system_prompt)
 
     for _iteration in range(MAX_TOOL_ITERATIONS):
-        stream_iter = _client.responses.create(
-            model=LLM_MODEL,
-            input=input_items,
-            tools=tools if tools else None,
-            max_output_tokens=MAX_OUTPUT_TOKENS,
-            stream=True,
-        )
+        try:
+            stream_iter = _client.responses.create(
+                model=LLM_MODEL,
+                input=input_items,
+                tools=tools if tools else None,
+                max_output_tokens=MAX_OUTPUT_TOKENS,
+                stream=True,
+            )
+        except _OpenAIAPIError as e:
+            raise _wrap_supervisor_error(e) from e
 
         iter_items: list[Any] = []  # このイテで完成した output items を蓄積
 

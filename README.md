@@ -285,6 +285,8 @@ claude
 **Supervisor API 版 + Managed Memory** は Databricks がエージェントループと長期メモリの基盤を管理してくれるため、**開発者はツール宣言とプロンプトに集中できる**のが最大の利点。tool_call → tool_result → 次の LLM 呼び出し、Postgres のプロビジョニング、埋め込みモデルの設定などをすべてスキップできます。
 
 > **Managed Memory も Supervisor API も現時点で Beta**、対応モデルにも制限あり（Sonnet 5 未対応）、短期記憶（`conversations` API 自動継続）はまだ動きません。今後 Public Preview / GA に進む過程でこれらの制約は緩和される見込みです。ワークショップとしては「Databricks がエージェント基盤を高レベル API で提供しつつある動き」を体感するデモとしてご活用ください。
+>
+> **⚠ Databricks Free Edition では Supervisor API がまだ提供されていません** — Free Edition でこのワークショップを回す場合、Supervisor 版（`uv run start-app --supervisor`）はリクエスト時に "Supervisor API is not available" というエラー（HTTP 503）を返します。Free Edition では LangGraph 版（`uv run start-app`）のみが動作対象と考えてください。他のワークスペースでは account admin が Previews で有効化する必要があります。
 
 ### 内部モジュール構成
 
@@ -779,6 +781,8 @@ This workshop ships the **same agent requirements in two different implementatio
 **Supervisor API + Managed Memory** hands both the agent loop and the long-term memory substrate to Databricks, so **you focus on tool declarations and the prompt**. No Postgres to provision, no embedding endpoint to configure, no tool_call → tool_result plumbing.
 
 > **Managed Memory and the Supervisor API are both in Beta today**, and short-term memory (auto-continue via the `conversations` API) doesn't work yet — the model list is also limited (Sonnet 5 not yet). These gaps are expected to close as both APIs move to Public Preview and then GA. Use this workshop as a preview of Databricks' higher-level agent primitives.
+>
+> **⚠ The Supervisor API is not offered on Databricks Free Edition yet.** If you run this workshop on Free Edition, the Supervisor variant (`uv run start-app --supervisor`) returns "Supervisor API is not available" (HTTP 503) on the first request. On Free Edition only the LangGraph variant (`uv run start-app`) is expected to work. On other workspaces the account admin must enable it on the Previews page.
 
 ### Internal Module Layout
 

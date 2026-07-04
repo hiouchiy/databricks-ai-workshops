@@ -3278,7 +3278,22 @@ class QuickstartWizard(customtkinter.CTk):
     # ── Sub-renderers for the complete page states ───────────────────────
 
     def _render_complete_success(self, frame):
-        s = self.data
+        # ── Footer: ウィンドウ最下部に「完了」ボタンを予約 ─────────────
+        # 標準的な UX（primary action は右下）に合わせるため、まず side="bottom"
+        # で footer 領域を pack で確保してから、本文コンテンツを上に積む。
+        footer = customtkinter.CTkFrame(frame, fg_color="transparent")
+        footer.pack(side="bottom", fill="x", padx=20, pady=(5, 15))
+
+        customtkinter.CTkButton(
+            footer,
+            text=t("完了", "Complete"),
+            width=200,
+            height=40,
+            font=customtkinter.CTkFont(size=15, weight="bold"),
+            command=self.destroy,
+        ).pack(side="right")
+
+        # ── 本文（footer の上に積まれる） ─────────────────────────────
         customtkinter.CTkLabel(
             frame,
             text=t("✓ セットアップ完了！", "✓ Setup Complete!"),
@@ -3289,35 +3304,22 @@ class QuickstartWizard(customtkinter.CTk):
         self._render_resource_summary(frame)
         self._render_team_sharing_info(frame)
 
-        # Big centered Complete button
-        btn_frame = customtkinter.CTkFrame(frame, fg_color="transparent")
-        btn_frame.pack(pady=(15, 10))
-
+        # 「クリップボードにコピー」— team sharing info の直下（文脈的にここ）
         customtkinter.CTkButton(
-            btn_frame,
+            frame,
             text=t("クリップボードにコピー", "Copy to Clipboard"),
             width=200,
             command=self._copy_share_text,
-        ).pack(side="left", padx=10)
-
-        customtkinter.CTkButton(
-            btn_frame,
-            text=t("完了", "Complete"),
-            width=200,
-            height=40,
-            font=customtkinter.CTkFont(size=15, weight="bold"),
-            command=self.destroy,
-        ).pack(side="left", padx=10)
+        ).pack(pady=(10, 5))
 
         # 次のステップ: コピー可能なコマンドエントリで表示
-        next_label = customtkinter.CTkLabel(
+        customtkinter.CTkLabel(
             frame,
             text=t("次のステップ — このコマンドをターミナルで実行:",
                    "Next step — run this in your terminal:"),
             font=customtkinter.CTkFont(size=13),
             text_color="#3B8ED0",
-        )
-        next_label.pack(pady=(10, 2))
+        ).pack(pady=(10, 2))
 
         next_cmd_frame = customtkinter.CTkFrame(frame, fg_color="transparent")
         next_cmd_frame.pack(pady=(0, 10))
@@ -3352,6 +3354,35 @@ class QuickstartWizard(customtkinter.CTk):
         failed = s.get("setup_failed_steps", [])
         aborted = bool(s.get("aborted_at"))
 
+        # ── Footer: 最下部に action ボタンを予約（右下、primary は右端） ──
+        footer = customtkinter.CTkFrame(frame, fg_color="transparent")
+        footer.pack(side="bottom", fill="x", padx=20, pady=(5, 15))
+
+        # 右端: 完了（primary — 現状受け入れて閉じる）
+        customtkinter.CTkButton(
+            footer,
+            text=t("完了\n(現状のままアプリを閉じる)",
+                   "Complete\n(keep as-is and close)"),
+            width=240,
+            height=50,
+            font=customtkinter.CTkFont(size=13),
+            command=self.destroy,
+        ).pack(side="right", padx=(10, 0))
+
+        # 右端の左隣: ロールバック（destructive secondary）
+        customtkinter.CTkButton(
+            footer,
+            text=t("ロールバック\n(新規作成リソースを削除)",
+                   "Rollback\n(delete newly created resources)"),
+            width=240,
+            height=50,
+            fg_color="#E74C3C",
+            hover_color="#C0392B",
+            font=customtkinter.CTkFont(size=13, weight="bold"),
+            command=self._on_rollback_click,
+        ).pack(side="right")
+
+        # ── 本文 ──
         title = (t("⚠ セットアップが中断されました", "⚠ Setup was aborted")
                  if aborted else
                  t("⚠ セットアップ完了（一部失敗あり）",
@@ -3390,32 +3421,6 @@ class QuickstartWizard(customtkinter.CTk):
 
         self._render_resource_summary(frame, compact=True)
 
-        # Action buttons: Complete (accept partial) + Rollback
-        btn_frame = customtkinter.CTkFrame(frame, fg_color="transparent")
-        btn_frame.pack(pady=(15, 10))
-
-        customtkinter.CTkButton(
-            btn_frame,
-            text=t("ロールバック\n(新規作成リソースを削除)",
-                   "Rollback\n(delete newly created resources)"),
-            width=240,
-            height=50,
-            fg_color="#E74C3C",
-            hover_color="#C0392B",
-            font=customtkinter.CTkFont(size=13, weight="bold"),
-            command=self._on_rollback_click,
-        ).pack(side="left", padx=10)
-
-        customtkinter.CTkButton(
-            btn_frame,
-            text=t("完了\n(現状のままアプリを閉じる)",
-                   "Complete\n(keep as-is and close)"),
-            width=240,
-            height=50,
-            font=customtkinter.CTkFont(size=13),
-            command=self.destroy,
-        ).pack(side="left", padx=10)
-
     def _render_complete_rolling_back(self, frame):
         customtkinter.CTkLabel(
             frame,
@@ -3443,6 +3448,20 @@ class QuickstartWizard(customtkinter.CTk):
             self.after(100, self._check_rollback_progress)
 
     def _render_complete_rolled_back(self, frame):
+        # ── Footer: 最下部の Close ボタンを予約（右下） ─────────────
+        footer = customtkinter.CTkFrame(frame, fg_color="transparent")
+        footer.pack(side="bottom", fill="x", padx=20, pady=(5, 15))
+
+        customtkinter.CTkButton(
+            footer,
+            text=t("閉じる", "Close"),
+            width=200,
+            height=40,
+            font=customtkinter.CTkFont(size=15, weight="bold"),
+            command=self.destroy,
+        ).pack(side="right")
+
+        # ── 本文 ──
         customtkinter.CTkLabel(
             frame,
             text=t("✓ ロールバック完了", "✓ Rollback Complete"),
@@ -3465,15 +3484,6 @@ class QuickstartWizard(customtkinter.CTk):
         for line in self.data.get("rollback_log", []):
             log_box.insert("end", line + "\n")
         log_box.configure(state="disabled")
-
-        customtkinter.CTkButton(
-            frame,
-            text=t("閉じる", "Close"),
-            width=200,
-            height=40,
-            font=customtkinter.CTkFont(size=15, weight="bold"),
-            command=self.destroy,
-        ).pack(pady=(15, 10))
 
     def _render_resource_summary(self, frame, compact: bool = False):
         s = self.data
