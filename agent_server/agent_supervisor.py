@@ -42,6 +42,20 @@ logger = logging.getLogger(__name__)
 logging.getLogger("mlflow.utils.autologging_utils").setLevel(logging.ERROR)
 mlflow.openai.autolog()
 
+# トレース送信先の切り替え（LangGraph 版 agent.py と同じロジック）。
+# MLFLOW_TRACING_DESTINATION が設定されていれば Unity Catalog Delta Table に
+# OpenTelemetry フォーマットで送信、未設定なら MLflow Experiment（デフォルト）。
+# ワークショップの Delta Table トレーシング機能を両版で同じ UX にするため、
+# agent.py と同一ブロックを配置している。
+_tracing_dest = os.getenv("MLFLOW_TRACING_DESTINATION", "")
+if _tracing_dest and "." in _tracing_dest:
+    from mlflow.entities import UCSchemaLocation
+    _catalog, _schema = _tracing_dest.split(".", 1)
+    mlflow.tracing.set_destination(UCSchemaLocation(catalog_name=_catalog, schema_name=_schema))
+    logger.info(f"Tracing destination: Unity Catalog ({_tracing_dest})")
+else:
+    logger.info("Tracing destination: MLflow Experiment (default)")
+
 ############################################
 # Configuration
 ############################################
